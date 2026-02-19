@@ -1,0 +1,25 @@
+export * from './firebase';
+export {
+  fetchExercises,
+  fetchExerciseById as fetchExerciseByIdFromApi,
+  saveEvaluation,
+  fetchEvaluationHistory,
+  saveWorkoutLog,
+  fetchWorkoutLogs,
+  saveProgress,
+  fetchProgressHistory,
+  fetchPaymentHistory,
+  fetchWorkoutTemplates,
+} from './database';
+export * from './ai';
+export * from './workouts';
+export * from './evaluations';
+export * from './scheduling';
+export * from './payments';
+export * from './notifications';
+export * from './notificationCenter';
+export * from './support';
+export * from './documents';
+export * from './aiAnalysis';
+export * from './feedback';
+export * from './financeiro';

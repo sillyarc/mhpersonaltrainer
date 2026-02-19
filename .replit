@@ -1,0 +1,55 @@
+modules = ["java-graalvm22.3", "swift-5.8", "nodejs-20", "python-3.11", "postgresql-16"]
+[agent]
+expertMode = true
+
+[nix]
+channel = "stable-25_05"
+packages = ["flutter", "python3"]
+
+[workflows]
+runButton = "Project"
+
+[[workflows.workflow]]
+name = "Project"
+mode = "parallel"
+author = "agent"
+
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = "React Native App"
+
+[[workflows.workflow]]
+name = "React Native App"
+author = "agent"
+
+[workflows.workflow.metadata]
+outputType = "webview"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "cd mh-personal-trainer-react-native && npx expo start --web --port 5000 --lan --clear"
+waitForPort = 5000
+
+[[ports]]
+localPort = 5000
+externalPort = 80
+
+[[ports]]
+localPort = 5001
+externalPort = 3001
+
+[deployment]
+deploymentTarget = "static"
+build = ["flutter", "build", "web", "--release"]
+publicDir = "build/web"
+
+[userenv]
+
+[userenv.shared]
+EXPO_PUBLIC_FIREBASE_API_KEY = "AIzaSyAOacFgUL2w9WYNOnuLPC0w2qFebdy2d64"
+EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN = "profissions-2746d.firebaseapp.com"
+EXPO_PUBLIC_FIREBASE_PROJECT_ID = "profissions-2746d"
+EXPO_PUBLIC_FIREBASE_STORAGE_BUCKET = "profissions-2746d.appspot.com"
+EXPO_PUBLIC_FIREBASE_MESSAGING_SENDER_ID = "733790875876"
+EXPO_PUBLIC_FIREBASE_APP_ID = "1:733790875876:web:57d4a8a1271e8bfec53cf1"
+EXPO_PUBLIC_FIREBASE_MEASUREMENT_ID = "G-TX29X2CZTT"
