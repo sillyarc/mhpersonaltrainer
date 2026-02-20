@@ -1,0 +1,1101 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>MH Personal Trainer - Guia Completo</title>
+  <style>
+    :root {
+      --bg: #f5f7fb;
+      --paper: #ffffff;
+      --ink: #10203a;
+      --muted: #4f607a;
+      --line: #d7deeb;
+      --brand: #0a5cc6;
+      --brand-soft: #e8f0fe;
+      --code-bg: #eff3fa;
+      --ok: #0f8a5f;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: "Segoe UI", "Calibri", Arial, sans-serif;
+      background: linear-gradient(180deg, #edf2fa 0%, #f7f9fc 45%, #f5f7fb 100%);
+      color: var(--ink);
+      line-height: 1.5;
+      font-size: 11pt;
+    }
+    .page {
+      width: 210mm;
+      min-height: 297mm;
+      margin: 0 auto;
+      padding: 16mm 14mm 16mm 14mm;
+      background: var(--paper);
+    }
+    .cover {
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      padding: 24px;
+      background: radial-gradient(circle at top right, #f0f6ff 0%, #ffffff 58%);
+      margin-bottom: 22px;
+    }
+    .eyebrow {
+      display: inline-block;
+      padding: 4px 10px;
+      border-radius: 999px;
+      background: var(--brand-soft);
+      color: var(--brand);
+      font-size: 9pt;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.4px;
+    }
+    h1 {
+      margin: 10px 0 8px 0;
+      font-size: 25pt;
+      line-height: 1.2;
+      color: #083f8a;
+    }
+    .subtitle {
+      color: var(--muted);
+      margin: 0;
+      font-size: 11pt;
+    }
+    .meta-grid {
+      margin-top: 16px;
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 10px;
+    }
+    .meta-card {
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      padding: 10px 12px;
+      background: #fff;
+    }
+    .meta-card .k {
+      color: var(--muted);
+      font-size: 9pt;
+    }
+    .meta-card .v {
+      margin-top: 2px;
+      font-weight: 700;
+      color: #093b7a;
+      word-break: break-word;
+    }
+    h2 {
+      margin: 18px 0 8px 0;
+      color: #0b3c80;
+      font-size: 15pt;
+      border-bottom: 2px solid #e8eef8;
+      padding-bottom: 4px;
+    }
+    h3 {
+      margin: 14px 0 6px 0;
+      color: #154c95;
+      font-size: 12.5pt;
+    }
+    p { margin: 0 0 8px 0; }
+    ul { margin: 0 0 10px 18px; padding: 0; }
+    li { margin: 3px 0; }
+    code {
+      background: var(--code-bg);
+      border: 1px solid #d9e2f2;
+      border-radius: 5px;
+      padding: 1px 5px;
+      font-family: Consolas, "Courier New", monospace;
+      font-size: 9.2pt;
+    }
+    pre {
+      margin: 7px 0 12px 0;
+      padding: 10px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #fbfdff;
+      overflow: auto;
+      font-size: 9pt;
+      line-height: 1.4;
+      white-space: pre;
+    }
+    .pill {
+      display: inline-block;
+      padding: 2px 8px;
+      margin-right: 6px;
+      border-radius: 999px;
+      background: #edf4ff;
+      border: 1px solid #d5e6ff;
+      color: #0b58bf;
+      font-size: 8.5pt;
+      font-weight: 700;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 8px 0 14px 0;
+      table-layout: fixed;
+    }
+    th, td {
+      border: 1px solid var(--line);
+      padding: 6px 7px;
+      vertical-align: top;
+      word-wrap: break-word;
+      overflow-wrap: anywhere;
+      font-size: 9.2pt;
+    }
+    th {
+      background: #f0f4fb;
+      color: #0f3f85;
+      text-align: left;
+      font-weight: 700;
+    }
+    .kv-table th:nth-child(1), .kv-table td:nth-child(1) { width: 30%; }
+    .ok {
+      color: var(--ok);
+      font-weight: 700;
+    }
+    .grid-two {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+    }
+    .note {
+      padding: 10px 12px;
+      border: 1px dashed #c5d2e6;
+      background: #f8fbff;
+      border-radius: 9px;
+      color: #2e3f5f;
+      margin-bottom: 10px;
+    }
+    .footer {
+      margin-top: 18px;
+      font-size: 8.8pt;
+      color: #5a6c88;
+      border-top: 1px solid #dce4f2;
+      padding-top: 8px;
+    }
+    .break-before {
+      page-break-before: always;
+      break-before: page;
+    }
+    @page {
+      size: A4;
+      margin: 10mm;
+    }
+  </style>
+</head>
+<body>
+  <main class="page">
+    <section class="cover">
+      <span class="eyebrow">Documentacao Tecnica Completa</span>
+      <h1>MH Personal Trainer</h1>
+      <p class="subtitle">Guia completo dos projetos <code>web-next</code> e <code>mh-personal-trainer-react-native</code>, com comandos, navegacao de paginas, estrutura e backend.</p>
+      <div class="meta-grid">
+        <div class="meta-card">
+          <div class="k">Gerado em</div>
+          <div class="v">20/02/2026, 10:13:06</div>
+        </div>
+        <div class="meta-card">
+          <div class="k">Rotas Web mapeadas</div>
+          <div class="v">103</div>
+        </div>
+        <div class="meta-card">
+          <div class="k">Rotas Mobile mapeadas</div>
+          <div class="v">76</div>
+        </div>
+      </div>
+    </section>
+
+    <h2>1. Visao Geral</h2>
+    <p>Este documento cobre as duas frentes principais do MH Personal Trainer: <strong>Web (Next.js)</strong> e <strong>Mobile (React Native + Expo Router)</strong>, alem dos servicos de <strong>Firebase Cloud Functions</strong>.</p>
+    <p>Objetivo: permitir que qualquer pessoa da equipe entenda rapido <strong>como entrar no projeto</strong>, <strong>como navegar nas paginas</strong>, <strong>como rodar localmente</strong> e <strong>onde cada funcionalidade esta no codigo</strong>.</p>
+    <div class="note">
+      Perfis principais suportados no produto: <span class="pill">aluno</span><span class="pill">personal/professor</span><span class="pill">admin</span><span class="pill">academia</span>
+    </div>
+
+    <h2>2. Comandos Basicos (cd e navegacao)</h2>
+    <table class="kv-table"><thead><tr><th>Comando</th><th>Descricao</th></tr></thead><tbody><tr><td>Abrir raiz</td><td><code>cd C:\Users\isabe\Downloads\mhpersonaltrainer-main\mhpersonaltrainer-main</code></td></tr>
+<tr><td>Entrar no Web (Next)</td><td><code>cd web-next</code></td></tr>
+<tr><td>Entrar no Mobile (React Native)</td><td><code>cd mh-personal-trainer-react-native</code></td></tr>
+<tr><td>Entrar em cloud functions custom</td><td><code>cd firebase\custom_cloud_functions</code></td></tr>
+<tr><td>Entrar em cloud functions padrao</td><td><code>cd firebase\functions</code></td></tr>
+<tr><td>Voltar um nivel</td><td><code>cd ..</code></td></tr>
+<tr><td>Listar pastas/arquivos</td><td><code>Get-ChildItem</code></td></tr>
+<tr><td>Listar rotas web</td><td><code>Get-ChildItem &#39;web-next\app&#39; -Recurse -Filter page.tsx</code></td></tr>
+<tr><td>Listar rotas mobile</td><td><code>Get-ChildItem &#39;mh-personal-trainer-react-native\app&#39; -Recurse -Filter *.tsx</code></td></tr></tbody></table>
+
+    <h2>3. Estrutura de Pastas</h2>
+    <h3>3.1 web-next</h3>
+    <pre>web-next/
+├─ .env.local
+├─ app/
+│  ├─ (app)/
+│  │  ├─ academy/
+│  │  ├─ admin/
+│  │  ├─ ai/
+│  │  ├─ app/
+│  │  ├─ chat/
+│  │  ├─ documents/
+│  │  ├─ evaluations/
+│  │  ├─ feedbacks/
+│  │  ├─ financeiro/
+│  │  ├─ help/
+│  │  ├─ layout.tsx
+│  │  ├─ mh-agenda-fit/
+│  │  ├─ notifications/
+│  │  ├─ personal/
+│  │  ├─ policies/
+│  │  ├─ profile/
+│  │  ├─ progress/
+│  │  ├─ schedule/
+│  │  ├─ settings/
+│  │  ├─ start-workout/
+│  │  ├─ students/
+│  │  ├─ support/
+│  │  ├─ workout/
+│  │  └─ workouts/
+│  ├─ (auth)/
+│  │  ├─ academy-login/
+│  │  ├─ forgot-password/
+│  │  ├─ invite/
+│  │  ├─ layout.tsx
+│  │  ├─ login/
+│  │  ├─ login-aluno/
+│  │  ├─ personal-login/
+│  │  ├─ register/
+│  │  ├─ register-academy/
+│  │  ├─ register-aluno/
+│  │  └─ register-personal/
+│  ├─ (marketing)/
+│  │  ├─ academia/
+│  │  ├─ account-deletion/
+│  │  ├─ beneficios/
+│  │  ├─ equipe/
+│  │  ├─ layout.tsx
+│  │  ├─ page.module.css
+│  │  ├─ page.tsx
+│  │  ├─ privacy/
+│  │  └─ terms/
+│  ├─ globals.css
+│  ├─ layout.tsx
+│  ├─ robots.ts
+│  └─ sitemap.ts
+├─ assets/
+│  ├─ 2[2].jpg
+│  ├─ 3[1].jpg
+│  ├─ 4[1].jpg
+│  ├─ Design-sem-nome-44.png
+│  ├─ Design-sem-nome-49-scaled.webp
+│  ├─ Design-sem-nome-50.webp
+│  ├─ logo.jpg
+│  ├─ printsPersonal/
+│  │  ├─ Captura de tela 2026-01-28 080325.png
+│  │  ├─ Captura de tela 2026-01-28 080653.png
+│  │  ├─ Captura de tela 2026-01-28 080745.png
+│  │  └─ Captura de tela 2026-01-28 080924.png
+│  └─ PT-transparente-1.webp
+├─ components/
+│  ├─ AcademyGate.tsx
+│  ├─ admin/
+│  │  ├─ AdminProfileCompletionSheet.module.css
+│  │  ├─ AdminProfileCompletionSheet.tsx
+│  │  └─ AdminUserSheet.tsx
+│  ├─ AdminGate.tsx
+│  ├─ AiAccessStatus.tsx
+│  ├─ AiInsightsPanel.tsx
+│  ├─ AppErrorReporter.tsx
+│  ├─ AppShell.tsx
+│  ├─ AppSidebar.tsx
+│  ├─ AuthGate.tsx
+│  ├─ ChatFab.tsx
+│  ├─ ChatWidget.tsx
+│  ├─ data/
+│  │  ├─ DashboardCharts.tsx
+│  │  ├─ DataTable.tsx
+│  │  └─ UserScopePicker.tsx
+│  ├─ DesktopExeLoginRedirect.tsx
+│  ├─ MarketingFooter.module.css
+│  ├─ MarketingFooter.tsx
+│  ├─ MarketingNav.module.css
+│  ├─ MarketingNav.tsx
+│  ├─ MobileAwareLink.tsx
+│  ├─ PageShell.tsx
+│  ├─ PersonalBottomNav.tsx
+│  ├─ profile/
+│  │  ├─ ProfileEditBottomSheet.module.css
+│  │  ├─ ProfileEditBottomSheet.tsx
+│  │  ├─ ProfileInfoEditor.module.css
+│  │  └─ ProfileInfoEditor.tsx
+│  ├─ Providers.tsx
+│  ├─ PwaRegistrar.tsx
+│  ├─ QuickCards.tsx
+│  ├─ RotatingText.tsx
+│  ├─ StudentBottomNav.tsx
+│  ├─ ThemeToggle.tsx
+│  └─ ToastCenter.tsx
+├─ dev-check-3001.log
+├─ dev-check-3113.log
+├─ dev-check.log
+├─ lib/
+│  ├─ auth.tsx
+│  ├─ device.ts
+│  ├─ firebaseClient.ts
+│  ├─ firestoreHooks.ts
+│  ├─ hooks/
+│  │  ├─ useAcademyData.ts
+│  │  ├─ useAdminDashboardData.ts
+│  │  ├─ useAiAccessStatus.ts
+│  │  └─ useDashboardData.ts
+│  ├─ mobileApp.ts
+│  ├─ seo.ts
+│  ├─ services/
+│  │  ├─ ai.ts
+│  │  ├─ aiAccess.ts
+│  │  ├─ aiAnalysis.ts
+│  │  ├─ assistantSuggestions.ts
+│  │  ├─ chat.ts
+│  │  ├─ database.ts
+│  │  ├─ documents.ts
+│  │  ├─ evaluations.ts
+│  │  ├─ exerciseInsights.ts
+│  │  ├─ feedback.ts
+│  │  ├─ financeiro.ts
+│  │  ├─ firebase.ts
+│  │  ├─ firebaseErrors.ts
+│  │  ├─ firestoreService.ts
+│  │  ├─ index.ts
+│  │  ├─ insights.ts
+│  │  ├─ notificationCenter.ts
+│  │  ├─ notifications.ts
+│  │  ├─ payments.ts
+│  │  ├─ scheduling.ts
+│  │  ├─ support.ts
+│  │  ├─ videoCache.ts
+│  │  └─ workouts.ts
+│  └─ types/
+│     ├─ chat.ts
+│     ├─ document.ts
+│     ├─ evaluation.ts
+│     ├─ feedback.ts
+│     ├─ finance.ts
+│     ├─ index.ts
+│     ├─ notification.ts
+│     ├─ scheduling.ts
+│     ├─ support.ts
+│     ├─ user.ts
+│     └─ workout.ts
+├─ next-env.d.ts
+├─ next.config.js
+├─ package-lock.json
+├─ package.json
+├─ public/
+│  ├─ downloads/
+│  │  └─ mh-personal-trainer-setup-8.9.42-111.exe
+│  ├─ icon-192-maskable.png
+│  ├─ icon-192.png
+│  ├─ icon-512-maskable.png
+│  ├─ icon-512.png
+│  ├─ manifest.webmanifest
+│  ├─ sw.js
+│  └─ videos/
+│     └─ app-demo.mp4
+├─ src-tauri/
+│  ├─ build.rs
+│  ├─ Cargo.lock
+│  ├─ Cargo.toml
+│  ├─ icons/
+│  │  ├─ 128x128.png
+│  │  ├─ 128x128@2x.png
+│  │  ├─ 32x32.png
+│  │  ├─ icon.icns
+│  │  ├─ icon.ico
+│  │  ├─ icon.png
+│  │  ├─ Square107x107Logo.png
+│  │  ├─ Square142x142Logo.png
+│  │  ├─ Square150x150Logo.png
+│  │  ├─ Square284x284Logo.png
+│  │  ├─ Square30x30Logo.png
+│  │  ├─ Square310x310Logo.png
+│  │  ├─ Square44x44Logo.png
+│  │  ├─ Square71x71Logo.png
+│  │  ├─ Square89x89Logo.png
+│  │  └─ StoreLogo.png
+│  ├─ resources/
+│  │  └─ WebView2Loader.dll
+│  ├─ src/
+│  │  └─ main.rs
+│  └─ tauri.conf.json
+├─ tsconfig.json
+└─ tsconfig.tsbuildinfo</pre>
+    <h3>3.2 mh-personal-trainer-react-native</h3>
+    <pre>mh-personal-trainer-react-native/
+├─ .env
+├─ .env.example
+├─ .expo-export-test/
+│  ├─ _expo/
+│  │  └─ static/
+│  ├─ assets/
+│  │  ├─ 017bc6ba3fc25503e5eb5e53826d48a8
+│  │  ├─ 0747a1317bbe9c6fc340b889ef8ab3ae
+│  │  ├─ 0a328cd9c1afd0afe8e3b1ec5165b1b4
+│  │  ├─ 0ea69b5077e7c4696db85dbcba75b0e1
+│  │  ├─ 1190ab078c57159f4245a328118fcd9a
+│  │  ├─ 140c53a7643ea949007aa9a282153849
+│  │  ├─ 1681f34aaca71b8dfb70756bca331eb2
+│  │  ├─ 19eeb73b9593a38f8e9f418337fc7d10
+│  │  ├─ 1f77739ca9ff2188b539c36f30ffa2be
+│  │  ├─ 20e71bdf79e3a97bf55fd9e164041578
+│  │  ├─ 2379ae894c2c9f63b852a9f3676c2763
+│  │  ├─ 2c7c3a9e86db13417f327f84f99010b8
+│  │  ├─ 2d0a9133e39524f138be6d4db9f4851f
+│  │  ├─ 31b5ffea3daddc69dd01a1f3d6cf63c5
+│  │  ├─ 370dd5af19f8364907b6e2c41f45dbbf
+│  │  ├─ 3b89dd103490708d19a95adcae52210e
+│  │  ├─ 3be5a7e0c9a0fc5d80f6ade02926b973
+│  │  ├─ 3cd68ccdb8938e3711da2e8831b85493
+│  │  ├─ 3f78af31cca60105799838a1a7a59fbd
+│  │  ├─ 412dd9275b6b48ad28f5e3d81bb1f626
+│  │  ├─ 4e85bc9ebe07e0340c9c4fc2f6c38908
+│  │  ├─ 56c8d80832e37783f12c05db7c8849e2
+│  │  ├─ 605ed7926cf39a2ad5ec2d1f9d391d3d
+│  │  ├─ 61ca7e64b7d605716c57706cef640b9a
+│  │  ├─ 6e435534bd35da5fef04168860a9b8fa
+│  │  ├─ 78c625386b4d0690b421eb0fc78f7b9c
+│  │  ├─ 7d40544b395c5949f4646f5e150fe020
+│  │  ├─ 871378c6eab492a3e689a9385dc45a12
+│  │  ├─ a132ecc4ba5c1517ff83c0fb321bc7fc
+│  │  ├─ ab19f4cbc543357183a20571f68380a3
+│  │  ├─ adec7d6f310bc577f05e8fe06a5daccf
+│  │  ├─ aff2c65b39a296d4f7e96d0f58169170
+│  │  ├─ b06871f281fee6b241d60582ae9369b9
+│  │  ├─ b49ae8ab2dbccb02c4d11caaacf09eab
+│  │  ├─ b4eb097d35f44ed943676fd56f6bdc51
+│  │  ├─ ca4b48e04dc1ce10bfbddb262c8b835f
+│  │  ├─ d1ea1496f9057eb392d5bbf3732a61b7
+│  │  ├─ d2285965fe34b05465047401b8595dd0
+│  │  ├─ d62ddc38b69aff346c20a28774933d6a
+│  │  ├─ d84e297c3b3e49a614248143d53e40ca
+│  │  ├─ d8b800c443b8972542883e0b9de2bdc6
+│  │  ├─ d8e7601e3df962f83c62371ac14964d8
+│  │  ├─ dad2fa9f4394a630f0f9a0d6dabd44bc
+│  │  ├─ e20945d7c929279ef7a6f1db184a4470
+│  │  └─ f3a81967828232c893d547162e922764
+│  └─ metadata.json
+├─ android/
+│  ├─ .gradle/
+│  │  ├─ 8.14.3/
+│  │  ├─ buildOutputCleanup/
+│  │  ├─ file-system.probe
+│  │  ├─ nb-cache/
+│  │  ├─ noVersion/
+│  │  └─ vcs-1/
+│  ├─ .kotlin/
+│  │  └─ sessions/
+│  ├─ app/
+│  │  ├─ build.gradle
+│  │  ├─ debug.keystore
+│  │  ├─ proguard-rules.pro
+│  │  └─ src/
+│  ├─ build.gradle
+│  ├─ gradle/
+│  │  └─ wrapper/
+│  ├─ gradle.properties
+│  ├─ gradlew
+│  ├─ gradlew.bat
+│  ├─ local.properties
+│  └─ settings.gradle
+├─ app/
+│  ├─ _layout.tsx
+│  ├─ (auth)/
+│  │  ├─ _layout.tsx
+│  │  ├─ forgot-password.tsx
+│  │  ├─ login.tsx
+│  │  ├─ personal-login.tsx
+│  │  ├─ register-personal.tsx
+│  │  └─ register.tsx
+│  ├─ (tabs)/
+│  │  ├─ _layout.tsx
+│  │  ├─ chat.tsx
+│  │  ├─ evaluations.tsx
+│  │  ├─ index.tsx
+│  │  ├─ nutrition.tsx
+│  │  ├─ profile.tsx
+│  │  ├─ students.tsx
+│  │  └─ workouts.tsx
+│  ├─ admin/
+│  │  ├─ _layout.tsx
+│  │  ├─ dashboard.tsx
+│  │  ├─ index.tsx
+│  │  ├─ manage-students.tsx
+│  │  ├─ student/
+│  │  ├─ students.tsx
+│  │  └─ users.tsx
+│  ├─ ai/
+│  │  ├─ _layout.tsx
+│  │  ├─ assistant.tsx
+│  │  ├─ calendar.tsx
+│  │  ├─ feedback.tsx
+│  │  ├─ gpt-dashboard.tsx
+│  │  ├─ gpt-home.tsx
+│  │  ├─ image-analysis.tsx
+│  │  └─ index.tsx
+│  ├─ chat/
+│  │  ├─ _layout.tsx
+│  │  ├─ [id].tsx
+│  │  └─ ai.tsx
+│  ├─ documents/
+│  │  ├─ _layout.tsx
+│  │  ├─ aluno.tsx
+│  │  ├─ upload.tsx
+│  │  └─ view/
+│  ├─ evaluations/
+│  │  ├─ _layout.tsx
+│  │  ├─ [id].tsx
+│  │  ├─ create.tsx
+│  │  └─ index.tsx
+│  ├─ feedbacks/
+│  │  └─ index.tsx
+│  ├─ financeiro/
+│  │  ├─ _layout.tsx
+│  │  ├─ aluno.tsx
+│  │  ├─ index.tsx
+│  │  ├─ personal.tsx
+│  │  ├─ plans.tsx
+│  │  └─ subscription.tsx
+│  ├─ help/
+│  │  └─ index.tsx
+│  ├─ index.tsx
+│  ├─ mh-agenda-fit/
+│  │  ├─ [id].tsx
+│  │  ├─ index.tsx
+│  │  └─ personal.tsx
+│  ├─ notifications/
+│  │  ├─ _layout.tsx
+│  │  ├─ admin.tsx
+│  │  └─ index.tsx
+│  ├─ personal/
+│  │  ├─ change-code.tsx
+│  │  ├─ profile.tsx
+│  │  └─ summary.tsx
+│  ├─ policies.tsx
+│  ├─ privacy.tsx
+│  ├─ profile/
+│  │  ├─ _layout.tsx
+│  │  ├─ edit-advanced.tsx
+│  │  ├─ edit.tsx
+│  │  ├─ language.tsx
+│  │  ├─ notifications.tsx
+│  │  ├─ personal-edit.tsx
+│  │  └─ subscription.tsx
+│  ├─ progress/
+│  │  └─ index.tsx
+│  ├─ schedule/
+│  │  ├─ _layout.tsx
+│  │  ├─ [id].tsx
+│  │  ├─ create.tsx
+│  │  └─ index.tsx
+│  ├─ settings/
+│  │  ├─ _layout.tsx
+│  │  ├─ index.tsx
+│  │  └─ notifications.tsx
+│  ├─ start-workout.tsx
+│  ├─ student/
+│  │  ├─ [id].tsx
+│  │  └─ evolution.tsx
+│  ├─ support/
+│  │  └─ ticket.tsx
+│  ├─ terms.tsx
+│  └─ workout/
+│     ├─ _layout.tsx
+│     ├─ [id].tsx
+│     ├─ aerobico-create.tsx
+│     ├─ aerobico-detail.tsx
+│     ├─ aerobico.tsx
+│     ├─ archived.tsx
+│     ├─ categories.tsx
+│     ├─ create.tsx
+│     └─ exercise/
+├─ app.json
+├─ assets/
+│  ├─ adaptive-icon.png
+│  ├─ favicon.png
+│  ├─ icon.png
+│  ├─ images/
+│  │  ├─ icon.png
+│  │  ├─ mh_personal_branco.png
+│  │  └─ PT_transparente.png
+│  ├─ logo.jpg
+│  └─ splash-icon.png
+├─ babel.config.js
+├─ eas.json
+├─ expo-env.d.ts
+├─ index.ts
+├─ metro.config.js
+├─ package-lock.json
+├─ package.json
+├─ src/
+│  ├─ components/
+│  │  ├─ ai/
+│  │  ├─ chat/
+│  │  ├─ common/
+│  │  ├─ evaluation/
+│  │  ├─ scheduling/
+│  │  └─ workout/
+│  ├─ hooks/
+│  │  ├─ index.ts
+│  │  ├─ useAdminDashboardData.ts
+│  │  ├─ useAiAccessStatus.ts
+│  │  ├─ useAuth.ts
+│  │  ├─ useDashboardData.ts
+│  │  ├─ useResponsive.ts
+│  │  └─ useTheme.ts
+│  ├─ i18n/
+│  │  ├─ index.ts
+│  │  └─ locales/
+│  ├─ services/
+│  │  ├─ ai.ts
+│  │  ├─ aiAnalysis.ts
+│  │  ├─ chat.ts
+│  │  ├─ database.ts
+│  │  ├─ documents.ts
+│  │  ├─ evaluations.ts
+│  │  ├─ exerciseInsights.ts
+│  │  ├─ feedback.ts
+│  │  ├─ financeiro.ts
+│  │  ├─ firebase.ts
+│  │  ├─ firebaseErrors.ts
+│  │  ├─ firestoreService.ts
+│  │  ├─ index.ts
+│  │  ├─ notificationCenter.ts
+│  │  ├─ notifications.ts
+│  │  ├─ payments.ts
+│  │  ├─ scheduling.ts
+│  │  ├─ support.ts
+│  │  ├─ videoCache.ts
+│  │  ├─ workoutParty.ts
+│  │  └─ workouts.ts
+│  ├─ store/
+│  │  ├─ alertStore.ts
+│  │  ├─ appStore.ts
+│  │  ├─ authStore.ts
+│  │  └─ index.ts
+│  ├─ theme/
+│  │  ├─ colors.ts
+│  │  ├─ index.ts
+│  │  ├─ spacing.ts
+│  │  └─ typography.ts
+│  ├─ types/
+│  │  ├─ chat.ts
+│  │  ├─ document.ts
+│  │  ├─ evaluation.ts
+│  │  ├─ feedback.ts
+│  │  ├─ finance.ts
+│  │  ├─ index.ts
+│  │  ├─ notification.ts
+│  │  ├─ scheduling.ts
+│  │  ├─ support.ts
+│  │  ├─ user.ts
+│  │  └─ workout.ts
+│  └─ utils/
+│     ├─ alert.ts
+│     ├─ date.ts
+│     └─ workoutMetrics.ts
+└─ tsconfig.json</pre>
+    <h3>3.3 firebase</h3>
+    <pre>firebase/
+├─ custom_cloud_functions/
+│  ├─ .env.profissions-2746d
+│  ├─ ai_progress_planner.js
+│  ├─ app.json
+│  ├─ cancel_subscription.js
+│  ├─ check_treinors_videos.js
+│  ├─ create_and_verify_stripe_account.js
+│  ├─ create_checkout_session.js
+│  ├─ create_inscricao.js
+│  ├─ create_setup_intent.js
+│  ├─ eas.json
+│  ├─ email_admin.js
+│  ├─ index.js
+│  ├─ notification_ai_dispatcher.js
+│  ├─ openrouter_ai.js
+│  ├─ package-lock.json
+│  ├─ package.json
+│  ├─ personal_notifications.js
+│  ├─ runtime_config.js
+│  ├─ stripe_connect_status.js
+│  ├─ stripe_webhook.js
+│  ├─ subscription_status.js
+│  ├─ transcode_treinors_videos_1080.js
+│  └─ transcode_treinors_videos_720_for_4k.js
+├─ firebase.json
+├─ firestore.indexes.json
+├─ firestore.rules
+├─ functions/
+│  ├─ api_manager.js
+│  ├─ index.js
+│  ├─ package-lock.json
+│  └─ package.json
+└─ package-lock.json</pre>
+
+    <h2>4. Como Rodar Cada Projeto</h2>
+    <div class="grid-two">
+      <div>
+        <h3>Web (Next.js)</h3>
+        <pre>cd web-next
+npm install
+npm run dev
+# abre normalmente em http://localhost:3000</pre>
+      </div>
+      <div>
+        <h3>Mobile (Expo)</h3>
+        <pre>cd mh-personal-trainer-react-native
+npm install
+npm run start
+# Android
+npm run android
+# iOS
+npm run ios
+# Web (Expo web)
+npm run web</pre>
+      </div>
+    </div>
+
+    <h3>4.1 Scripts disponiveis - Web</h3>
+    <table><thead><tr><th>Script</th><th>Comando</th></tr></thead><tbody><tr><td><code>dev</code></td><td><code>next dev</code></td></tr>
+<tr><td><code>dev:clean</code></td><td><code>npm run clean:next &amp;&amp; next dev</code></td></tr>
+<tr><td><code>build</code></td><td><code>next build</code></td></tr>
+<tr><td><code>build:hosting</code></td><td><code>powershell -Command &quot;$env:HOSTING_BUILD=&#39;1&#39;; node ./node_modules/next/dist/bin/next build&quot;</code></td></tr>
+<tr><td><code>build:tauri</code></td><td><code>powershell -Command &quot;$env:TAURI_BUILD=&#39;1&#39;; node ./node_modules/next/dist/bin/next build&quot;</code></td></tr>
+<tr><td><code>start</code></td><td><code>next start</code></td></tr>
+<tr><td><code>lint</code></td><td><code>next lint</code></td></tr>
+<tr><td><code>clean:next</code></td><td><code>node -e &quot;const fs=require(&#39;fs&#39;);[&#39;.next&#39;,&#39;.next-dev&#39;,&#39;.next-tauri&#39;].forEach((p)=&gt;{try{if(fs.existsSync(p)){fs.rmSync(p,{recursive:true,force:true,maxRetries:10,retryDelay:200});console.log(&#39;cleaned &#39;+p)}else{console.log(p+&#39; not found&#39;)}}catch(e){console.log(&#39;skip &#39;+p+&#39;: &#39;+(e&amp;&amp;e.code?e.code:&#39;error&#39;))}})&quot;</code></td></tr>
+<tr><td><code>tauri:dev</code></td><td><code>tauri dev</code></td></tr>
+<tr><td><code>tauri:build</code></td><td><code>tauri build</code></td></tr></tbody></table>
+    <h3>4.2 Scripts disponiveis - Mobile</h3>
+    <table><thead><tr><th>Script</th><th>Comando</th></tr></thead><tbody><tr><td><code>start</code></td><td><code>expo start</code></td></tr>
+<tr><td><code>android</code></td><td><code>expo run:android</code></td></tr>
+<tr><td><code>ios</code></td><td><code>expo run:ios</code></td></tr>
+<tr><td><code>web</code></td><td><code>expo start --web --port 5000</code></td></tr>
+<tr><td><code>dev</code></td><td><code>expo start --web --port 5000</code></td></tr>
+<tr><td><code>lint</code></td><td><code>eslint .</code></td></tr></tbody></table>
+
+    <h2>5. Navegacao da Aplicacao Web</h2>
+    <p>No web, as paginas ficam em <code>web-next/app</code> (Next App Router). Grupos de rota usados: <code>(marketing)</code>, <code>(auth)</code>, <code>(app)</code>.</p>
+    <h3>5.1 Navegacao por perfil (AppSidebar / BottomNav)</h3>
+    <ul><li>Personal/Professor: /app, /workouts, /students, /profile, /schedule, /evaluations, /documents, /financeiro, /notifications, /ai, /support</li><li>Academia: /academy, /academy/students, /academy/personals, /academy/ai, /academy/agenda, /academy/billing, /academy/linking, /academy/checkins, /academy/access, /support, /profile</li><li>Aluno: /app, /workouts, /evaluations, /progress, /chat, /financeiro, /documents/aluno, /profile</li><li>Admin: /admin, /admin/users, /admin/support, /admin/instagram, /admin/emails, /notifications/admin, /admin/treinors</li><li>Bottom nav aluno (web): /app, /workouts, /evaluations, /chat, /profile</li><li>Bottom nav personal (web): /app, /workouts, /students, /schedule, /profile</li></ul>
+
+    <h3>5.2 Rotas Web completas</h3>
+    <p>Total mapeado: <strong>103</strong>.</p>
+    <table><thead><tr><th>Rota</th><th>Grupo</th><th>Area</th><th>Tipo</th><th>Arquivo fonte</th></tr></thead><tbody><tr><td><code>/</code></td><td>marketing</td><td>home</td><td>estatica</td><td><code>web-next/app/(marketing)/page.tsx</code></td></tr>
+<tr><td><code>/academia</code></td><td>marketing</td><td>academia</td><td>estatica</td><td><code>web-next/app/(marketing)/academia/page.tsx</code></td></tr>
+<tr><td><code>/academy</code></td><td>app</td><td>academy</td><td>estatica</td><td><code>web-next/app/(app)/academy/page.tsx</code></td></tr>
+<tr><td><code>/academy-login</code></td><td>auth</td><td>academy-login</td><td>estatica</td><td><code>web-next/app/(auth)/academy-login/page.tsx</code></td></tr>
+<tr><td><code>/academy/access</code></td><td>app</td><td>academy</td><td>estatica</td><td><code>web-next/app/(app)/academy/access/page.tsx</code></td></tr>
+<tr><td><code>/academy/agenda</code></td><td>app</td><td>academy</td><td>estatica</td><td><code>web-next/app/(app)/academy/agenda/page.tsx</code></td></tr>
+<tr><td><code>/academy/ai</code></td><td>app</td><td>academy</td><td>estatica</td><td><code>web-next/app/(app)/academy/ai/page.tsx</code></td></tr>
+<tr><td><code>/academy/billing</code></td><td>app</td><td>academy</td><td>estatica</td><td><code>web-next/app/(app)/academy/billing/page.tsx</code></td></tr>
+<tr><td><code>/academy/checkins</code></td><td>app</td><td>academy</td><td>estatica</td><td><code>web-next/app/(app)/academy/checkins/page.tsx</code></td></tr>
+<tr><td><code>/academy/linking</code></td><td>app</td><td>academy</td><td>estatica</td><td><code>web-next/app/(app)/academy/linking/page.tsx</code></td></tr>
+<tr><td><code>/academy/personals</code></td><td>app</td><td>academy</td><td>estatica</td><td><code>web-next/app/(app)/academy/personals/page.tsx</code></td></tr>
+<tr><td><code>/academy/students</code></td><td>app</td><td>academy</td><td>estatica</td><td><code>web-next/app/(app)/academy/students/page.tsx</code></td></tr>
+<tr><td><code>/account-deletion</code></td><td>marketing</td><td>account-deletion</td><td>estatica</td><td><code>web-next/app/(marketing)/account-deletion/page.tsx</code></td></tr>
+<tr><td><code>/admin</code></td><td>app</td><td>admin</td><td>estatica</td><td><code>web-next/app/(app)/admin/page.tsx</code></td></tr>
+<tr><td><code>/admin/academy</code></td><td>app</td><td>admin</td><td>estatica</td><td><code>web-next/app/(app)/admin/academy/page.tsx</code></td></tr>
+<tr><td><code>/admin/dashboard</code></td><td>app</td><td>admin</td><td>estatica</td><td><code>web-next/app/(app)/admin/dashboard/page.tsx</code></td></tr>
+<tr><td><code>/admin/emails</code></td><td>app</td><td>admin</td><td>estatica</td><td><code>web-next/app/(app)/admin/emails/page.tsx</code></td></tr>
+<tr><td><code>/admin/instagram</code></td><td>app</td><td>admin</td><td>estatica</td><td><code>web-next/app/(app)/admin/instagram/page.tsx</code></td></tr>
+<tr><td><code>/admin/kabam</code></td><td>app</td><td>admin</td><td>estatica</td><td><code>web-next/app/(app)/admin/kabam/page.tsx</code></td></tr>
+<tr><td><code>/admin/manage-students</code></td><td>app</td><td>admin</td><td>estatica</td><td><code>web-next/app/(app)/admin/manage-students/page.tsx</code></td></tr>
+<tr><td><code>/admin/student/[id]</code></td><td>app</td><td>admin</td><td>dinamica</td><td><code>web-next/app/(app)/admin/student/[id]/page.tsx</code></td></tr>
+<tr><td><code>/admin/students</code></td><td>app</td><td>admin</td><td>estatica</td><td><code>web-next/app/(app)/admin/students/page.tsx</code></td></tr>
+<tr><td><code>/admin/support</code></td><td>app</td><td>admin</td><td>estatica</td><td><code>web-next/app/(app)/admin/support/page.tsx</code></td></tr>
+<tr><td><code>/admin/treinors</code></td><td>app</td><td>admin</td><td>estatica</td><td><code>web-next/app/(app)/admin/treinors/page.tsx</code></td></tr>
+<tr><td><code>/admin/treinors/[id]</code></td><td>app</td><td>admin</td><td>dinamica</td><td><code>web-next/app/(app)/admin/treinors/[id]/page.tsx</code></td></tr>
+<tr><td><code>/admin/users</code></td><td>app</td><td>admin</td><td>estatica</td><td><code>web-next/app/(app)/admin/users/page.tsx</code></td></tr>
+<tr><td><code>/ai</code></td><td>app</td><td>ai</td><td>estatica</td><td><code>web-next/app/(app)/ai/page.tsx</code></td></tr>
+<tr><td><code>/ai/assistant</code></td><td>app</td><td>ai</td><td>estatica</td><td><code>web-next/app/(app)/ai/assistant/page.tsx</code></td></tr>
+<tr><td><code>/ai/calendar</code></td><td>app</td><td>ai</td><td>estatica</td><td><code>web-next/app/(app)/ai/calendar/page.tsx</code></td></tr>
+<tr><td><code>/ai/feedback</code></td><td>app</td><td>ai</td><td>estatica</td><td><code>web-next/app/(app)/ai/feedback/page.tsx</code></td></tr>
+<tr><td><code>/ai/gpt-dashboard</code></td><td>app</td><td>ai</td><td>estatica</td><td><code>web-next/app/(app)/ai/gpt-dashboard/page.tsx</code></td></tr>
+<tr><td><code>/ai/gpt-home</code></td><td>app</td><td>ai</td><td>estatica</td><td><code>web-next/app/(app)/ai/gpt-home/page.tsx</code></td></tr>
+<tr><td><code>/ai/image-analysis</code></td><td>app</td><td>ai</td><td>estatica</td><td><code>web-next/app/(app)/ai/image-analysis/page.tsx</code></td></tr>
+<tr><td><code>/app</code></td><td>app</td><td>app</td><td>estatica</td><td><code>web-next/app/(app)/app/page.tsx</code></td></tr>
+<tr><td><code>/beneficios</code></td><td>marketing</td><td>beneficios</td><td>estatica</td><td><code>web-next/app/(marketing)/beneficios/page.tsx</code></td></tr>
+<tr><td><code>/chat</code></td><td>app</td><td>chat</td><td>estatica</td><td><code>web-next/app/(app)/chat/page.tsx</code></td></tr>
+<tr><td><code>/chat/[id]</code></td><td>app</td><td>chat</td><td>dinamica</td><td><code>web-next/app/(app)/chat/[id]/page.tsx</code></td></tr>
+<tr><td><code>/chat/ai</code></td><td>app</td><td>chat</td><td>estatica</td><td><code>web-next/app/(app)/chat/ai/page.tsx</code></td></tr>
+<tr><td><code>/documents</code></td><td>app</td><td>documents</td><td>estatica</td><td><code>web-next/app/(app)/documents/page.tsx</code></td></tr>
+<tr><td><code>/documents/aluno</code></td><td>app</td><td>documents</td><td>estatica</td><td><code>web-next/app/(app)/documents/aluno/page.tsx</code></td></tr>
+<tr><td><code>/documents/upload</code></td><td>app</td><td>documents</td><td>estatica</td><td><code>web-next/app/(app)/documents/upload/page.tsx</code></td></tr>
+<tr><td><code>/documents/view/[id]</code></td><td>app</td><td>documents</td><td>dinamica</td><td><code>web-next/app/(app)/documents/view/[id]/page.tsx</code></td></tr>
+<tr><td><code>/equipe</code></td><td>marketing</td><td>equipe</td><td>estatica</td><td><code>web-next/app/(marketing)/equipe/page.tsx</code></td></tr>
+<tr><td><code>/evaluations</code></td><td>app</td><td>evaluations</td><td>estatica</td><td><code>web-next/app/(app)/evaluations/page.tsx</code></td></tr>
+<tr><td><code>/evaluations/[id]</code></td><td>app</td><td>evaluations</td><td>dinamica</td><td><code>web-next/app/(app)/evaluations/[id]/page.tsx</code></td></tr>
+<tr><td><code>/evaluations/create</code></td><td>app</td><td>evaluations</td><td>estatica</td><td><code>web-next/app/(app)/evaluations/create/page.tsx</code></td></tr>
+<tr><td><code>/evaluations/fisica</code></td><td>app</td><td>evaluations</td><td>estatica</td><td><code>web-next/app/(app)/evaluations/fisica/page.tsx</code></td></tr>
+<tr><td><code>/evaluations/online</code></td><td>app</td><td>evaluations</td><td>estatica</td><td><code>web-next/app/(app)/evaluations/online/page.tsx</code></td></tr>
+<tr><td><code>/evaluations/personalizada</code></td><td>app</td><td>evaluations</td><td>estatica</td><td><code>web-next/app/(app)/evaluations/personalizada/page.tsx</code></td></tr>
+<tr><td><code>/evaluations/personalizada/resultado</code></td><td>app</td><td>evaluations</td><td>estatica</td><td><code>web-next/app/(app)/evaluations/personalizada/resultado/page.tsx</code></td></tr>
+<tr><td><code>/evaluations/postural</code></td><td>app</td><td>evaluations</td><td>estatica</td><td><code>web-next/app/(app)/evaluations/postural/page.tsx</code></td></tr>
+<tr><td><code>/evaluations/ultima</code></td><td>app</td><td>evaluations</td><td>estatica</td><td><code>web-next/app/(app)/evaluations/ultima/page.tsx</code></td></tr>
+<tr><td><code>/feedbacks</code></td><td>app</td><td>feedbacks</td><td>estatica</td><td><code>web-next/app/(app)/feedbacks/page.tsx</code></td></tr>
+<tr><td><code>/financeiro</code></td><td>app</td><td>financeiro</td><td>estatica</td><td><code>web-next/app/(app)/financeiro/page.tsx</code></td></tr>
+<tr><td><code>/financeiro/aluno</code></td><td>app</td><td>financeiro</td><td>estatica</td><td><code>web-next/app/(app)/financeiro/aluno/page.tsx</code></td></tr>
+<tr><td><code>/financeiro/personal</code></td><td>app</td><td>financeiro</td><td>estatica</td><td><code>web-next/app/(app)/financeiro/personal/page.tsx</code></td></tr>
+<tr><td><code>/financeiro/plans</code></td><td>app</td><td>financeiro</td><td>estatica</td><td><code>web-next/app/(app)/financeiro/plans/page.tsx</code></td></tr>
+<tr><td><code>/financeiro/subscription</code></td><td>app</td><td>financeiro</td><td>estatica</td><td><code>web-next/app/(app)/financeiro/subscription/page.tsx</code></td></tr>
+<tr><td><code>/forgot-password</code></td><td>auth</td><td>forgot-password</td><td>estatica</td><td><code>web-next/app/(auth)/forgot-password/page.tsx</code></td></tr>
+<tr><td><code>/help</code></td><td>app</td><td>help</td><td>estatica</td><td><code>web-next/app/(app)/help/page.tsx</code></td></tr>
+<tr><td><code>/invite</code></td><td>auth</td><td>invite</td><td>estatica</td><td><code>web-next/app/(auth)/invite/page.tsx</code></td></tr>
+<tr><td><code>/login</code></td><td>auth</td><td>login</td><td>estatica</td><td><code>web-next/app/(auth)/login/page.tsx</code></td></tr>
+<tr><td><code>/login-aluno</code></td><td>auth</td><td>login-aluno</td><td>estatica</td><td><code>web-next/app/(auth)/login-aluno/page.tsx</code></td></tr>
+<tr><td><code>/mh-agenda-fit</code></td><td>app</td><td>mh-agenda-fit</td><td>estatica</td><td><code>web-next/app/(app)/mh-agenda-fit/page.tsx</code></td></tr>
+<tr><td><code>/notifications</code></td><td>app</td><td>notifications</td><td>estatica</td><td><code>web-next/app/(app)/notifications/page.tsx</code></td></tr>
+<tr><td><code>/notifications/admin</code></td><td>app</td><td>notifications</td><td>estatica</td><td><code>web-next/app/(app)/notifications/admin/page.tsx</code></td></tr>
+<tr><td><code>/personal</code></td><td>app</td><td>personal</td><td>estatica</td><td><code>web-next/app/(app)/personal/page.tsx</code></td></tr>
+<tr><td><code>/personal-login</code></td><td>auth</td><td>personal-login</td><td>estatica</td><td><code>web-next/app/(auth)/personal-login/page.tsx</code></td></tr>
+<tr><td><code>/personal/change-code</code></td><td>app</td><td>personal</td><td>estatica</td><td><code>web-next/app/(app)/personal/change-code/page.tsx</code></td></tr>
+<tr><td><code>/personal/profile</code></td><td>app</td><td>personal</td><td>estatica</td><td><code>web-next/app/(app)/personal/profile/page.tsx</code></td></tr>
+<tr><td><code>/personal/summary</code></td><td>app</td><td>personal</td><td>estatica</td><td><code>web-next/app/(app)/personal/summary/page.tsx</code></td></tr>
+<tr><td><code>/policies</code></td><td>app</td><td>policies</td><td>estatica</td><td><code>web-next/app/(app)/policies/page.tsx</code></td></tr>
+<tr><td><code>/privacy</code></td><td>marketing</td><td>privacy</td><td>estatica</td><td><code>web-next/app/(marketing)/privacy/page.tsx</code></td></tr>
+<tr><td><code>/profile</code></td><td>app</td><td>profile</td><td>estatica</td><td><code>web-next/app/(app)/profile/page.tsx</code></td></tr>
+<tr><td><code>/profile/edit</code></td><td>app</td><td>profile</td><td>estatica</td><td><code>web-next/app/(app)/profile/edit/page.tsx</code></td></tr>
+<tr><td><code>/profile/edit-advanced</code></td><td>app</td><td>profile</td><td>estatica</td><td><code>web-next/app/(app)/profile/edit-advanced/page.tsx</code></td></tr>
+<tr><td><code>/profile/language</code></td><td>app</td><td>profile</td><td>estatica</td><td><code>web-next/app/(app)/profile/language/page.tsx</code></td></tr>
+<tr><td><code>/profile/notifications</code></td><td>app</td><td>profile</td><td>estatica</td><td><code>web-next/app/(app)/profile/notifications/page.tsx</code></td></tr>
+<tr><td><code>/profile/personal-edit</code></td><td>app</td><td>profile</td><td>estatica</td><td><code>web-next/app/(app)/profile/personal-edit/page.tsx</code></td></tr>
+<tr><td><code>/profile/subscription</code></td><td>app</td><td>profile</td><td>estatica</td><td><code>web-next/app/(app)/profile/subscription/page.tsx</code></td></tr>
+<tr><td><code>/progress</code></td><td>app</td><td>progress</td><td>estatica</td><td><code>web-next/app/(app)/progress/page.tsx</code></td></tr>
+<tr><td><code>/register</code></td><td>auth</td><td>register</td><td>estatica</td><td><code>web-next/app/(auth)/register/page.tsx</code></td></tr>
+<tr><td><code>/register-academy</code></td><td>auth</td><td>register-academy</td><td>estatica</td><td><code>web-next/app/(auth)/register-academy/page.tsx</code></td></tr>
+<tr><td><code>/register-aluno</code></td><td>auth</td><td>register-aluno</td><td>estatica</td><td><code>web-next/app/(auth)/register-aluno/page.tsx</code></td></tr>
+<tr><td><code>/register-personal</code></td><td>auth</td><td>register-personal</td><td>estatica</td><td><code>web-next/app/(auth)/register-personal/page.tsx</code></td></tr>
+<tr><td><code>/schedule</code></td><td>app</td><td>schedule</td><td>estatica</td><td><code>web-next/app/(app)/schedule/page.tsx</code></td></tr>
+<tr><td><code>/schedule/[id]</code></td><td>app</td><td>schedule</td><td>dinamica</td><td><code>web-next/app/(app)/schedule/[id]/page.tsx</code></td></tr>
+<tr><td><code>/schedule/create</code></td><td>app</td><td>schedule</td><td>estatica</td><td><code>web-next/app/(app)/schedule/create/page.tsx</code></td></tr>
+<tr><td><code>/settings</code></td><td>app</td><td>settings</td><td>estatica</td><td><code>web-next/app/(app)/settings/page.tsx</code></td></tr>
+<tr><td><code>/settings/notifications</code></td><td>app</td><td>settings</td><td>estatica</td><td><code>web-next/app/(app)/settings/notifications/page.tsx</code></td></tr>
+<tr><td><code>/start-workout</code></td><td>app</td><td>start-workout</td><td>estatica</td><td><code>web-next/app/(app)/start-workout/page.tsx</code></td></tr>
+<tr><td><code>/students</code></td><td>app</td><td>students</td><td>estatica</td><td><code>web-next/app/(app)/students/page.tsx</code></td></tr>
+<tr><td><code>/students/[id]</code></td><td>app</td><td>students</td><td>dinamica</td><td><code>web-next/app/(app)/students/[id]/page.tsx</code></td></tr>
+<tr><td><code>/support</code></td><td>app</td><td>support</td><td>estatica</td><td><code>web-next/app/(app)/support/page.tsx</code></td></tr>
+<tr><td><code>/support/ticket</code></td><td>app</td><td>support</td><td>estatica</td><td><code>web-next/app/(app)/support/ticket/page.tsx</code></td></tr>
+<tr><td><code>/terms</code></td><td>marketing</td><td>terms</td><td>estatica</td><td><code>web-next/app/(marketing)/terms/page.tsx</code></td></tr>
+<tr><td><code>/workout/[id]</code></td><td>app</td><td>workout</td><td>dinamica</td><td><code>web-next/app/(app)/workout/[id]/page.tsx</code></td></tr>
+<tr><td><code>/workout/aerobico</code></td><td>app</td><td>workout</td><td>estatica</td><td><code>web-next/app/(app)/workout/aerobico/page.tsx</code></td></tr>
+<tr><td><code>/workout/archived</code></td><td>app</td><td>workout</td><td>estatica</td><td><code>web-next/app/(app)/workout/archived/page.tsx</code></td></tr>
+<tr><td><code>/workout/categories</code></td><td>app</td><td>workout</td><td>estatica</td><td><code>web-next/app/(app)/workout/categories/page.tsx</code></td></tr>
+<tr><td><code>/workout/create</code></td><td>app</td><td>workout</td><td>estatica</td><td><code>web-next/app/(app)/workout/create/page.tsx</code></td></tr>
+<tr><td><code>/workout/exercise/[id]</code></td><td>app</td><td>workout</td><td>dinamica</td><td><code>web-next/app/(app)/workout/exercise/[id]/page.tsx</code></td></tr>
+<tr><td><code>/workouts</code></td><td>app</td><td>workouts</td><td>estatica</td><td><code>web-next/app/(app)/workouts/page.tsx</code></td></tr></tbody></table>
+
+    <h2 class="break-before">6. Navegacao da Aplicacao Mobile (React Native)</h2>
+    <p>No mobile, as telas ficam em <code>mh-personal-trainer-react-native/app</code>, usando Expo Router.</p>
+    <h3>6.1 Fluxo principal de navegacao</h3>
+    <ul><li>Entrada: app/index.tsx (splash) decide entre /(auth)/login e /(tabs).</li><li>Tabs principais: index, workouts, nutrition, evaluations, chat, profile.</li><li>Rotas autenticacao: login, register, forgot-password (stack em app/(auth)/_layout.tsx).</li><li>Rotas adicionais fora das tabs: admin/*, ai/*, chat/*, documents/*, evaluations/*, financeiro/*, profile/*, schedule/*, workout/*.</li></ul>
+    <h3>6.2 Tabs principais detectadas em <code>app/(tabs)/_layout.tsx</code></h3>
+    <ul><li><code>index</code></li><li><code>workouts</code></li><li><code>nutrition</code></li><li><code>evaluations</code></li><li><code>chat</code></li><li><code>profile</code></li><li><code>students</code></li></ul>
+    <h3>6.3 Telas de auth detectadas em <code>app/(auth)/_layout.tsx</code></h3>
+    <ul><li><code>login</code></li><li><code>register</code></li><li><code>forgot-password</code></li></ul>
+    <h3>6.4 Rotas Mobile completas</h3>
+    <p>Total mapeado: <strong>76</strong>.</p>
+    <table><thead><tr><th>Rota</th><th>Grupo</th><th>Area</th><th>Tipo</th><th>Arquivo fonte</th></tr></thead><tbody><tr><td><code>/</code></td><td>tabs</td><td>home</td><td>estatica</td><td><code>mh-personal-trainer-react-native/app/(tabs)/index.tsx</code></td></tr>
+<tr><td><code>/</code></td><td>root</td><td>home</td><td>estatica</td><td><code>mh-personal-trainer-react-native/app/index.tsx</code></td></tr>
+<tr><td><code>/admin</code></td><td>root</td><td>admin</td><td>estatica</td><td><code>mh-personal-trainer-react-native/app/admin/index.tsx</code></td></tr>
+<tr><td><code>/admin/dashboard</code></td><td>root</td><td>admin</td><td>estatica</td><td><code>mh-personal-trainer-react-native/app/admin/dashboard.tsx</code></td></tr>
+<tr><td><code>/admin/manage-students</code></td><td>root</td><td>admin</td><td>estatica</td><td><code>mh-personal-trainer-react-native/app/admin/manage-students.tsx</code></td></tr>
+<tr><td><code>/admin/student/[id]</code></td><td>root</td><td>admin</td><td>dinamica</td><td><code>mh-personal-trainer-react-native/app/admin/student/[id].tsx</code></td></tr>
+<tr><td><code>/admin/students</code></td><td>root</td><td>admin</td><td>estatica</td><td><code>mh-personal-trainer-react-native/app/admin/students.tsx</code></td></tr>
+<tr><td><code>/admin/users</code></td><td>root</td><td>admin</td><td>estatica</td><td><code>mh-personal-trainer-react-native/app/admin/users.tsx</code></td></tr>
+<tr><td><code>/ai</code></td><td>root</td><td>ai</td><td>estatica</td><td><code>mh-personal-trainer-react-native/app/ai/index.tsx</code></td></tr>
+<tr><td><code>/ai/assistant</code></td><td>root</td><td>ai</td><td>estatica</td><td><code>mh-personal-trainer-react-native/app/ai/assistant.tsx</code></td></tr>
+<tr><td><code>/ai/calendar</code></td><td>root</td><td>ai</td><td>estatica</td><td><code>mh-personal-trainer-react-native/app/ai/calendar.tsx</code></td></tr>
+<tr><td><code>/ai/feedback</code></td><td>root</td><td>ai</td><td>estatica</td><td><code>mh-personal-trainer-react-native/app/ai/feedback.tsx</code></td></tr>
+<tr><td><code>/ai/gpt-dashboard</code></td><td>root</td><td>ai</td><td>estatica</td><td><code>mh-personal-trainer-react-native/app/ai/gpt-dashboard.tsx</code></td></tr>
+<tr><td><code>/ai/gpt-home</code></td><td>root</td><td>ai</td><td>estatica</td><td><code>mh-personal-trainer-react-native/app/ai/gpt-home.tsx</code></td></tr>
+<tr><td><code>/ai/image-analysis</code></td><td>root</td><td>ai</td><td>estatica</td><td><code>mh-personal-trainer-react-native/app/ai/image-analysis.tsx</code></td></tr>
+<tr><td><code>/chat</code></td><td>tabs</td><td>chat</td><td>estatica</td><td><code>mh-personal-trainer-react-native/app/(tabs)/chat.tsx</code></td></tr>
+<tr><td><code>/chat/[id]</code></td><td>root</td><td>chat</td><td>dinamica</td><td><code>mh-personal-trainer-react-native/app/chat/[id].tsx</code></td></tr>
+<tr><td><code>/chat/ai</code></td><td>root</td><td>chat</td><td>estatica</td><td><code>mh-personal-trainer-react-native/app/chat/ai.tsx</code></td></tr>
+<tr><td><code>/documents/aluno</code></td><td>root</td><td>documents</td><td>estatica</td><td><code>mh-personal-trainer-react-native/app/documents/aluno.tsx</code></td></tr>
+<tr><td><code>/documents/upload</code></td><td>root</td><td>documents</td><td>estatica</td><td><code>mh-personal-trainer-react-native/app/documents/upload.tsx</code></td></tr>
+<tr><td><code>/documents/view/[id]</code></td><td>root</td><td>documents</td><td>dinamica</td><td><code>mh-personal-trainer-react-native/app/documents/view/[id].tsx</code></td></tr>
+<tr><td><code>/evaluations</code></td><td>tabs</td><td>evaluations</td><td>estatica</td><td><code>mh-personal-trainer-react-native/app/(tabs)/evaluations.tsx</code></td></tr>
+<tr><td><code>/evaluations</code></td><td>root</td><td>evaluations</td><td>estatica</td><td><code>mh-personal-trainer-react-native/app/evaluations/index.tsx</code></td></tr>
+<tr><td><code>/evaluations/[id]</code></td><td>root</td><td>evaluations</td><td>dinamica</td><td><code>mh-personal-trainer-react-native/app/evaluations/[id].tsx</code></td></tr>
+<tr><td><code>/evaluations/create</code></td><td>root</td><td>evaluations</td><td>estatica</td><td><code>mh-personal-trainer-react-native/app/evaluations/create.tsx</code></td></tr>
+<tr><td><code>/feedbacks</code></td><td>root</td><td>feedbacks</td><td>estatica</td><td><code>mh-personal-trainer-react-native/app/feedbacks/index.tsx</code></td></tr>
+<tr><td><code>/financeiro</code></td><td>root</td><td>financeiro</td><td>estatica</td><td><code>mh-personal-trainer-react-native/app/financeiro/index.tsx</code></td></tr>
+<tr><td><code>/financeiro/aluno</code></td><td>root</td><td>financeiro</td><td>estatica</td><td><code>mh-personal-trainer-react-native/app/financeiro/aluno.tsx</code></td></tr>
+<tr><td><code>/financeiro/personal</code></td><td>root</td><td>financeiro</td><td>estatica</td><td><code>mh-personal-trainer-react-native/app/financeiro/personal.tsx</code></td></tr>
+<tr><td><code>/financeiro/plans</code></td><td>root</td><td>financeiro</td><td>estatica</td><td><code>mh-personal-trainer-react-native/app/financeiro/plans.tsx</code></td></tr>
+<tr><td><code>/financeiro/subscription</code></td><td>root</td><td>financeiro</td><td>estatica</td><td><code>mh-personal-trainer-react-native/app/financeiro/subscription.tsx</code></td></tr>
+<tr><td><code>/forgot-password</code></td><td>auth</td><td>forgot-password</td><td>estatica</td><td><code>mh-personal-trainer-react-native/app/(auth)/forgot-password.tsx</code></td></tr>
+<tr><td><code>/help</code></td><td>root</td><td>help</td><td>estatica</td><td><code>mh-personal-trainer-react-native/app/help/index.tsx</code></td></tr>
+<tr><td><code>/login</code></td><td>auth</td><td>login</td><td>estatica</td><td><code>mh-personal-trainer-react-native/app/(auth)/login.tsx</code></td></tr>
+<tr><td><code>/mh-agenda-fit</code></td><td>root</td><td>mh-agenda-fit</td><td>estatica</td><td><code>mh-personal-trainer-react-native/app/mh-agenda-fit/index.tsx</code></td></tr>
+<tr><td><code>/mh-agenda-fit/[id]</code></td><td>root</td><td>mh-agenda-fit</td><td>dinamica</td><td><code>mh-personal-trainer-react-native/app/mh-agenda-fit/[id].tsx</code></td></tr>
+<tr><td><code>/mh-agenda-fit/personal</code></td><td>root</td><td>mh-agenda-fit</td><td>estatica</td><td><code>mh-personal-trainer-react-native/app/mh-agenda-fit/personal.tsx</code></td></tr>
+<tr><td><code>/notifications</code></td><td>root</td><td>notifications</td><td>estatica</td><td><code>mh-personal-trainer-react-native/app/notifications/index.tsx</code></td></tr>
+<tr><td><code>/notifications/admin</code></td><td>root</td><td>notifications</td><td>estatica</td><td><code>mh-personal-trainer-react-native/app/notifications/admin.tsx</code></td></tr>
+<tr><td><code>/nutrition</code></td><td>tabs</td><td>nutrition</td><td>estatica</td><td><code>mh-personal-trainer-react-native/app/(tabs)/nutrition.tsx</code></td></tr>
+<tr><td><code>/personal-login</code></td><td>auth</td><td>personal-login</td><td>estatica</td><td><code>mh-personal-trainer-react-native/app/(auth)/personal-login.tsx</code></td></tr>
+<tr><td><code>/personal/change-code</code></td><td>root</td><td>personal</td><td>estatica</td><td><code>mh-personal-trainer-react-native/app/personal/change-code.tsx</code></td></tr>
+<tr><td><code>/personal/profile</code></td><td>root</td><td>personal</td><td>estatica</td><td><code>mh-personal-trainer-react-native/app/personal/profile.tsx</code></td></tr>
+<tr><td><code>/personal/summary</code></td><td>root</td><td>personal</td><td>estatica</td><td><code>mh-personal-trainer-react-native/app/personal/summary.tsx</code></td></tr>
+<tr><td><code>/policies</code></td><td>root</td><td>policies</td><td>estatica</td><td><code>mh-personal-trainer-react-native/app/policies.tsx</code></td></tr>
+<tr><td><code>/privacy</code></td><td>root</td><td>privacy</td><td>estatica</td><td><code>mh-personal-trainer-react-native/app/privacy.tsx</code></td></tr>
+<tr><td><code>/profile</code></td><td>tabs</td><td>profile</td><td>estatica</td><td><code>mh-personal-trainer-react-native/app/(tabs)/profile.tsx</code></td></tr>
+<tr><td><code>/profile/edit</code></td><td>root</td><td>profile</td><td>estatica</td><td><code>mh-personal-trainer-react-native/app/profile/edit.tsx</code></td></tr>
+<tr><td><code>/profile/edit-advanced</code></td><td>root</td><td>profile</td><td>estatica</td><td><code>mh-personal-trainer-react-native/app/profile/edit-advanced.tsx</code></td></tr>
+<tr><td><code>/profile/language</code></td><td>root</td><td>profile</td><td>estatica</td><td><code>mh-personal-trainer-react-native/app/profile/language.tsx</code></td></tr>
+<tr><td><code>/profile/notifications</code></td><td>root</td><td>profile</td><td>estatica</td><td><code>mh-personal-trainer-react-native/app/profile/notifications.tsx</code></td></tr>
+<tr><td><code>/profile/personal-edit</code></td><td>root</td><td>profile</td><td>estatica</td><td><code>mh-personal-trainer-react-native/app/profile/personal-edit.tsx</code></td></tr>
+<tr><td><code>/profile/subscription</code></td><td>root</td><td>profile</td><td>estatica</td><td><code>mh-personal-trainer-react-native/app/profile/subscription.tsx</code></td></tr>
+<tr><td><code>/progress</code></td><td>root</td><td>progress</td><td>estatica</td><td><code>mh-personal-trainer-react-native/app/progress/index.tsx</code></td></tr>
+<tr><td><code>/register</code></td><td>auth</td><td>register</td><td>estatica</td><td><code>mh-personal-trainer-react-native/app/(auth)/register.tsx</code></td></tr>
+<tr><td><code>/register-personal</code></td><td>auth</td><td>register-personal</td><td>estatica</td><td><code>mh-personal-trainer-react-native/app/(auth)/register-personal.tsx</code></td></tr>
+<tr><td><code>/schedule</code></td><td>root</td><td>schedule</td><td>estatica</td><td><code>mh-personal-trainer-react-native/app/schedule/index.tsx</code></td></tr>
+<tr><td><code>/schedule/[id]</code></td><td>root</td><td>schedule</td><td>dinamica</td><td><code>mh-personal-trainer-react-native/app/schedule/[id].tsx</code></td></tr>
+<tr><td><code>/schedule/create</code></td><td>root</td><td>schedule</td><td>estatica</td><td><code>mh-personal-trainer-react-native/app/schedule/create.tsx</code></td></tr>
+<tr><td><code>/settings</code></td><td>root</td><td>settings</td><td>estatica</td><td><code>mh-personal-trainer-react-native/app/settings/index.tsx</code></td></tr>
+<tr><td><code>/settings/notifications</code></td><td>root</td><td>settings</td><td>estatica</td><td><code>mh-personal-trainer-react-native/app/settings/notifications.tsx</code></td></tr>
+<tr><td><code>/start-workout</code></td><td>root</td><td>start-workout</td><td>estatica</td><td><code>mh-personal-trainer-react-native/app/start-workout.tsx</code></td></tr>
+<tr><td><code>/student/[id]</code></td><td>root</td><td>student</td><td>dinamica</td><td><code>mh-personal-trainer-react-native/app/student/[id].tsx</code></td></tr>
+<tr><td><code>/student/evolution</code></td><td>root</td><td>student</td><td>estatica</td><td><code>mh-personal-trainer-react-native/app/student/evolution.tsx</code></td></tr>
+<tr><td><code>/students</code></td><td>tabs</td><td>students</td><td>estatica</td><td><code>mh-personal-trainer-react-native/app/(tabs)/students.tsx</code></td></tr>
+<tr><td><code>/support/ticket</code></td><td>root</td><td>support</td><td>estatica</td><td><code>mh-personal-trainer-react-native/app/support/ticket.tsx</code></td></tr>
+<tr><td><code>/terms</code></td><td>root</td><td>terms</td><td>estatica</td><td><code>mh-personal-trainer-react-native/app/terms.tsx</code></td></tr>
+<tr><td><code>/workout/[id]</code></td><td>root</td><td>workout</td><td>dinamica</td><td><code>mh-personal-trainer-react-native/app/workout/[id].tsx</code></td></tr>
+<tr><td><code>/workout/aerobico</code></td><td>root</td><td>workout</td><td>estatica</td><td><code>mh-personal-trainer-react-native/app/workout/aerobico.tsx</code></td></tr>
+<tr><td><code>/workout/aerobico-create</code></td><td>root</td><td>workout</td><td>estatica</td><td><code>mh-personal-trainer-react-native/app/workout/aerobico-create.tsx</code></td></tr>
+<tr><td><code>/workout/aerobico-detail</code></td><td>root</td><td>workout</td><td>estatica</td><td><code>mh-personal-trainer-react-native/app/workout/aerobico-detail.tsx</code></td></tr>
+<tr><td><code>/workout/archived</code></td><td>root</td><td>workout</td><td>estatica</td><td><code>mh-personal-trainer-react-native/app/workout/archived.tsx</code></td></tr>
+<tr><td><code>/workout/categories</code></td><td>root</td><td>workout</td><td>estatica</td><td><code>mh-personal-trainer-react-native/app/workout/categories.tsx</code></td></tr>
+<tr><td><code>/workout/create</code></td><td>root</td><td>workout</td><td>estatica</td><td><code>mh-personal-trainer-react-native/app/workout/create.tsx</code></td></tr>
+<tr><td><code>/workout/exercise/[id]</code></td><td>root</td><td>workout</td><td>dinamica</td><td><code>mh-personal-trainer-react-native/app/workout/exercise/[id].tsx</code></td></tr>
+<tr><td><code>/workouts</code></td><td>tabs</td><td>workouts</td><td>estatica</td><td><code>mh-personal-trainer-react-native/app/(tabs)/workouts.tsx</code></td></tr></tbody></table>
+
+    <h2 class="break-before">7. Backend e Integracoes</h2>
+    <h3>7.1 Cloud Functions custom (<code>firebase/custom_cloud_functions</code>)</h3>
+    <ul><li><code>adminEmailInbox</code></li><li><code>adminEmailMessage</code></li><li><code>adminEmailSend</code></li><li><code>AIparaconversarcomosusers</code></li><li><code>cancelSubscription</code></li><li><code>createAndVerifyStripeAccount</code></li><li><code>createCheckoutSession</code></li><li><code>createInscricao</code></li><li><code>createSetupIntent</code></li><li><code>notifyPersonalOnFeedbackCreated</code></li><li><code>notifyPersonalOnOnlineEvaluationCreated</code></li><li><code>notifyPersonalOnPersonalizedEvaluationCreated</code></li><li><code>notifyPersonalOnPhysicalEvaluationCreated</code></li><li><code>notifyPersonalOnPosturalEvaluationCreated</code></li><li><code>notifyPersonalOnStudentLinkChange</code></li><li><code>notifyPersonalOnStudentMessage</code></li><li><code>notifyPersonalOnWorkoutCompletion</code></li><li><code>openrouterCountTokens</code></li><li><code>openrouterGenerateText</code></li><li><code>openrouterTextFromImage</code></li><li><code>reviewPremiumStudentsWeekly</code></li><li><code>reviewProgressOnWorkoutCompletion</code></li><li><code>runNotificationAssistantAutoDispatch</code></li><li><code>stripeConnectStatus</code></li><li><code>stripeWebhook</code></li><li><code>subscriptionStatus</code></li></ul>
+    <h3>7.2 Cloud Functions padrao (<code>firebase/functions</code>)</h3>
+    <ul><li><code>academySendStudentInvite</code></li><li><code>addFcmToken</code></li><li><code>adminEmailInbox</code></li><li><code>adminEmailMessage</code></li><li><code>adminEmailSend</code></li><li><code>initStripePayment</code></li><li><code>initStripeTestPayment</code></li><li><code>onUserDeleted</code></li><li><code>sendPushNotificationsTrigger</code></li><li><code>sendUserPushNotificationsTrigger</code></li></ul>
+
+    <h2>8. Variaveis de Ambiente</h2>
+    <h3>8.1 Web (NEXT_PUBLIC_*)</h3>
+    <table><thead><tr><th>Variavel</th><th>Uso</th></tr></thead><tbody><tr><td><code>NEXT_PUBLIC_AI_DAILY_FREE_CREDITS</code></td><td>definir no ambiente</td></tr>
+<tr><td><code>NEXT_PUBLIC_API_URL</code></td><td>definir no ambiente</td></tr>
+<tr><td><code>NEXT_PUBLIC_APP_INVITE_URL</code></td><td>definir no ambiente</td></tr>
+<tr><td><code>NEXT_PUBLIC_FIREBASE_API_KEY</code></td><td>definir no ambiente</td></tr>
+<tr><td><code>NEXT_PUBLIC_FIREBASE_APP_ID</code></td><td>definir no ambiente</td></tr>
+<tr><td><code>NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN</code></td><td>definir no ambiente</td></tr>
+<tr><td><code>NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID</code></td><td>definir no ambiente</td></tr>
+<tr><td><code>NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID</code></td><td>definir no ambiente</td></tr>
+<tr><td><code>NEXT_PUBLIC_FIREBASE_PROJECT_ID</code></td><td>definir no ambiente</td></tr>
+<tr><td><code>NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET</code></td><td>definir no ambiente</td></tr>
+<tr><td><code>NEXT_PUBLIC_MOBILE_APP_URL</code></td><td>definir no ambiente</td></tr>
+<tr><td><code>NEXT_PUBLIC_OPENROUTER_API_KEY</code></td><td>definir no ambiente</td></tr>
+<tr><td><code>NEXT_PUBLIC_OPENROUTER_API_URL</code></td><td>definir no ambiente</td></tr>
+<tr><td><code>NEXT_PUBLIC_OPENROUTER_MODEL</code></td><td>definir no ambiente</td></tr>
+<tr><td><code>NEXT_PUBLIC_OPENROUTER_VISION_MODEL</code></td><td>definir no ambiente</td></tr>
+<tr><td><code>NEXT_PUBLIC_STRIPE_CANCEL_SUBSCRIPTION_ENDPOINT</code></td><td>definir no ambiente</td></tr>
+<tr><td><code>NEXT_PUBLIC_STRIPE_CHECKOUT_ENDPOINT</code></td><td>definir no ambiente</td></tr>
+<tr><td><code>NEXT_PUBLIC_STRIPE_CONNECT_ONBOARDING_ENDPOINT</code></td><td>definir no ambiente</td></tr>
+<tr><td><code>NEXT_PUBLIC_STRIPE_CONNECT_STATUS_ENDPOINT</code></td><td>definir no ambiente</td></tr>
+<tr><td><code>NEXT_PUBLIC_STRIPE_FUNCTIONS_URL</code></td><td>definir no ambiente</td></tr>
+<tr><td><code>NEXT_PUBLIC_STRIPE_PAYMENT_LINK_ANUAL</code></td><td>definir no ambiente</td></tr>
+<tr><td><code>NEXT_PUBLIC_STRIPE_PAYMENT_LINK_BIMESTRAL</code></td><td>definir no ambiente</td></tr>
+<tr><td><code>NEXT_PUBLIC_STRIPE_PAYMENT_LINK_MENSAL</code></td><td>definir no ambiente</td></tr>
+<tr><td><code>NEXT_PUBLIC_STRIPE_PAYMENT_LINK_SEMESTRAL</code></td><td>definir no ambiente</td></tr>
+<tr><td><code>NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY</code></td><td>definir no ambiente</td></tr>
+<tr><td><code>NEXT_PUBLIC_STRIPE_SETUP_INTENT_ENDPOINT</code></td><td>definir no ambiente</td></tr>
+<tr><td><code>NEXT_PUBLIC_STRIPE_SUBSCRIPTION_ENDPOINT</code></td><td>definir no ambiente</td></tr>
+<tr><td><code>NEXT_PUBLIC_STRIPE_SUBSCRIPTION_STATUS_ENDPOINT</code></td><td>definir no ambiente</td></tr>
+<tr><td><code>NEXT_PUBLIC_SUPPORT_EMAIL</code></td><td>definir no ambiente</td></tr>
+<tr><td><code>NEXT_PUBLIC_SUPPORT_EMAIL_SECONDARY</code></td><td>definir no ambiente</td></tr></tbody></table>
+    <h3>8.2 Mobile (EXPO_PUBLIC_*)</h3>
+    <table><thead><tr><th>Variavel</th><th>Uso</th></tr></thead><tbody><tr><td><code>EXPO_PUBLIC_AI_DAILY_FREE_CREDITS</code></td><td>definir no ambiente</td></tr>
+<tr><td><code>EXPO_PUBLIC_API_URL</code></td><td>definir no ambiente</td></tr>
+<tr><td><code>EXPO_PUBLIC_CLOUD_FUNCTIONS_URL</code></td><td>definir no ambiente</td></tr>
+<tr><td><code>EXPO_PUBLIC_EAS_PROJECT_ID</code></td><td>definir no ambiente</td></tr>
+<tr><td><code>EXPO_PUBLIC_FIREBASE_API_KEY</code></td><td>definir no ambiente</td></tr>
+<tr><td><code>EXPO_PUBLIC_FIREBASE_APP_ID</code></td><td>definir no ambiente</td></tr>
+<tr><td><code>EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN</code></td><td>definir no ambiente</td></tr>
+<tr><td><code>EXPO_PUBLIC_FIREBASE_MESSAGING_SENDER_ID</code></td><td>definir no ambiente</td></tr>
+<tr><td><code>EXPO_PUBLIC_FIREBASE_PROJECT_ID</code></td><td>definir no ambiente</td></tr>
+<tr><td><code>EXPO_PUBLIC_FIREBASE_STORAGE_BUCKET</code></td><td>definir no ambiente</td></tr>
+<tr><td><code>EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID</code></td><td>definir no ambiente</td></tr>
+<tr><td><code>EXPO_PUBLIC_GOOGLE_EXPO_CLIENT_ID</code></td><td>definir no ambiente</td></tr>
+<tr><td><code>EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID</code></td><td>definir no ambiente</td></tr>
+<tr><td><code>EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID</code></td><td>definir no ambiente</td></tr>
+<tr><td><code>EXPO_PUBLIC_OPENROUTER_API_KEY</code></td><td>definir no ambiente</td></tr>
+<tr><td><code>EXPO_PUBLIC_OPENROUTER_API_URL</code></td><td>definir no ambiente</td></tr>
+<tr><td><code>EXPO_PUBLIC_OPENROUTER_MODEL</code></td><td>definir no ambiente</td></tr>
+<tr><td><code>EXPO_PUBLIC_PASSWORD_RESET_URL</code></td><td>definir no ambiente</td></tr>
+<tr><td><code>EXPO_PUBLIC_STRIPE_CHECKOUT_ENDPOINT</code></td><td>definir no ambiente</td></tr>
+<tr><td><code>EXPO_PUBLIC_STRIPE_CONNECT_ONBOARDING_ENDPOINT</code></td><td>definir no ambiente</td></tr>
+<tr><td><code>EXPO_PUBLIC_STRIPE_CONNECT_STATUS_ENDPOINT</code></td><td>definir no ambiente</td></tr>
+<tr><td><code>EXPO_PUBLIC_STRIPE_FUNCTIONS_URL</code></td><td>definir no ambiente</td></tr>
+<tr><td><code>EXPO_PUBLIC_STRIPE_PAYMENT_LINK_ALUNO_MENSAL</code></td><td>definir no ambiente</td></tr>
+<tr><td><code>EXPO_PUBLIC_STRIPE_PAYMENT_LINK_ANUAL</code></td><td>definir no ambiente</td></tr>
+<tr><td><code>EXPO_PUBLIC_STRIPE_PAYMENT_LINK_BIMESTRAL</code></td><td>definir no ambiente</td></tr>
+<tr><td><code>EXPO_PUBLIC_STRIPE_PAYMENT_LINK_MENSAL</code></td><td>definir no ambiente</td></tr>
+<tr><td><code>EXPO_PUBLIC_STRIPE_PAYMENT_LINK_SEMESTRAL</code></td><td>definir no ambiente</td></tr>
+<tr><td><code>EXPO_PUBLIC_STRIPE_PRICE_ID_ALUNO_MENSAL</code></td><td>definir no ambiente</td></tr>
+<tr><td><code>EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY</code></td><td>definir no ambiente</td></tr>
+<tr><td><code>EXPO_PUBLIC_STRIPE_RETURN_URL</code></td><td>definir no ambiente</td></tr>
+<tr><td><code>EXPO_PUBLIC_STRIPE_SETUP_INTENT_ENDPOINT</code></td><td>definir no ambiente</td></tr>
+<tr><td><code>EXPO_PUBLIC_STRIPE_SUBSCRIPTION_ENDPOINT</code></td><td>definir no ambiente</td></tr>
+<tr><td><code>EXPO_PUBLIC_WEB_LANDING_URL</code></td><td>definir no ambiente</td></tr></tbody></table>
+    <h3>8.3 Backend Firebase (process.env.*)</h3>
+    <table><thead><tr><th>Variavel</th><th>Uso</th></tr></thead><tbody><tr><td><code>AI_DAILY_FREE_CREDITS</code></td><td>definir no ambiente</td></tr>
+<tr><td><code>CLOUD_RUNTIME_CONFIG</code></td><td>definir no ambiente</td></tr>
+<tr><td><code>EMAIL_IMAP_HOST</code></td><td>definir no ambiente</td></tr>
+<tr><td><code>EMAIL_IMAP_PORT</code></td><td>definir no ambiente</td></tr>
+<tr><td><code>EMAIL_IMAP_SECURE</code></td><td>definir no ambiente</td></tr>
+<tr><td><code>EMAIL_PASS</code></td><td>definir no ambiente</td></tr>
+<tr><td><code>EMAIL_SECONDARY_IMAP_HOST</code></td><td>definir no ambiente</td></tr>
+<tr><td><code>EMAIL_SECONDARY_IMAP_PORT</code></td><td>definir no ambiente</td></tr>
+<tr><td><code>EMAIL_SECONDARY_IMAP_SECURE</code></td><td>definir no ambiente</td></tr>
+<tr><td><code>EMAIL_SECONDARY_PASS</code></td><td>definir no ambiente</td></tr>
+<tr><td><code>EMAIL_SECONDARY_SMTP_HOST</code></td><td>definir no ambiente</td></tr>
+<tr><td><code>EMAIL_SECONDARY_SMTP_PORT</code></td><td>definir no ambiente</td></tr>
+<tr><td><code>EMAIL_SECONDARY_SMTP_SECURE</code></td><td>definir no ambiente</td></tr>
+<tr><td><code>EMAIL_SECONDARY_USER</code></td><td>definir no ambiente</td></tr>
+<tr><td><code>EMAIL_SMTP_HOST</code></td><td>definir no ambiente</td></tr>
+<tr><td><code>EMAIL_SMTP_PORT</code></td><td>definir no ambiente</td></tr>
+<tr><td><code>EMAIL_SMTP_SECURE</code></td><td>definir no ambiente</td></tr>
+<tr><td><code>EMAIL_USER</code></td><td>definir no ambiente</td></tr>
+<tr><td><code>OPENAI_API_KEY</code></td><td>definir no ambiente</td></tr>
+<tr><td><code>OPENROUTER_API_KEY</code></td><td>definir no ambiente</td></tr>
+<tr><td><code>OPENROUTER_API_URL</code></td><td>definir no ambiente</td></tr>
+<tr><td><code>OPENROUTER_APP_TITLE</code></td><td>definir no ambiente</td></tr>
+<tr><td><code>OPENROUTER_HTTP_REFERER</code></td><td>definir no ambiente</td></tr>
+<tr><td><code>OPENROUTER_MODEL</code></td><td>definir no ambiente</td></tr>
+<tr><td><code>STRIPE_LIVE_SECRET_KEY</code></td><td>definir no ambiente</td></tr>
+<tr><td><code>STRIPE_SECRET_KEY</code></td><td>definir no ambiente</td></tr>
+<tr><td><code>STRIPE_TEST_SECRET_KEY</code></td><td>definir no ambiente</td></tr>
+<tr><td><code>STRIPE_WEBHOOK_SECRET</code></td><td>definir no ambiente</td></tr></tbody></table>
+
+    <h2>9. Guia Rapido de Navegacao no Codigo (cd)</h2>
+    <pre>cd web-next\app\(app)\admin
+Get-ChildItem
+
+cd ..\..\..\mh-personal-trainer-react-native\app\admin
+Get-ChildItem
+
+cd ..\..\firebase\custom_cloud_functions
+Get-ChildItem</pre>
+    <p>Padrao pratico: entre no modulo, desca por area e abra <code>page.tsx</code> (web) ou <code>*.tsx</code> (mobile).</p>
+
+    <h2>10. Checklist de Entendimento Rapido</h2>
+    <ul><li><span class="ok">[OK]</span> Entendeu estrutura macro de pastas.</li><li><span class="ok">[OK]</span> Sabe os comandos de cd para cada modulo.</li><li><span class="ok">[OK]</span> Sabe como rodar web e mobile localmente.</li><li><span class="ok">[OK]</span> Tem mapa completo das rotas web (103).</li><li><span class="ok">[OK]</span> Tem mapa completo das rotas mobile (76).</li><li><span class="ok">[OK]</span> Tem lista de cloud functions e env vars.</li></ul>
+
+    <div class="footer">
+      Documento gerado automaticamente a partir do codigo-fonte do repositorio.<br/>
+      Arquivo fonte HTML: <code>docs/mh-personal-trainer-guia-completo.html</code>
+    </div>
+  </main>
+</body>
+</html>
