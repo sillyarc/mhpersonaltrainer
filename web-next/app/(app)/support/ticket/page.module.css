@@ -1,0 +1,385 @@
+.layout {
+  display: grid;
+  gap: 16px;
+  grid-template-columns: minmax(0, 1.35fr) minmax(290px, 0.65fr);
+}
+
+.formCard {
+  border: 1px solid var(--border);
+  border-radius: 26px;
+  padding: clamp(16px, 2vw, 24px);
+  background:
+    radial-gradient(circle at 5% 5%, rgba(56, 182, 255, 0.14), transparent 34%),
+    linear-gradient(130deg, rgba(248, 251, 255, 0.97), rgba(238, 244, 252, 0.95));
+  box-shadow: var(--shadow-soft);
+  display: grid;
+  gap: 16px;
+}
+
+.formHeader h2 {
+  margin: 0;
+  font-size: clamp(1.3rem, 1.9vw, 1.8rem);
+}
+
+.formHeader p {
+  margin: 8px 0 0;
+  color: var(--text-secondary);
+}
+
+.kicker {
+  margin: 0 0 4px;
+  display: inline-flex;
+  width: fit-content;
+  padding: 6px 12px;
+  border-radius: 999px;
+  background: rgba(29, 111, 191, 0.16);
+  color: #1c538a;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  font-size: 0.72rem;
+  font-weight: 700;
+}
+
+.templateRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.templateButton {
+  border: 1px solid rgba(29, 111, 191, 0.26);
+  background: rgba(255, 255, 255, 0.86);
+  color: #19497b;
+  border-radius: 999px;
+  padding: 8px 13px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: transform 0.15s ease, background 0.2s ease, border-color 0.2s ease;
+}
+
+.templateButton:hover {
+  transform: translateY(-1px);
+  background: rgba(29, 111, 191, 0.12);
+  border-color: rgba(29, 111, 191, 0.4);
+}
+
+.form {
+  display: grid;
+  gap: 12px;
+}
+
+.fieldGrid {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.form label {
+  display: grid;
+  gap: 6px;
+  color: var(--text-secondary);
+  font-size: 0.91rem;
+}
+
+.form label small {
+  color: var(--text-muted);
+  font-size: 0.76rem;
+}
+
+.form input,
+.form select,
+.form textarea {
+  width: 100%;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  background: var(--surface-strong);
+  color: var(--text-primary);
+  padding: 11px 12px;
+  outline: none;
+}
+
+.form input:focus,
+.form select:focus,
+.form textarea:focus {
+  border-color: rgba(29, 111, 191, 0.7);
+  box-shadow: 0 0 0 3px rgba(29, 111, 191, 0.14);
+}
+
+.form textarea {
+  resize: vertical;
+  min-height: 130px;
+}
+
+.formActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.error {
+  margin: 0;
+  color: #b42318;
+  font-weight: 600;
+}
+
+.success {
+  margin: 0;
+  color: #1b7f3b;
+  font-weight: 600;
+}
+
+.sideCard {
+  border: 1px solid var(--border);
+  border-radius: 24px;
+  padding: 16px;
+  background: var(--surface-strong);
+  display: grid;
+  gap: 14px;
+  align-content: start;
+}
+
+.sideCard h3 {
+  margin: 0;
+}
+
+.sideStats {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.sideStats article {
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 12px;
+  background: var(--surface);
+  display: grid;
+  gap: 4px;
+}
+
+.sideStats span {
+  color: var(--text-secondary);
+  font-size: 0.8rem;
+}
+
+.sideStats strong {
+  font-size: 1.3rem;
+  line-height: 1;
+}
+
+.sideTips {
+  border-radius: 16px;
+  border: 1px dashed var(--border);
+  padding: 12px;
+  background: rgba(29, 111, 191, 0.05);
+}
+
+.sideTips h4 {
+  margin: 0 0 8px;
+}
+
+.sideTips ul {
+  margin: 0;
+  padding-left: 18px;
+  display: grid;
+  gap: 6px;
+  color: var(--text-secondary);
+  font-size: 0.88rem;
+}
+
+.listSection {
+  margin-top: 22px;
+  display: grid;
+  gap: 12px;
+}
+
+.sectionHeader {
+  display: grid;
+  gap: 4px;
+}
+
+.sectionHeader h3 {
+  margin: 0;
+  font-size: 1.5rem;
+}
+
+.sectionHeader p {
+  margin: 0;
+  color: var(--text-secondary);
+}
+
+.ticketList {
+  display: grid;
+  gap: 10px;
+}
+
+.ticketCard {
+  border: 1px solid var(--border);
+  background: var(--surface-strong);
+  border-radius: 18px;
+  padding: 14px;
+  display: grid;
+  gap: 10px;
+}
+
+.ticketCard header {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.protocol {
+  display: inline-flex;
+  width: fit-content;
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.ticketCard h4 {
+  margin: 3px 0 0;
+  font-size: 1rem;
+}
+
+.ticketCard p {
+  margin: 0;
+  color: var(--text-secondary);
+}
+
+.badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: flex-start;
+}
+
+.priorityBadge,
+.statusBadge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  font-size: 0.74rem;
+  font-weight: 700;
+  padding: 4px 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.priorityLow {
+  background: rgba(59, 130, 246, 0.15);
+  color: #1d4f8a;
+}
+
+.priorityMedium {
+  background: rgba(245, 158, 11, 0.17);
+  color: #9a5b07;
+}
+
+.priorityHigh {
+  background: rgba(249, 115, 22, 0.18);
+  color: #9b4300;
+}
+
+.priorityCritical {
+  background: rgba(239, 68, 68, 0.18);
+  color: #9a1b1b;
+}
+
+.statusOpen {
+  background: rgba(37, 99, 235, 0.15);
+  color: #12498a;
+}
+
+.statusProgress {
+  background: rgba(147, 51, 234, 0.18);
+  color: #6d22b6;
+}
+
+.statusAnswered {
+  background: rgba(14, 165, 233, 0.18);
+  color: #0f6485;
+}
+
+.statusResolved {
+  background: rgba(16, 185, 129, 0.17);
+  color: #107756;
+}
+
+.ticketCard footer {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  color: var(--text-muted);
+  font-size: 0.82rem;
+}
+
+.emptyState {
+  border: 1px dashed var(--border);
+  border-radius: 16px;
+  padding: 20px;
+  text-align: center;
+  color: var(--text-secondary);
+  background: rgba(255, 255, 255, 0.52);
+}
+
+.emptyState h4 {
+  margin: 0;
+}
+
+.emptyState p {
+  margin: 6px 0 0;
+}
+
+@media (max-width: 1080px) {
+  .layout {
+    grid-template-columns: 1fr;
+  }
+
+  .sideCard {
+    grid-template-columns: minmax(0, 0.8fr) minmax(0, 1.2fr);
+    align-items: start;
+  }
+}
+
+@media (max-width: 760px) {
+  .fieldGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .sideCard {
+    grid-template-columns: 1fr;
+  }
+
+  .sideStats {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .ticketCard header {
+    flex-direction: column;
+  }
+}
+
+:global(:root[data-theme='dark']) .formCard {
+  background:
+    radial-gradient(circle at 8% 6%, rgba(56, 182, 255, 0.15), transparent 35%),
+    linear-gradient(130deg, rgba(13, 21, 36, 0.96), rgba(10, 17, 29, 0.95));
+}
+
+:global(:root[data-theme='dark']) .kicker {
+  background: rgba(114, 178, 238, 0.22);
+  color: #a6d4ff;
+}
+
+:global(:root[data-theme='dark']) .templateButton {
+  color: #a6d4ff;
+  border-color: rgba(114, 178, 238, 0.28);
+  background: rgba(12, 23, 38, 0.72);
+}
+
+:global(:root[data-theme='dark']) .sideTips {
+  background: rgba(20, 36, 58, 0.56);
+}

@@ -1,0 +1,35 @@
+{
+  "name": "mh-personal-web",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "dev:clean": "npm run clean:next && next dev",
+    "build": "next build",
+    "build:hosting": "powershell -Command \"$env:HOSTING_BUILD='1'; node ./node_modules/next/dist/bin/next build\"",
+    "build:tauri": "powershell -Command \"$env:TAURI_BUILD='1'; node ./node_modules/next/dist/bin/next build\"",
+    "start": "next start",
+    "lint": "next lint",
+    "clean:next": "node -e \"const fs=require('fs');['.next','.next-dev','.next-tauri'].forEach((p)=>{try{if(fs.existsSync(p)){fs.rmSync(p,{recursive:true,force:true,maxRetries:10,retryDelay:200});console.log('cleaned '+p)}else{console.log(p+' not found')}}catch(e){console.log('skip '+p+': '+(e&&e.code?e.code:'error'))}})\"",
+    "tauri:dev": "tauri dev",
+    "tauri:build": "tauri build"
+  },
+  "dependencies": {
+    "@tauri-apps/api": "^1.6.0",
+    "clsx": "^2.1.1",
+    "firebase": "^10.12.3",
+    "next": "14.2.5",
+    "react": "18.2.0",
+    "react-dom": "18.2.0",
+    "recharts": "^2.12.7"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^1.6.0",
+    "@types/node": "^20.11.30",
+    "@types/react": "^18.2.66",
+    "@types/react-dom": "^18.2.22",
+    "eslint": "^9.39.3",
+    "eslint-config-next": "^16.1.6",
+    "typescript": "^5.4.2"
+  }
+}

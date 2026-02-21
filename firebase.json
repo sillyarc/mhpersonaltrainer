@@ -1,0 +1,78 @@
+{
+  "functions": {
+    "source": "firebase/custom_cloud_functions",
+    "ignore": [
+      "node_modules",
+      ".git",
+      ".dart_tool"
+    ]
+  },
+  "hosting": {
+    "public": "web-next/out",
+    "ignore": [
+      "firebase.json",
+      "**/.*",
+      "**/node_modules/**"
+    ],
+    "cleanUrls": true,
+    "headers": [
+      {
+        "source": "**/*.@(js|css)",
+        "headers": [
+          { "key": "Cache-Control", "value": "public, max-age=31536000, immutable" }
+        ]
+      },
+      {
+        "source": "**/*.html",
+        "headers": [
+          { "key": "Cache-Control", "value": "no-cache" }
+        ]
+      }
+    ],
+    "rewrites": [
+      {
+        "source": "/workout/exercise/**",
+        "destination": "/workout/exercise/placeholder.html"
+      },
+      {
+        "source": "/workout/**",
+        "destination": "/workout/placeholder.html"
+      },
+      {
+        "source": "/students/**",
+        "destination": "/students/placeholder.html"
+      },
+      {
+        "source": "/schedule/**",
+        "destination": "/schedule/placeholder.html"
+      },
+      {
+        "source": "/documents/view/**",
+        "destination": "/documents/view/placeholder.html"
+      },
+      {
+        "source": "/chat/**",
+        "destination": "/chat/placeholder.html"
+      },
+      {
+        "source": "/evaluations/**",
+        "destination": "/evaluations/placeholder.html"
+      },
+      {
+        "source": "/admin/student/**",
+        "destination": "/admin/student/placeholder.html"
+      },
+      {
+        "source": "/admin/treinors/**",
+        "destination": "/admin/treinors/placeholder.html"
+      }
+    ]
+  },
+  "firestore": {
+    "rules": "firestore.rules",
+    "indexes": "firestore.indexes.json"
+  },
+  "storage": {
+    "rules": "storage.rules"
+  }
+}

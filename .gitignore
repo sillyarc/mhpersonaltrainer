@@ -1,0 +1,86 @@
+# Flutter/Dart
+.dart_tool/
+.packages
+.pub-cache/
+.pub/
+build/
+.flutter-plugins
+.flutter-plugins-dependencies
+.metadata
+
+# Logs and coverage
+*.log
+coverage/
+
+# macOS/Windows/Linux cruft
+.DS_Store
+Thumbs.db
+
+# Android
+android/.gradle/
+android/local.properties
+android/key.properties
+android/app/debug/
+android/app/profile/
+android/app/release/
+
+# iOS
+ios/Pods/
+ios/.symlinks/
+ios/Flutter/Generated.xcconfig
+ios/Flutter/flutter_export_environment.sh
+ios/Runner/GeneratedPluginRegistrant.*
+
+# Tooling (keep project tools/, but ignore temporary MinGit)
+tools/mingit/
+
+# Local tool installs
+.tools/
+
+# Local environment files (secrets)
+.env
+.env.*
+firebase/functions/.env
+
+# Firebase custom cloud functions dependencies
+firebase/custom_cloud_functions/node_modules/
+
+# Local machine/editor state
+.local/
+.expo/
+.config/
+
+# Node dependencies generated locally
+firebase/functions/node_modules/
+
+# Android/Gradle caches inside plugin folders
+plugins/**/.gradle/
+plugins/**/build/
+
+# Local/mobile sensitive artifacts
+mh-personal-trainer-react-native/keystoreAndroid/
+
+# Temporary files
+*.tmp
+temp.txt
+
+# Next.js local/build artifacts
+web-next/node_modules/
+web-next/.next/
+web-next/.next-web/
+web-next/out/
+web-next/tsconfig.tsbuildinfo
+web-next/.env.local
+web-next/src-tauri/target/
+
+# Assets larger than GitHub's 100MB hard limit
+web-next/assets/25-05-22 - app-personal-mateus-treinos-gv_1.mp4
+web-next/public/videos/app-demo.mp4
+
+# Windows installer binary (stored outside Git)
+web-next/public/downloads/mh-personal-trainer-setup-8.9.42-111.exe
+
+# Build/export artifacts that should stay local
+_artifacts/
+mh-personal-trainer-react-native/.expo-export-test/
+web-next/public/downloads/*.exe

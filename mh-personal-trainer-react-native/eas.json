@@ -1,0 +1,48 @@
+{
+  "cli": {
+    "version": ">= 7.0.0",
+    "appVersionSource": "local"
+  },
+  "build": {
+    "preview": {
+      "android": {
+        "buildType": "apk"
+      },
+      "env": {
+        "EXPO_PUBLIC_FIREBASE_API_KEY": "AIzaSyAOacFgUL2w9WYNOnuLPC0w2qFebdy2d64",
+        "EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN": "profissions-2746d.firebaseapp.com",
+        "EXPO_PUBLIC_FIREBASE_PROJECT_ID": "profissions-2746d",
+        "EXPO_PUBLIC_FIREBASE_STORAGE_BUCKET": "profissions-2746d.appspot.com",
+        "EXPO_PUBLIC_FIREBASE_MESSAGING_SENDER_ID": "733790875876",
+        "EXPO_PUBLIC_FIREBASE_APP_ID": "1:733790875876:web:57d4a8a1271e8bfec53cf1",
+        "EXPO_PUBLIC_FIREBASE_MEASUREMENT_ID": "G-TX29X2CZTT",
+        "EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY": "pk_test_51R56vnP3w93hGHYvnyzlTzxRB9SLq3hIyBxLbZ642X7n4K0WTNQPNyS1Y1KPuq7MX3WSxz8MFeyjW6puFd0Ew9aX00XAFFYZMD",
+        "EXPO_PUBLIC_API_URL": "https://api.stripe.com",
+        "EXPO_PUBLIC_STRIPE_FUNCTIONS_URL": "https://southamerica-east1-profissions-2746d.cloudfunctions.net",
+        "EXPO_PUBLIC_STRIPE_SUBSCRIPTION_ENDPOINT": "createSubscriptionAluno",
+        "EXPO_PUBLIC_STRIPE_SETUP_INTENT_ENDPOINT": "createSetupIntent",
+        "EXPO_PUBLIC_EAS_PROJECT_ID": "265d88e6-dc8b-4c0a-80ad-2b4364e5d476"
+      }
+    },
+    "production": {
+      "android": {
+        "buildType": "app-bundle"
+      },
+      "env": {
+        "EXPO_PUBLIC_FIREBASE_API_KEY": "AIzaSyAOacFgUL2w9WYNOnuLPC0w2qFebdy2d64",
+        "EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN": "profissions-2746d.firebaseapp.com",
+        "EXPO_PUBLIC_FIREBASE_PROJECT_ID": "profissions-2746d",
+        "EXPO_PUBLIC_FIREBASE_STORAGE_BUCKET": "profissions-2746d.appspot.com",
+        "EXPO_PUBLIC_FIREBASE_MESSAGING_SENDER_ID": "733790875876",
+        "EXPO_PUBLIC_FIREBASE_APP_ID": "1:733790875876:web:57d4a8a1271e8bfec53cf1",
+        "EXPO_PUBLIC_FIREBASE_MEASUREMENT_ID": "G-TX29X2CZTT",
+        "EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY": "pk_test_51R56vnP3w93hGHYvnyzlTzxRB9SLq3hIyBxLbZ642X7n4K0WTNQPNyS1Y1KPuq7MX3WSxz8MFeyjW6puFd0Ew9aX00XAFFYZMD",
+        "EXPO_PUBLIC_API_URL": "https://api.stripe.com",
+        "EXPO_PUBLIC_STRIPE_FUNCTIONS_URL": "https://southamerica-east1-profissions-2746d.cloudfunctions.net",
+        "EXPO_PUBLIC_STRIPE_SUBSCRIPTION_ENDPOINT": "createSubscriptionAluno",
+        "EXPO_PUBLIC_STRIPE_SETUP_INTENT_ENDPOINT": "createSetupIntent",
+        "EXPO_PUBLIC_EAS_PROJECT_ID": "265d88e6-dc8b-4c0a-80ad-2b4364e5d476"
+      }
+    }
+  }
+}

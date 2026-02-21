@@ -1,0 +1,211 @@
+﻿.footer {
+  --footer-border: rgba(11, 34, 62, 0.12);
+  --footer-bg: radial-gradient(860px 300px at 100% 0%, rgba(58, 136, 212, 0.16), transparent 70%),
+    linear-gradient(180deg, #edf4ff 0%, #e7f1ff 100%);
+  --title-ink: #0c284a;
+  --text-ink: #4b6385;
+  --chip-bg: rgba(255, 255, 255, 0.84);
+  --chip-border: rgba(11, 34, 62, 0.14);
+  --chip-ink: #1f4d80;
+  --button-ghost-bg: rgba(255, 255, 255, 0.88);
+  --button-ghost-border: rgba(11, 34, 62, 0.16);
+  --button-ghost-ink: #1d426c;
+  --card-bg: rgba(255, 255, 255, 0.74);
+  --card-border: rgba(11, 34, 62, 0.12);
+  --link-ink: #365980;
+  --bottom-ink: #5a7192;
+  margin-top: 0;
+  border-top: 1px solid var(--footer-border);
+  background: var(--footer-bg);
+}
+
+:global(:root[data-theme='dark']) .footer {
+  --footer-border: rgba(128, 161, 202, 0.22);
+  --footer-bg: radial-gradient(900px 340px at 100% 0%, rgba(58, 136, 212, 0.22), transparent 72%),
+    linear-gradient(180deg, #081326 0%, #0b1a31 100%);
+  --title-ink: #e6f1ff;
+  --text-ink: #a9bdd9;
+  --chip-bg: rgba(16, 33, 55, 0.92);
+  --chip-border: rgba(128, 161, 202, 0.32);
+  --chip-ink: #d0e3fb;
+  --button-ghost-bg: rgba(17, 36, 60, 0.92);
+  --button-ghost-border: rgba(128, 161, 202, 0.34);
+  --button-ghost-ink: #d5e7ff;
+  --card-bg: rgba(14, 30, 52, 0.9);
+  --card-border: rgba(128, 161, 202, 0.24);
+  --link-ink: #b8d1ee;
+  --bottom-ink: #9bb1d0;
+}
+
+.top {
+  padding: 34px 0 24px;
+  display: grid;
+  grid-template-columns: minmax(0, 1.1fr) minmax(0, 0.9fr);
+  gap: 20px;
+}
+
+.brandCol {
+  display: grid;
+  gap: 12px;
+}
+
+.brandTitle {
+  margin: 0;
+  font-family: var(--font-display), 'Sora', 'Space Grotesk', sans-serif;
+  font-size: 1.35rem;
+  color: var(--title-ink);
+  letter-spacing: -0.01em;
+}
+
+.brandText {
+  margin: 0;
+  color: var(--text-ink);
+  line-height: 1.58;
+  max-width: 58ch;
+}
+
+.storeRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.storeRow a,
+.storeRow span {
+  padding: 6px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--chip-border);
+  background: var(--chip-bg);
+  color: var(--chip-ink);
+  font-size: 0.75rem;
+  font-weight: 700;
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.ctaBtn,
+.ghostBtn {
+  min-height: 42px;
+  border-radius: 999px;
+  padding: 0 16px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  font-size: 0.88rem;
+}
+
+.ctaBtn {
+  color: #eef7ff;
+  background: linear-gradient(135deg, #1e70c2, #0f4f90);
+  box-shadow: 0 10px 20px rgba(15, 79, 144, 0.24);
+}
+
+.ghostBtn {
+  color: var(--button-ghost-ink);
+  border: 1px solid var(--button-ghost-border);
+  background: var(--button-ghost-bg);
+}
+
+.linksGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.col {
+  border-radius: 14px;
+  border: 1px solid var(--card-border);
+  background: var(--card-bg);
+  padding: 12px;
+  display: grid;
+  gap: 8px;
+}
+
+.colTitle {
+  margin: 0;
+  color: var(--chip-ink);
+  font-size: 0.74rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.09em;
+}
+
+.links {
+  display: grid;
+  gap: 6px;
+}
+
+.links a {
+  color: var(--link-ink);
+  font-size: 0.86rem;
+  font-weight: 700;
+}
+
+.links a:hover {
+  color: #70aee6;
+}
+
+.bottom {
+  min-height: 54px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  border-top: 1px solid var(--footer-border);
+  padding: 10px 0 18px;
+}
+
+.bottomText {
+  margin: 0;
+  color: var(--bottom-ink);
+  font-size: 0.82rem;
+}
+
+.inlineLinks {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.inlineLinks a {
+  color: var(--link-ink);
+  font-size: 0.82rem;
+  font-weight: 700;
+}
+
+.inlineLinks a:hover {
+  color: #70aee6;
+}
+
+@media (max-width: 1080px) {
+  .top {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 760px) {
+  .linksGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .actions {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .ctaBtn,
+  .ghostBtn {
+    width: 100%;
+  }
+
+  .bottom {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+}

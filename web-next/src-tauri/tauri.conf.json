@@ -1,0 +1,43 @@
+{
+  "build": {
+    "beforeDevCommand": "npm run dev",
+    "beforeBuildCommand": "npm run build:tauri",
+    "devPath": "http://localhost:3000",
+    "distDir": "../.next-tauri"
+  },
+  "package": {
+    "productName": "MH Personal Trainer",
+    "version": "8.9.42"
+  },
+  "tauri": {
+    "windows": [
+      {
+        "title": "MH Personal Trainer",
+        "width": 1280,
+        "height": 800,
+        "minWidth": 1024,
+        "minHeight": 700,
+        "resizable": true
+      }
+    ],
+    "security": {
+      "csp": null
+    },
+    "bundle": {
+      "active": true,
+      "targets": "all",
+      "identifier": "com.mhpersonal.app",
+      "icon": ["icons/icon.ico", "../public/icon-512.png", "../public/icon-192.png"],
+      "resources": {
+        "resources/WebView2Loader.dll": "."
+      },
+      "windows": {
+        "webviewInstallMode": {
+          "type": "offlineInstaller",
+          "silent": true
+        }
+      }
+    }
+  }
+}
+

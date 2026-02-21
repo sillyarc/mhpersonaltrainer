@@ -1,0 +1,113 @@
+.editor {
+  display: grid;
+  gap: 16px;
+}
+
+.tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  justify-content: center;
+}
+
+.tabButton {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid rgba(148, 163, 184, 0.6);
+  background: rgba(148, 163, 184, 0.12);
+  color: var(--text-primary);
+  border-radius: 999px;
+  padding: 10px 18px;
+  min-height: 44px;
+  line-height: 1;
+  text-align: center;
+  font-size: 0.92rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.2s ease, border-color 0.2s ease, color 0.2s ease;
+}
+
+.tabButton:hover {
+  border-color: rgba(37, 99, 235, 0.45);
+  background: rgba(37, 99, 235, 0.12);
+}
+
+.tabButtonActive {
+  background: linear-gradient(145deg, #2f6fbe 0%, #1f4f85 100%);
+  border-color: rgba(37, 99, 235, 0.8);
+  color: #f8fafc;
+}
+
+.form {
+  display: grid;
+  gap: 16px;
+}
+
+.section {
+  display: grid;
+  gap: 12px;
+}
+
+.section h3 {
+  margin: 0;
+  font-size: 1.02rem;
+}
+
+.fieldGrid {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+}
+
+.field {
+  display: grid;
+  gap: 6px;
+  font-size: 0.92rem;
+  color: var(--text-secondary);
+}
+
+.field span {
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.field input,
+.field textarea {
+  width: 100%;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: var(--surface-strong);
+  color: var(--text-primary);
+  padding: 10px 12px;
+  outline: none;
+}
+
+.field input:focus,
+.field textarea:focus {
+  border-color: rgba(37, 99, 235, 0.7);
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.14);
+}
+
+.field textarea {
+  resize: vertical;
+  min-height: 96px;
+}
+
+.success {
+  margin: 0;
+  color: #1b7f3b;
+  font-weight: 600;
+}
+
+.error {
+  margin: 0;
+  color: #b42318;
+  font-weight: 600;
+}
+
+.actions {
+  display: flex;
+  justify-content: flex-start;
+}

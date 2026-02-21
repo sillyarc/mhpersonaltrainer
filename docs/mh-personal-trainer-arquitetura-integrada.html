@@ -1,0 +1,237 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>MH Personal Trainer - Arquitetura Integrada</title>
+  <style>
+    :root {
+      --ink: #13233f;
+      --muted: #4e6182;
+      --line: #d8e1ef;
+      --brand: #0b57c0;
+      --soft: #ecf3ff;
+      --paper: #ffffff;
+      --bg: #f5f8fc;
+      --code-bg: #f0f5fd;
+      --ok: #0a8f63;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: "Segoe UI", Calibri, Arial, sans-serif;
+      background: linear-gradient(180deg, #eef4fd 0%, #f8faff 40%, #f5f8fc 100%);
+      color: var(--ink);
+      line-height: 1.5;
+      font-size: 11pt;
+    }
+    .page {
+      width: 210mm;
+      min-height: 297mm;
+      margin: 0 auto;
+      background: var(--paper);
+      padding: 16mm 14mm;
+    }
+    .cover {
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      background: radial-gradient(circle at top right, #eef5ff 0%, #ffffff 60%);
+      padding: 22px;
+      margin-bottom: 20px;
+    }
+    .chip {
+      display: inline-block;
+      padding: 4px 10px;
+      border-radius: 999px;
+      border: 1px solid #d5e4ff;
+      background: var(--soft);
+      color: var(--brand);
+      font-size: 9pt;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.4px;
+    }
+    h1 {
+      margin: 10px 0 8px;
+      font-size: 25pt;
+      line-height: 1.2;
+      color: #0b438f;
+    }
+    h2 {
+      margin: 18px 0 8px;
+      font-size: 15pt;
+      color: #0f3f83;
+      border-bottom: 2px solid #e8eef8;
+      padding-bottom: 4px;
+    }
+    h3 {
+      margin: 14px 0 6px;
+      font-size: 12.2pt;
+      color: #184e94;
+    }
+    p { margin: 0 0 8px; }
+    ul { margin: 0 0 10px 18px; padding: 0; }
+    li { margin: 3px 0; }
+    code {
+      background: var(--code-bg);
+      border: 1px solid #d7e1f2;
+      border-radius: 5px;
+      padding: 1px 5px;
+      font-family: Consolas, "Courier New", monospace;
+      font-size: 9.2pt;
+    }
+    pre {
+      margin: 8px 0 12px;
+      border: 1px solid var(--line);
+      background: #fafcff;
+      border-radius: 8px;
+      padding: 10px;
+      white-space: pre-wrap;
+      font-size: 9pt;
+      line-height: 1.4;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 8px 0 14px;
+      table-layout: fixed;
+    }
+    th, td {
+      border: 1px solid var(--line);
+      padding: 6px 7px;
+      vertical-align: top;
+      word-wrap: break-word;
+      overflow-wrap: anywhere;
+      font-size: 9.2pt;
+    }
+    th {
+      background: #eff4fc;
+      color: #104183;
+      text-align: left;
+      font-weight: 700;
+    }
+    .meta {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 10px;
+      margin-top: 14px;
+    }
+    .meta-card {
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      padding: 9px 11px;
+      background: #fff;
+    }
+    .meta-card .k { color: var(--muted); font-size: 9pt; }
+    .meta-card .v { color: #0d427f; font-weight: 700; margin-top: 2px; }
+    .note {
+      border: 1px dashed #bfd0ea;
+      background: #f6faff;
+      border-radius: 9px;
+      padding: 10px 12px;
+      margin: 8px 0 12px;
+      color: #2a3e61;
+    }
+    .ok { color: var(--ok); font-weight: 700; }
+    .break {
+      page-break-before: always;
+      break-before: page;
+    }
+    .footer {
+      margin-top: 16px;
+      border-top: 1px solid #dce5f4;
+      padding-top: 8px;
+      color: #5c6f8d;
+      font-size: 8.8pt;
+    }
+    @page { size: A4; margin: 10mm; }
+  </style>
+</head>
+<body>
+  <main class="page">
+    <section class="cover">
+      <span class="chip">Arquitetura Integrada</span>
+      <h1>MH Personal Trainer<br/>WebNext + React Native</h1>
+      <p>Explicacao completa de como o ecossistema funciona junto, com foco por perfil: <strong>Personal</strong>, <strong>Academia</strong>, <strong>Aluno</strong> e <strong>Admin</strong>.</p>
+      <div class="meta">
+        <div class="meta-card"><div class="k">Gerado em</div><div class="v">20/02/2026, 10:22:00</div></div>
+        <div class="meta-card"><div class="k">Rotas Web</div><div class="v">103</div></div>
+        <div class="meta-card"><div class="k">Rotas Mobile</div><div class="v">76</div></div>
+      </div>
+    </section>
+
+    <h2>1. Resumo Executivo</h2>
+    <p>O produto e um ecossistema unico com duas interfaces principais: <code>web-next</code> e <code>mh-personal-trainer-react-native</code>. As duas apps usam o mesmo backend (Firebase + servicos auxiliares), entao dados de treino, avaliacao, perfil, assinatura e notificacao se cruzam entre plataformas.</p>
+    <div class="note">
+      Mapa de operacao principal solicitado:<br/>
+      <strong>Personal:</strong> WebNext + React Native<br/>
+      <strong>Academia:</strong> WebNext<br/>
+      <strong>Aluno:</strong> React Native (com acesso web limitado)<br/>
+      <strong>Admin:</strong> WebNext (com suporte mobile secundario)
+    </div>
+
+    <h2>2. Como os Apps se Juntam</h2>
+    <pre>[WebNext] --------------------\
+                               > [Firebase Auth + Firestore + Storage] --- [Cloud Functions + Stripe + IA]
+[React Native/Expo] ----------/
+
+Ambos os frontends leem/escrevem nos mesmos documentos de usuarios e modulos de negocio.
+Nao sao dois sistemas separados: sao duas "faces" do mesmo produto.</pre>
+
+    <h2>3. Matriz por Perfil</h2>
+    <table><thead><tr><th>Perfil</th><th>Interface principal</th><th>Onde autentica</th><th>Onde opera</th><th>Dados compartilhados</th></tr></thead><tbody><tr><td><strong>Personal/Professor</strong></td><td>WebNext + React Native</td><td><code>users/{uid}</code> com <code>professorAccount=true</code></td><td>Treinos, alunos, agenda, avaliacoes, financeiro, IA</td><td>Mesmo cadastro, mesmo codigoPersonal, mesmos alunos/treinos</td></tr><tr><td><strong>Academia</strong></td><td>WebNext</td><td><code>users/{uid}</code> com <code>academyAccount=true</code></td><td>Painel academy, vinculacoes, billing, checkins, acesso</td><td>Impacta visibilidade e vinculo entre aluno/personal</td></tr><tr><td><strong>Aluno</strong></td><td>React Native</td><td><code>users/{uid}</code> padrao aluno</td><td>Treino, chat, progresso, avaliacoes, financeiro, perfil</td><td>Consome treinos/avaliacoes criados por personal/academia</td></tr><tr><td><strong>Admin</strong></td><td>WebNext</td><td><code>users/{uid}</code> com <code>admin=true</code></td><td>Resumo admin, usuarios, suporte, email, notificacoes</td><td>Monitora dados consolidados do mesmo backend</td></tr></tbody></table>
+
+    <h2>4. Auth e Role Resolution</h2>
+    <h3>4.1 WebNext</h3>
+    <ul><li>Auth central em <code>web-next/lib/auth.tsx</code>.</li><li>Role suportadas no web: <code>aluno</code>, <code>personal</code>, <code>professor</code>, <code>academy</code>, <code>admin</code>.</li><li>Rotas protegidas por <code>AuthGate</code> e gates especificos (<code>AdminGate</code>, <code>AcademyGate</code>).</li><li>No web, aluno e propositalmente limitado a viewport pequena (regra no <code>AuthGate</code>).</li></ul>
+    <h3>4.2 React Native</h3>
+    <ul><li>Auth principal em <code>mh-personal-trainer-react-native/src/hooks/useAuth.ts</code> + store em <code>src/store/authStore.ts</code>.</li><li>Role no mobile: <code>admin</code>, <code>professor</code>, <code>aluno</code>.</li><li>Fluxo inicial: splash (<code>app/index.tsx</code>) decide <code>/(auth)/login</code> ou <code>/(tabs)</code>.</li><li>Firebase inicializa em <code>src/services/firebase.ts</code> com persistencia e fallback por plataforma.</li></ul>
+
+    <h2>5. Arquitetura de Dados Compartilhados</h2>
+    <ul><li>Documento base do usuario: <code>users/{uid}</code> (nome, papel, assinatura, codigos, metadados).</li><li>Subcolecoes e colecoes de dominio para treinos, avaliacoes, agenda, notificacoes e financeiro.</li><li>Relacao personal-aluno por <code>codigoPersonal</code> e referencias no usuario/aluno.</li><li>Relacao academia por <code>codigoAcademia</code> e flags de vinculo.</li><li>Servicos de leitura/escrita paralelos em web e mobile (arquivos <code>firestoreService.ts</code> em ambos os projetos).</li></ul>
+
+    <h2 class="break">6. Fluxos Integrados por Papel</h2>
+    <h3>Personal cria treino no Web -&gt; Aluno executa no Mobile</h3><ul><li>Personal/professor autenticado no WebNext cria rotina em rotas de treino.</li><li>Dados sao salvos no Firestore (subcolecoes de usuario, como <code>createTreinos</code>).</li><li>Aluno faz login no React Native e carrega os treinos vinculados no mesmo backend.</li><li>Conclusoes do aluno atualizam campos de progresso/ultimo treino.</li><li>Painel do personal (web) consegue refletir status e evolucao.</li></ul><h3>Academia gerencia vinculacoes no Web</h3><ul><li>Conta com <code>academyAccount</code> usa rotas <code>/academy/*</code>.</li><li>Academia vincula alunos e personais por codigos e metadados no Firestore.</li><li>Esse vinculo impacta quais dados aparecem para personal e aluno nos apps.</li></ul><h3>Aluno principal no React Native</h3><ul><li>Aluno entra por <code>/(auth)/login</code> e segue para <code>/(tabs)</code>.</li><li>Tela inicial, treinos, avaliacoes, financeiro e chat leem os mesmos documentos do Firebase.</li><li>No WebNext, aluno existe, mas o acesso no browser e propositalmente limitado para viewport menor.</li></ul><h3>Admin opera no WebNext</h3><ul><li>Admin (papel <code>admin</code>) acessa rotas <code>/admin/*</code> e monitora usuarios/suporte.</li><li>Cloud Functions e notificacoes de seguranca alimentam o painel admin.</li><li>Existe suporte administrativo no mobile, mas o centro operacional principal esta no WebNext.</li></ul>
+
+    <h2>7. Mapeamento de Modulos (Web x Mobile)</h2>
+    <p>Contagem por area de rota (primeiro segmento), extraida automaticamente do codigo.</p>
+    <table><thead><tr><th>Area</th><th>WebNext</th><th>React Native</th><th>Status</th></tr></thead><tbody><tr><td><code>academia</code></td><td>1</td><td>0</td><td>Somente Web</td></tr><tr><td><code>academy</code></td><td>9</td><td>0</td><td>Somente Web</td></tr><tr><td><code>academy-login</code></td><td>1</td><td>0</td><td>Somente Web</td></tr><tr><td><code>account-deletion</code></td><td>1</td><td>0</td><td>Somente Web</td></tr><tr><td><code>admin</code></td><td>13</td><td>6</td><td>Compartilhado</td></tr><tr><td><code>ai</code></td><td>7</td><td>7</td><td>Compartilhado</td></tr><tr><td><code>app</code></td><td>1</td><td>0</td><td>Somente Web</td></tr><tr><td><code>beneficios</code></td><td>1</td><td>0</td><td>Somente Web</td></tr><tr><td><code>chat</code></td><td>3</td><td>3</td><td>Compartilhado</td></tr><tr><td><code>documents</code></td><td>4</td><td>3</td><td>Compartilhado</td></tr><tr><td><code>equipe</code></td><td>1</td><td>0</td><td>Somente Web</td></tr><tr><td><code>evaluations</code></td><td>9</td><td>4</td><td>Compartilhado</td></tr><tr><td><code>feedbacks</code></td><td>1</td><td>1</td><td>Compartilhado</td></tr><tr><td><code>financeiro</code></td><td>5</td><td>5</td><td>Compartilhado</td></tr><tr><td><code>forgot-password</code></td><td>1</td><td>1</td><td>Compartilhado</td></tr><tr><td><code>help</code></td><td>1</td><td>1</td><td>Compartilhado</td></tr><tr><td><code>home</code></td><td>1</td><td>2</td><td>Compartilhado</td></tr><tr><td><code>invite</code></td><td>1</td><td>0</td><td>Somente Web</td></tr><tr><td><code>login</code></td><td>1</td><td>1</td><td>Compartilhado</td></tr><tr><td><code>login-aluno</code></td><td>1</td><td>0</td><td>Somente Web</td></tr><tr><td><code>mh-agenda-fit</code></td><td>1</td><td>3</td><td>Compartilhado</td></tr><tr><td><code>notifications</code></td><td>2</td><td>2</td><td>Compartilhado</td></tr><tr><td><code>nutrition</code></td><td>0</td><td>1</td><td>Somente Mobile</td></tr><tr><td><code>personal</code></td><td>4</td><td>3</td><td>Compartilhado</td></tr><tr><td><code>personal-login</code></td><td>1</td><td>1</td><td>Compartilhado</td></tr><tr><td><code>policies</code></td><td>1</td><td>1</td><td>Compartilhado</td></tr><tr><td><code>privacy</code></td><td>1</td><td>1</td><td>Compartilhado</td></tr><tr><td><code>profile</code></td><td>7</td><td>7</td><td>Compartilhado</td></tr><tr><td><code>progress</code></td><td>1</td><td>1</td><td>Compartilhado</td></tr><tr><td><code>register</code></td><td>1</td><td>1</td><td>Compartilhado</td></tr><tr><td><code>register-academy</code></td><td>1</td><td>0</td><td>Somente Web</td></tr><tr><td><code>register-aluno</code></td><td>1</td><td>0</td><td>Somente Web</td></tr><tr><td><code>register-personal</code></td><td>1</td><td>1</td><td>Compartilhado</td></tr><tr><td><code>schedule</code></td><td>3</td><td>3</td><td>Compartilhado</td></tr><tr><td><code>settings</code></td><td>2</td><td>2</td><td>Compartilhado</td></tr><tr><td><code>start-workout</code></td><td>1</td><td>1</td><td>Compartilhado</td></tr><tr><td><code>student</code></td><td>0</td><td>2</td><td>Somente Mobile</td></tr><tr><td><code>students</code></td><td>2</td><td>1</td><td>Compartilhado</td></tr><tr><td><code>support</code></td><td>2</td><td>1</td><td>Compartilhado</td></tr><tr><td><code>terms</code></td><td>1</td><td>1</td><td>Compartilhado</td></tr><tr><td><code>workout</code></td><td>6</td><td>8</td><td>Compartilhado</td></tr><tr><td><code>workouts</code></td><td>1</td><td>1</td><td>Compartilhado</td></tr></tbody></table>
+    <div class="note">
+      Leitura pratica da paridade:<br/>
+      <span class="ok">Compartilhado</span> = existe nos dois lados (ex.: <code>ai</code>, <code>chat</code>, <code>evaluations</code>, <code>financeiro</code>, <code>profile</code>, <code>workout</code>).<br/>
+      <span class="ok">Somente Web</span> = foco operacional web (ex.: <code>academy</code>, maior parte de <code>admin</code>).<br/>
+      <span class="ok">Somente Mobile</span> = experiencia nativa especifica.
+    </div>
+
+    <h3>7.1 Personal (amostra de rotas Web)</h3>
+    <p><code>/app</code>, <code>/workouts</code>, <code>/students</code>, <code>/students/[id]</code>, <code>/schedule</code>, <code>/schedule/[id]</code>, <code>/evaluations</code>, <code>/evaluations/[id]</code>, <code>/evaluations/create</code></p>
+    <h3>7.2 Personal (amostra de rotas Mobile)</h3>
+    <p><code>/workouts</code>, <code>/students</code>, <code>/schedule</code>, <code>/schedule/[id]</code>, <code>/evaluations</code>, <code>/evaluations</code></p>
+    <h3>7.3 Academia (Web)</h3>
+    <p><code>/academy</code>, <code>/academy/access</code>, <code>/academy/agenda</code>, <code>/academy/ai</code>, <code>/academy/billing</code>, <code>/academy/checkins</code>, <code>/academy/linking</code>, <code>/academy/personals</code>, <code>/academy/students</code></p>
+    <h3>7.4 Aluno (Mobile)</h3>
+    <p><code>/workouts</code>, <code>/evaluations</code>, <code>/evaluations</code>, <code>/chat</code>, <code>/chat/[id]</code>, <code>/profile</code>, <code>/profile/edit</code></p>
+    <h3>7.5 Admin (Web)</h3>
+    <p><code>/admin</code>, <code>/admin/academy</code>, <code>/admin/dashboard</code>, <code>/admin/emails</code>, <code>/admin/instagram</code>, <code>/admin/kabam</code>, <code>/admin/manage-students</code>, <code>/admin/student/[id]</code>, <code>/admin/students</code>, <code>/admin/support</code>, <code>/admin/treinors</code>, <code>/admin/treinors/[id]</code></p>
+
+    <h2>8. Integracao de IA, Pagamentos e Notificacoes</h2>
+    <h3>8.1 IA (OpenRouter)</h3>
+    <ul><li>Web: <code>web-next/lib/services/ai.ts</code>.</li><li>Mobile: <code>mh-personal-trainer-react-native/src/services/ai.ts</code>.</li><li>Ambos usam modelo/endpoint configuravel por variaveis de ambiente.</li><li>Controle de creditos diarios para plano gratuito com bypass para premium.</li></ul>
+    <h3>8.2 Pagamentos (Stripe + Functions)</h3>
+    <ul><li>Web: <code>web-next/lib/services/payments.ts</code>.</li><li>Mobile: <code>mh-personal-trainer-react-native/src/services/payments.ts</code>.</li><li>Fluxos usam endpoints de Cloud Functions (<code>createInscricao</code>, <code>createSetupIntent</code>, <code>createCheckoutSession</code>, etc.).</li><li>Dados de assinatura refletem no documento de usuario e impactam IA/limites.</li></ul>
+    <h3>8.3 Notificacoes</h3>
+    <ul><li>Mobile registra token e envia para <code>users/{uid}</code> (<code>fcm_tokens</code>, <code>pushToken</code>).</li><li>Web tambem escreve token (fallback web) e gerencia alertas locais.</li><li>Colecao <code>notificacao</code> e compartilhada para feed e alertas de seguranca.</li><li>Cloud Functions em <code>firebase/functions/index.js</code> tratam dispatch de push em escala.</li></ul>
+
+    <h2>9. O que isso significa na pratica</h2>
+    <ul><li><strong>Nao ha separacao de produto por plataforma.</strong> Existe um unico dominio de negocio e dois clientes.</li><li><strong>Personal e o elo cross-platform.</strong> Pode operar no web e no app sem duplicar conta ou dados.</li><li><strong>Academia e governanca via web.</strong> Organiza vinculacoes e operacao institucional.</li><li><strong>Aluno e experiencia nativa.</strong> Consumo diario de treino/progresso no mobile.</li><li><strong>Admin e controle central no web.</strong> Visao global, suporte, seguranca e operacao.</li></ul>
+
+    <h2>10. Checklist de Coerencia da Arquitetura</h2>
+    <ul><li><span class="ok">[OK]</span> Web e Mobile autenticam no mesmo Firebase Auth.</li><li><span class="ok">[OK]</span> Ambos leem/escrevem no mesmo Firestore.</li><li><span class="ok">[OK]</span> Modulos de negocio possuem servicos espelhados nos dois clientes.</li><li><span class="ok">[OK]</span> Fluxos de assinatura/IA/notificacao atravessam plataformas.</li><li><span class="ok">[OK]</span> Distribuicao por perfil bate com seu modelo: Personal (web+mobile), Academia (web), Aluno (mobile), Admin (web).</li></ul>
+
+    <div class="footer">
+      Arquivo fonte: <code>docs/mh-personal-trainer-arquitetura-integrada.html</code><br/>
+      Gerado automaticamente a partir do repositorio atual.
+    </div>
+  </main>
+</body>
+</html>

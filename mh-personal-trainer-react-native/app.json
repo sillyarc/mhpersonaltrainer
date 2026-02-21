@@ -1,0 +1,91 @@
+﻿{
+  "expo": {
+    "name": "MH Personal Trainer",
+    "slug": "mh-personal-trainer",
+    "version": "8.9.42",
+    "orientation": "default",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "automatic",
+    "newArchEnabled": true,
+    "scheme": "mhpersonaltrainer",
+    "splash": {
+      "image": "./assets/splash-icon.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#1a1a2e"
+    },
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.mh.personaltrainer",
+      "usesAppleSignIn": true,
+      "infoPlist": {
+        "NSMotionUsageDescription": "Permita acesso ao sensor de movimento para contar seus passos e corridas no app."
+      },
+      "buildNumber": "111"
+    },
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#1a1a2e"
+      },
+      "backgroundColor": "#1D2428",
+      "package": "com.mycompany.mfitfitnessapp",
+      "edgeToEdgeEnabled": true,
+      "versionCode": 111,
+      "permissions": [
+        "android.permission.RECORD_AUDIO",
+        "android.permission.ACTIVITY_RECOGNITION"
+      ]
+    },
+    "web": {
+      "favicon": "./assets/favicon.png",
+      "bundler": "metro"
+    },
+    "plugins": [
+      "expo-router",
+      "expo-secure-store",
+      "expo-image-picker",
+      [
+        "expo-location",
+        {
+          "locationAlwaysAndWhenInUsePermission": "Permita localizacao para encontrar alunos proximos em disputas de treino.",
+          "locationWhenInUsePermission": "Permita localizacao para ativar ranking por proximidade durante o treino."
+        }
+      ],
+      [
+        "expo-media-library",
+        {
+          "photosPermission": "Permita acesso as fotos para salvar os cards de divulgacao.",
+          "savePhotosPermission": "Permita salvar os cards de divulgacao na galeria."
+        }
+      ],
+      "expo-video",
+      "expo-notifications",
+      [
+        "@stripe/stripe-react-native",
+        {
+          "merchantIdentifier": "merchant.com.mh.personaltrainer",
+          "enableGooglePay": true
+        }
+      ],
+      "@react-native-community/datetimepicker"
+    ],
+    "experiments": {
+      "typedRoutes": true
+    },
+    "extra": {
+      "router": {},
+      "firebase": {
+        "apiKey": "AIzaSyAOacFgUL2w9WYNOnuLPC0w2qFebdy2d64",
+        "authDomain": "profissions-2746d.firebaseapp.com",
+        "projectId": "profissions-2746d",
+        "storageBucket": "profissions-2746d.appspot.com",
+        "messagingSenderId": "733790875876",
+        "appId": "1:733790875876:web:57d4a8a1271e8bfec53cf1"
+      },
+      "eas": {
+        "projectId": "4914019b-cf80-4d0c-a946-b33100a58322"
+      }
+    }
+  }
+}
+
