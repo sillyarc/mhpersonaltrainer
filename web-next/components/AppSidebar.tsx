@@ -219,95 +219,97 @@ export default function AppSidebar() {
 
   return (
     <aside className="sidebar">
-      <div className="sidebar-top">
-        <div className="sidebar-brand-row">
-          <Link href="/" className="sidebar-brand">
-            <span className="sidebar-brand-mark">MH</span>
-            <span className="sidebar-brand-text">Personal</span>
-          </Link>
-          {showMiniAiStatus ? (
-            <Link
-              href={aiStatusHref}
-              className={clsx('sidebar-brand-ai-mini', {
-                'is-premium': hasPremium || aiAccess.premium,
-              })}
-              title={
-                aiAccess.premium
-                  ? 'Plano Premium: IA ilimitada'
-                  : aiAccess.loading
-                  ? 'Atualizando creditos de IA'
-                  : `${Math.max(0, aiAccess.remaining ?? 0)} creditos de IA restantes hoje`
-              }
-              aria-label="Abrir assinatura e creditos de IA"
-            >
-              <span className="sidebar-brand-ai-mini-icon">
-                <SidebarPremiumStar />
-              </span>
-              <span className="sidebar-brand-ai-mini-label">{miniAiLabel}</span>
-              <span className="sidebar-brand-ai-mini-value">{miniAiValue}</span>
+      <div className="sidebar-inner">
+        <div className="sidebar-top">
+          <div className="sidebar-brand-row">
+            <Link href="/" className="sidebar-brand">
+              <span className="sidebar-brand-mark">MH</span>
+              <span className="sidebar-brand-text">Personal</span>
             </Link>
-          ) : null}
-        </div>
-        <span className="sidebar-brand-subtitle">Portal web</span>
-        {isAcademy && (
-          <div className="sidebar-beta">
-            <span className="sidebar-beta-pill">Beta</span>
-            <span>Portal da academia</span>
+            {showMiniAiStatus ? (
+              <Link
+                href={aiStatusHref}
+                className={clsx('sidebar-brand-ai-mini', {
+                  'is-premium': hasPremium || aiAccess.premium,
+                })}
+                title={
+                  aiAccess.premium
+                    ? 'Plano Premium: IA ilimitada'
+                    : aiAccess.loading
+                    ? 'Atualizando creditos de IA'
+                    : `${Math.max(0, aiAccess.remaining ?? 0)} creditos de IA restantes hoje`
+                }
+                aria-label="Abrir assinatura e creditos de IA"
+              >
+                <span className="sidebar-brand-ai-mini-icon">
+                  <SidebarPremiumStar />
+                </span>
+                <span className="sidebar-brand-ai-mini-label">{miniAiLabel}</span>
+                <span className="sidebar-brand-ai-mini-value">{miniAiValue}</span>
+              </Link>
+            ) : null}
           </div>
-        )}
-      </div>
-      <div className="sidebar-user">
-        <div className="sidebar-avatar">
-          {user?.photoUrl ? <img src={user.photoUrl} alt={displayName} /> : <span>{initial}</span>}
+          <span className="sidebar-brand-subtitle">Portal web</span>
+          {isAcademy && (
+            <div className="sidebar-beta">
+              <span className="sidebar-beta-pill">Beta</span>
+              <span>Portal da academia</span>
+            </div>
+          )}
         </div>
-        <div className="sidebar-user-meta">
-          <p>{displayName}</p>
-          <span>Perfil: {roleLabel}</span>
-          {showPersonalCode && <span>Codigo: {personalCodeLabel}</span>}
-        </div>
-      </div>
-      <div className="sidebar-nav">
-        {visibleSections.map((section) => (
-          <div key={section.title} className="sidebar-section">
-            <p className="sidebar-title">{section.title}</p>
-            <nav>
-              {section.items.map((item) => {
-                const isAiPremiumItem =
-                  Boolean(item.premium) &&
-                  (item.href === '/ai' ||
-                    item.href.startsWith('/ai/') ||
-                    item.href === '/academy/ai');
-                if (isAiPremiumItem && !hasPremium) return null;
-                const isActive = matchesSidebarRoute(pathname, item.href);
-                return (
-                  <Link
-                    key={item.href}
-                    href={item.href}
-                    className={clsx('sidebar-link', { active: isActive })}
-                    aria-current={isActive ? 'page' : undefined}
-                  >
-                    <span>{item.label}</span>
-                    {item.premium && !hasPremium ? (
-                      <span className="sidebar-link-premium" title="Recurso premium">
-                        <SidebarPremiumStar />
-                      </span>
-                    ) : null}
-                  </Link>
-                );
-              })}
-            </nav>
+        <div className="sidebar-user">
+          <div className="sidebar-avatar">
+            {user?.photoUrl ? <img src={user.photoUrl} alt={displayName} /> : <span>{initial}</span>}
           </div>
-        ))}
-      </div>
-      <div className="sidebar-actions">
-        <button className="button ghost sidebar-logout" type="button" onClick={() => logout()}>
-          Sair
-        </button>
-        <ThemeToggle compact iconOnly className="sidebar-theme-toggle" />
-      </div>
-      <div className="sidebar-footer">
-        <span>Versao 8.9.42+111</span>
-        <span>Desenvolvido por Nagazaki Software</span>
+          <div className="sidebar-user-meta">
+            <p>{displayName}</p>
+            <span>Perfil: {roleLabel}</span>
+            {showPersonalCode && <span>Codigo: {personalCodeLabel}</span>}
+          </div>
+        </div>
+        <div className="sidebar-nav">
+          {visibleSections.map((section) => (
+            <div key={section.title} className="sidebar-section">
+              <p className="sidebar-title">{section.title}</p>
+              <nav>
+                {section.items.map((item) => {
+                  const isAiPremiumItem =
+                    Boolean(item.premium) &&
+                    (item.href === '/ai' ||
+                      item.href.startsWith('/ai/') ||
+                      item.href === '/academy/ai');
+                  if (isAiPremiumItem && !hasPremium) return null;
+                  const isActive = matchesSidebarRoute(pathname, item.href);
+                  return (
+                    <Link
+                      key={item.href}
+                      href={item.href}
+                      className={clsx('sidebar-link', { active: isActive })}
+                      aria-current={isActive ? 'page' : undefined}
+                    >
+                      <span>{item.label}</span>
+                      {item.premium && !hasPremium ? (
+                        <span className="sidebar-link-premium" title="Recurso premium">
+                          <SidebarPremiumStar />
+                        </span>
+                      ) : null}
+                    </Link>
+                  );
+                })}
+              </nav>
+            </div>
+          ))}
+        </div>
+        <div className="sidebar-actions">
+          <button className="button ghost sidebar-logout" type="button" onClick={() => logout()}>
+            Sair
+          </button>
+          <ThemeToggle compact iconOnly className="sidebar-theme-toggle" />
+        </div>
+        <div className="sidebar-footer">
+          <span>Versao 8.9.42+111</span>
+          <span>Desenvolvido por Nagazaki Software</span>
+        </div>
       </div>
     </aside>
   );

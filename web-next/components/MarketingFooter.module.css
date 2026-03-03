@@ -1,17 +1,17 @@
 ﻿.footer {
-  --footer-border: rgba(11, 34, 62, 0.12);
-  --footer-bg: radial-gradient(860px 300px at 100% 0%, rgba(58, 136, 212, 0.16), transparent 70%),
-    linear-gradient(180deg, #edf4ff 0%, #e7f1ff 100%);
+  --footer-border: rgba(11, 34, 62, 0.14);
+  --footer-bg: radial-gradient(860px 300px at 100% 0%, rgba(58, 136, 212, 0.2), transparent 70%),
+    linear-gradient(180deg, #edf4ff 0%, #e6f1ff 46%, #f3f8ff 100%);
   --title-ink: #0c284a;
-  --text-ink: #4b6385;
-  --chip-bg: rgba(255, 255, 255, 0.84);
-  --chip-border: rgba(11, 34, 62, 0.14);
+  --text-ink: #4f6789;
+  --chip-bg: linear-gradient(165deg, rgba(255, 255, 255, 0.92), rgba(244, 250, 255, 0.88));
+  --chip-border: rgba(11, 34, 62, 0.16);
   --chip-ink: #1f4d80;
-  --button-ghost-bg: rgba(255, 255, 255, 0.88);
+  --button-ghost-bg: linear-gradient(165deg, rgba(255, 255, 255, 0.92), rgba(244, 250, 255, 0.88));
   --button-ghost-border: rgba(11, 34, 62, 0.16);
   --button-ghost-ink: #1d426c;
-  --card-bg: rgba(255, 255, 255, 0.74);
-  --card-border: rgba(11, 34, 62, 0.12);
+  --card-bg: linear-gradient(165deg, rgba(255, 255, 255, 0.88), rgba(243, 249, 255, 0.82));
+  --card-border: rgba(11, 34, 62, 0.14);
   --link-ink: #365980;
   --bottom-ink: #5a7192;
   margin-top: 0;
@@ -20,18 +20,18 @@
 }
 
 :global(:root[data-theme='dark']) .footer {
-  --footer-border: rgba(128, 161, 202, 0.22);
-  --footer-bg: radial-gradient(900px 340px at 100% 0%, rgba(58, 136, 212, 0.22), transparent 72%),
-    linear-gradient(180deg, #081326 0%, #0b1a31 100%);
+  --footer-border: rgba(128, 161, 202, 0.24);
+  --footer-bg: radial-gradient(900px 340px at 100% 0%, rgba(58, 136, 212, 0.24), transparent 72%),
+    linear-gradient(180deg, #071323 0%, #0b1a31 52%, #0c1f37 100%);
   --title-ink: #e6f1ff;
   --text-ink: #a9bdd9;
-  --chip-bg: rgba(16, 33, 55, 0.92);
+  --chip-bg: linear-gradient(165deg, rgba(16, 33, 55, 0.92), rgba(12, 28, 49, 0.9));
   --chip-border: rgba(128, 161, 202, 0.32);
   --chip-ink: #d0e3fb;
-  --button-ghost-bg: rgba(17, 36, 60, 0.92);
+  --button-ghost-bg: linear-gradient(165deg, rgba(17, 36, 60, 0.92), rgba(14, 31, 53, 0.9));
   --button-ghost-border: rgba(128, 161, 202, 0.34);
   --button-ghost-ink: #d5e7ff;
-  --card-bg: rgba(14, 30, 52, 0.9);
+  --card-bg: linear-gradient(165deg, rgba(14, 30, 52, 0.9), rgba(11, 26, 45, 0.88));
   --card-border: rgba(128, 161, 202, 0.24);
   --link-ink: #b8d1ee;
   --bottom-ink: #9bb1d0;
@@ -102,7 +102,8 @@
 .ctaBtn {
   color: #eef7ff;
   background: linear-gradient(135deg, #1e70c2, #0f4f90);
-  box-shadow: 0 10px 20px rgba(15, 79, 144, 0.24);
+  border: 1px solid rgba(15, 79, 144, 0.34);
+  box-shadow: 0 14px 26px rgba(15, 79, 144, 0.26);
 }
 
 .ghostBtn {
@@ -124,6 +125,7 @@
   padding: 12px;
   display: grid;
   gap: 8px;
+  box-shadow: 0 12px 24px rgba(10, 34, 62, 0.1);
 }
 
 .colTitle {

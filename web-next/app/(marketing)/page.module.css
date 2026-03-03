@@ -1,20 +1,20 @@
 .page {
-  --page-bg: radial-gradient(1260px 580px at 7% -14%, rgba(47, 155, 255, 0.32), transparent 66%),
-    radial-gradient(1020px 620px at 100% -12%, rgba(242, 154, 112, 0.2), transparent 62%),
-    linear-gradient(180deg, #eef6ff 0%, #e6f0fd 46%, #f7fbff 100%);
+  --page-bg: radial-gradient(1320px 620px at 6% -16%, rgba(47, 155, 255, 0.36), transparent 66%),
+    radial-gradient(1060px 620px at 100% -14%, rgba(242, 154, 112, 0.22), transparent 62%),
+    linear-gradient(180deg, #eef6ff 0%, #e4effd 44%, #f8fbff 100%);
   --ink-primary: #081c34;
   --ink-strong: #0b2d55;
   --ink-muted: #466182;
   --line-soft: rgba(12, 41, 75, 0.16);
   --line-strong: rgba(12, 41, 75, 0.22);
-  --surface-soft: rgba(255, 255, 255, 0.88);
-  --surface-card: linear-gradient(150deg, rgba(255, 255, 255, 0.97), rgba(232, 244, 255, 0.94));
-  --surface-panel: rgba(239, 247, 255, 0.94);
+  --surface-soft: rgba(255, 255, 255, 0.9);
+  --surface-card: linear-gradient(155deg, rgba(255, 255, 255, 0.97), rgba(234, 246, 255, 0.94));
+  --surface-panel: linear-gradient(155deg, rgba(245, 251, 255, 0.94), rgba(236, 246, 255, 0.9));
   --surface-dark: linear-gradient(160deg, #102a49 0%, #0a1f36 58%, #102c4a 100%);
   --chip-bg: rgba(255, 255, 255, 0.82);
   --chip-ink: #1e4d80;
-  --card-shadow: 0 22px 40px rgba(8, 30, 57, 0.14);
-  --card-shadow-strong: 0 30px 52px rgba(8, 30, 57, 0.22);
+  --card-shadow: 0 24px 42px rgba(8, 30, 57, 0.16);
+  --card-shadow-strong: 0 32px 56px rgba(8, 30, 57, 0.24);
   --cta-primary: linear-gradient(135deg, #1e70c2, #0f4f90);
   --cta-primary-hover: linear-gradient(135deg, #257fd6, #145ea9);
   --cta-secondary-bg: #ffffff;
@@ -26,9 +26,9 @@
 }
 
 :global(:root[data-theme='dark']) .page {
-  --page-bg: radial-gradient(1100px 520px at 8% -12%, rgba(70, 146, 218, 0.18), transparent 62%),
-    radial-gradient(980px 580px at 100% -10%, rgba(33, 65, 138, 0.22), transparent 62%),
-    linear-gradient(180deg, #071120 0%, #09172b 45%, #0b1b31 100%);
+  --page-bg: radial-gradient(1140px 560px at 8% -14%, rgba(70, 146, 218, 0.2), transparent 62%),
+    radial-gradient(980px 580px at 100% -10%, rgba(33, 65, 138, 0.24), transparent 62%),
+    linear-gradient(180deg, #071120 0%, #09182c 45%, #0c1d34 100%);
   --ink-primary: #e9f1ff;
   --ink-strong: #c8dcf8;
   --ink-muted: #9db3d3;
@@ -36,12 +36,12 @@
   --line-strong: rgba(140, 173, 214, 0.3);
   --surface-soft: rgba(14, 30, 52, 0.82);
   --surface-card: linear-gradient(160deg, rgba(14, 30, 52, 0.95), rgba(9, 23, 44, 0.92));
-  --surface-panel: rgba(13, 29, 50, 0.92);
+  --surface-panel: linear-gradient(160deg, rgba(13, 29, 50, 0.92), rgba(10, 24, 43, 0.9));
   --surface-dark: linear-gradient(160deg, #112d4f 0%, #0b2340 58%, #12365c 100%);
   --chip-bg: rgba(15, 34, 59, 0.9);
   --chip-ink: #c8dcf8;
-  --card-shadow: 0 20px 36px rgba(2, 8, 18, 0.55);
-  --card-shadow-strong: 0 30px 54px rgba(2, 8, 18, 0.64);
+  --card-shadow: 0 22px 38px rgba(2, 8, 18, 0.56);
+  --card-shadow-strong: 0 34px 58px rgba(2, 8, 18, 0.66);
   --cta-primary: linear-gradient(135deg, #3c91df, #1c5fa6);
   --cta-primary-hover: linear-gradient(135deg, #52a0e8, #2b72bc);
   --cta-secondary-bg: rgba(18, 41, 71, 0.96);
@@ -186,6 +186,7 @@
   border: 1px solid var(--line-strong);
   background: #dce9fb;
   box-shadow: var(--card-shadow);
+  transition: transform 0.24s ease, box-shadow 0.24s ease;
 }
 
 :global(:root[data-theme='dark']) .heroCard,
@@ -195,6 +196,12 @@
 
 .heroCard {
   min-height: 354px;
+}
+
+.heroCard:hover,
+.heroMiniCard:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--card-shadow-strong);
 }
 
 .heroMiniGrid {

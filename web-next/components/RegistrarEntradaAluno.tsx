@@ -470,6 +470,21 @@ export default function RegistrarEntradaAluno() {
   };
 
   const canOpenTurnstile = Boolean(entryRecord?.status === 'awaiting_turnstile');
+  const currentStepLabel = FLOW_STEPS.find((item) => item.id === step)?.label || '--';
+  const biometricStatusLabel = biometricResult
+    ? biometricResult.decision === 'approved'
+      ? 'Aprovada'
+      : 'Reprovada'
+    : 'Pendente';
+  const turnstileStatusLabel = turnstileResult
+    ? turnstileResult.opened
+      ? 'Liberada'
+      : 'Falhou'
+    : entryRecord?.status === 'denied'
+    ? 'Bloqueada'
+    : entryRecord?.status === 'awaiting_turnstile'
+    ? 'Pronta para abrir'
+    : 'Pendente';
 
   return (
     <PageShell
@@ -482,224 +497,287 @@ export default function RegistrarEntradaAluno() {
     >
       <AcademyGate>
         <div className="academy-checkin-flow-page academy-ultra-blue-modal">
-          <div className="academy-checkin-modal is-inline">
-            <div className="academy-checkin-header">
-              <div>
-                <span>Controle de acesso</span>
-                <h3>Registrar entrada com NFC + biometria</h3>
+          <div className="academy-checkin-layout">
+            <div className="academy-checkin-modal is-inline">
+              <div className="academy-checkin-header">
+                <div>
+                  <span>Controle de acesso</span>
+                  <h3>Registrar entrada com NFC + biometria</h3>
+                </div>
               </div>
-            </div>
 
-            <div className="academy-checkin-stepper">
-              {FLOW_STEPS.map((item) => (
-                <div key={item.id} className={`academy-checkin-step-chip ${stepState(item.id)}`}>
-                  <strong>{item.id}</strong>
-                  <span>{item.label}</span>
-                </div>
-              ))}
-            </div>
-
-            <div className="academy-checkin-status">
-              {statusMessage || 'Siga as etapas para concluir o check-in do aluno.'}
-            </div>
-            {errorMessage ? (
-              <span className="academy-checkin-feedback academy-checkin-feedback-error">{errorMessage}</span>
-            ) : null}
-
-            <div className="academy-checkin-body">
-              <section className={`academy-checkin-stage ${step === 1 ? 'is-active' : ''}`}>
-                <div className="academy-checkin-stage-head">
-                  <strong>1) Ler NFC</strong>
-                  <span>NFC com fallback manual para studentId.</span>
-                </div>
-                <div className="academy-checkin-actions-inline">
-                  <button
-                    type="button"
-                    className="button secondary"
-                    onClick={handleReadNfc}
-                    disabled={loading === 'nfc'}
-                  >
-                    {loading === 'nfc' ? 'Lendo NFC...' : 'Ler NFC'}
-                  </button>
-                </div>
-                {!nfcSupported ? (
-                  <p className="subtle">
-                    Web NFC nao suportado neste navegador. Digite o studentId manualmente para continuar.
-                  </p>
-                ) : null}
-                <label className="academy-checkin-field">
-                  <span>studentId (manual fallback)</span>
-                  <input
-                    value={manualStudentId}
-                    onChange={(event) => {
-                      setManualStudentId(event.target.value);
-                      setIdentifiedStudentId('');
-                    }}
-                    placeholder="Ex.: 2024001 ou UUID"
-                  />
-                </label>
-                {resolvedStudentId ? (
-                  <div className="academy-checkin-stage-note">
-                    <strong>Aluno identificado:</strong> {resolvedStudentId}
-                    {nfcSerialNumber ? ` (tag: ${nfcSerialNumber})` : ''}
+              <div className="academy-checkin-stepper">
+                {FLOW_STEPS.map((item) => (
+                  <div key={item.id} className={`academy-checkin-step-chip ${stepState(item.id)}`}>
+                    <strong>{item.id}</strong>
+                    <span>{item.label}</span>
                   </div>
-                ) : null}
-                <button
-                  type="button"
-                  className="button"
-                  onClick={handleConfirmStudent}
-                  disabled={!resolvedStudentId || loading === 'session'}
-                >
-                  {loading === 'session' ? 'Confirmando...' : 'Continuar'}
-                </button>
-              </section>
+                ))}
+              </div>
 
-              <section className={`academy-checkin-stage ${step === 2 ? 'is-active' : ''}`}>
-                <div className="academy-checkin-stage-head">
-                  <strong>2) Capturar selfie + liveness</strong>
-                  <span>Sessao biometrica temporaria (token de sessao no backend).</span>
-                </div>
-                {student ? (
-                  <div className="academy-checkin-stage-note">
-                    <strong>Aluno confirmado:</strong> {student.name} ({student.id})
+              <div className="academy-checkin-status">
+                {statusMessage || 'Siga as etapas para concluir o check-in do aluno.'}
+              </div>
+              {errorMessage ? (
+                <span className="academy-checkin-feedback academy-checkin-feedback-error">{errorMessage}</span>
+              ) : null}
+
+              <div className="academy-checkin-body">
+                <section className={`academy-checkin-stage ${step === 1 ? 'is-active' : ''}`}>
+                  <div className="academy-checkin-stage-head">
+                    <strong>1) Ler NFC</strong>
+                    <span>NFC com fallback manual para studentId.</span>
                   </div>
-                ) : null}
-                {biometricSession ? (
-                  <div className="academy-checkin-stage-note">
-                    <strong>Sessao:</strong> {biometricSession.sessionId.slice(0, 12)}... expira em{' '}
-                    {new Date(biometricSession.expiresAt).toLocaleTimeString('pt-BR')}
+                  <div className="academy-checkin-actions-inline">
+                    <button
+                      type="button"
+                      className="button secondary"
+                      onClick={handleReadNfc}
+                      disabled={loading === 'nfc'}
+                    >
+                      {loading === 'nfc' ? 'Lendo NFC...' : 'Ler NFC'}
+                    </button>
                   </div>
-                ) : null}
-
-                <div className="academy-checkin-camera">
-                  <video ref={videoRef} playsInline muted />
-                  <canvas ref={canvasRef} style={{ display: 'none' }} />
-                </div>
-
-                {cameraInstruction ? <p className="subtle">{cameraInstruction}</p> : null}
-                {cameraDenied ? (
-                  <p className="subtle">
-                    Se a camera foi negada: habilite permissao no navegador, recarregue a pagina e tente novamente.
-                  </p>
-                ) : null}
-
-                <div className="academy-checkin-actions-inline">
-                  <button
-                    type="button"
-                    className="button secondary"
-                    onClick={handleCaptureSelfie}
-                    disabled={!biometricSession || loading === 'camera'}
-                  >
-                    {loading === 'camera' ? 'Processando...' : 'Capturar Selfie'}
-                  </button>
+                  {!nfcSupported ? (
+                    <p className="subtle">
+                      Web NFC nao suportado neste navegador. Digite o studentId manualmente para continuar.
+                    </p>
+                  ) : null}
+                  <label className="academy-checkin-field">
+                    <span>studentId (manual fallback)</span>
+                    <input
+                      value={manualStudentId}
+                      onChange={(event) => {
+                        setManualStudentId(event.target.value);
+                        setIdentifiedStudentId('');
+                      }}
+                      placeholder="Ex.: 2024001 ou UUID"
+                    />
+                  </label>
+                  {resolvedStudentId ? (
+                    <div className="academy-checkin-stage-note">
+                      <strong>Aluno identificado:</strong> {resolvedStudentId}
+                      {nfcSerialNumber ? ` (tag: ${nfcSerialNumber})` : ''}
+                    </div>
+                  ) : null}
                   <button
                     type="button"
                     className="button"
-                    onClick={handleSubmitSelfie}
-                    disabled={!selfieBlob || loading === 'submit'}
+                    onClick={handleConfirmStudent}
+                    disabled={!resolvedStudentId || loading === 'session'}
                   >
-                    {loading === 'submit' ? 'Enviando...' : 'Enviar Selfie'}
+                    {loading === 'session' ? 'Confirmando...' : 'Continuar'}
                   </button>
-                </div>
+                </section>
 
-                {selfiePreviewUrl ? (
-                  <div className="academy-checkin-photo-card academy-checkin-capture-preview">
-                    <span>Selfie capturada</span>
-                    <img src={selfiePreviewUrl} alt="Selfie capturada para biometria" />
+                <section className={`academy-checkin-stage ${step === 2 ? 'is-active' : ''}`}>
+                  <div className="academy-checkin-stage-head">
+                    <strong>2) Capturar selfie + liveness</strong>
+                    <span>Sessao biometrica temporaria (token de sessao no backend).</span>
                   </div>
-                ) : null}
-              </section>
+                  {student ? (
+                    <div className="academy-checkin-stage-note">
+                      <strong>Aluno confirmado:</strong> {student.name} ({student.id})
+                    </div>
+                  ) : null}
+                  {biometricSession ? (
+                    <div className="academy-checkin-stage-note">
+                      <strong>Sessao:</strong> {biometricSession.sessionId.slice(0, 12)}... expira em{' '}
+                      {new Date(biometricSession.expiresAt).toLocaleTimeString('pt-BR')}
+                    </div>
+                  ) : null}
 
-              <section className={`academy-checkin-stage ${step === 3 ? 'is-active' : ''}`}>
-                <div className="academy-checkin-stage-head">
-                  <strong>3) Validar/registrar</strong>
-                  <span>Somente biometria aprovada permite catraca.</span>
-                </div>
-                {biometricResult ? (
+                  <div className="academy-checkin-camera">
+                    <video ref={videoRef} playsInline muted />
+                    <canvas ref={canvasRef} style={{ display: 'none' }} />
+                  </div>
+
+                  {cameraInstruction ? <p className="subtle">{cameraInstruction}</p> : null}
+                  {cameraDenied ? (
+                    <p className="subtle">
+                      Se a camera foi negada: habilite permissao no navegador, recarregue a pagina e tente novamente.
+                    </p>
+                  ) : null}
+
+                  <div className="academy-checkin-actions-inline">
+                    <button
+                      type="button"
+                      className="button secondary"
+                      onClick={handleCaptureSelfie}
+                      disabled={!biometricSession || loading === 'camera'}
+                    >
+                      {loading === 'camera' ? 'Processando...' : 'Capturar Selfie'}
+                    </button>
+                    <button
+                      type="button"
+                      className="button"
+                      onClick={handleSubmitSelfie}
+                      disabled={!selfieBlob || loading === 'submit'}
+                    >
+                      {loading === 'submit' ? 'Enviando...' : 'Enviar Selfie'}
+                    </button>
+                  </div>
+
+                  {selfiePreviewUrl ? (
+                    <div className="academy-checkin-photo-card academy-checkin-capture-preview">
+                      <span>Selfie capturada</span>
+                      <img src={selfiePreviewUrl} alt="Selfie capturada para biometria" />
+                    </div>
+                  ) : null}
+                </section>
+
+                <section className={`academy-checkin-stage ${step === 3 ? 'is-active' : ''}`}>
+                  <div className="academy-checkin-stage-head">
+                    <strong>3) Validar/registrar</strong>
+                    <span>Somente biometria aprovada permite catraca.</span>
+                  </div>
+                  {biometricResult ? (
+                    <div className="academy-checkin-score-grid">
+                      <div>
+                        <span>Liveness</span>
+                        <strong>{formatScore(biometricResult.livenessScore)}</strong>
+                      </div>
+                      <div>
+                        <span>Face match</span>
+                        <strong>{formatScore(biometricResult.matchScore)}</strong>
+                      </div>
+                      <div>
+                        <span>Decisao</span>
+                        <strong>{biometricResult.decision === 'approved' ? 'Aprovada' : 'Reprovada'}</strong>
+                      </div>
+                    </div>
+                  ) : (
+                    <p className="subtle">Envie a selfie para receber o resultado biometrico.</p>
+                  )}
+                  <button
+                    type="button"
+                    className="button"
+                    onClick={handleRegisterEntry}
+                    disabled={!biometricResult || loading === 'register'}
+                  >
+                    {loading === 'register' ? 'Registrando...' : 'Registrar Entrada'}
+                  </button>
+                </section>
+
+                <section className={`academy-checkin-stage ${step === 4 ? 'is-active' : ''}`}>
+                  <div className="academy-checkin-stage-head">
+                    <strong>4) Liberar catraca</strong>
+                    <span>Backend valida entryId e decisao biometrica antes do comando.</span>
+                  </div>
+                  {entryRecord ? (
+                    <div className="academy-checkin-stage-note">
+                      <strong>entryId:</strong> {entryRecord.id}
+                    </div>
+                  ) : (
+                    <p className="subtle">Registre a entrada para gerar entryId.</p>
+                  )}
+                  {!canOpenTurnstile && entryRecord ? (
+                    <p className="subtle">Biometria nao aprovada. Catraca permanece bloqueada.</p>
+                  ) : null}
+                  <button
+                    type="button"
+                    className="button"
+                    onClick={handleOpenTurnstile}
+                    disabled={!canOpenTurnstile || loading === 'turnstile'}
+                  >
+                    {loading === 'turnstile' ? 'Abrindo...' : 'Abrir Catraca'}
+                  </button>
+                </section>
+
+                <section className={`academy-checkin-stage ${step === 5 ? 'is-active' : ''}`}>
+                  <div className="academy-checkin-stage-head">
+                    <strong>5) Confirmar</strong>
+                    <span>Resultado final da entrada e auditoria.</span>
+                  </div>
                   <div className="academy-checkin-score-grid">
                     <div>
-                      <span>Liveness</span>
-                      <strong>{formatScore(biometricResult.livenessScore)}</strong>
+                      <span>Aluno</span>
+                      <strong>{student ? `${student.name} (${student.id})` : '--'}</strong>
                     </div>
                     <div>
-                      <span>Face match</span>
-                      <strong>{formatScore(biometricResult.matchScore)}</strong>
+                      <span>Entrada</span>
+                      <strong>{entryRecord?.id || '--'}</strong>
                     </div>
                     <div>
-                      <span>Decisao</span>
-                      <strong>{biometricResult.decision === 'approved' ? 'Aprovada' : 'Reprovada'}</strong>
+                      <span>Catraca</span>
+                      <strong>
+                        {turnstileResult
+                          ? turnstileResult.opened
+                            ? 'Liberada'
+                            : 'Nao liberada'
+                          : entryRecord?.status === 'denied'
+                          ? 'Bloqueada'
+                          : '--'}
+                      </strong>
                     </div>
                   </div>
-                ) : (
-                  <p className="subtle">Envie a selfie para receber o resultado biometrico.</p>
-                )}
-                <button
-                  type="button"
-                  className="button"
-                  onClick={handleRegisterEntry}
-                  disabled={!biometricResult || loading === 'register'}
-                >
-                  {loading === 'register' ? 'Registrando...' : 'Registrar Entrada'}
-                </button>
-              </section>
+                  <button type="button" className="button secondary" onClick={handleResetFlow}>
+                    Nova Entrada
+                  </button>
+                </section>
+              </div>
+            </div>
 
-              <section className={`academy-checkin-stage ${step === 4 ? 'is-active' : ''}`}>
-                <div className="academy-checkin-stage-head">
-                  <strong>4) Liberar catraca</strong>
-                  <span>Backend valida entryId e decisao biometrica antes do comando.</span>
-                </div>
-                {entryRecord ? (
-                  <div className="academy-checkin-stage-note">
-                    <strong>entryId:</strong> {entryRecord.id}
+            <aside className="academy-checkin-side">
+              <section className="academy-checkin-side-card">
+                <p className="academy-checkin-side-kicker">Resumo rapido</p>
+                <h4>Visao operacional</h4>
+                <div className="academy-checkin-side-grid">
+                  <div>
+                    <span>Etapa atual</span>
+                    <strong>
+                      {step}. {currentStepLabel}
+                    </strong>
                   </div>
-                ) : (
-                  <p className="subtle">Registre a entrada para gerar entryId.</p>
-                )}
-                {!canOpenTurnstile && entryRecord ? (
-                  <p className="subtle">Biometria nao aprovada. Catraca permanece bloqueada.</p>
-                ) : null}
-                <button
-                  type="button"
-                  className="button"
-                  onClick={handleOpenTurnstile}
-                  disabled={!canOpenTurnstile || loading === 'turnstile'}
-                >
-                  {loading === 'turnstile' ? 'Abrindo...' : 'Abrir Catraca'}
-                </button>
-              </section>
-
-              <section className={`academy-checkin-stage ${step === 5 ? 'is-active' : ''}`}>
-                <div className="academy-checkin-stage-head">
-                  <strong>5) Confirmar</strong>
-                  <span>Resultado final da entrada e auditoria.</span>
-                </div>
-                <div className="academy-checkin-score-grid">
                   <div>
                     <span>Aluno</span>
-                    <strong>{student ? `${student.name} (${student.id})` : '--'}</strong>
+                    <strong>{student ? student.name : 'Aguardando leitura'}</strong>
                   </div>
                   <div>
-                    <span>Entrada</span>
-                    <strong>{entryRecord?.id || '--'}</strong>
+                    <span>Biometria</span>
+                    <strong>{biometricStatusLabel}</strong>
                   </div>
                   <div>
                     <span>Catraca</span>
-                    <strong>
-                      {turnstileResult
-                        ? turnstileResult.opened
-                          ? 'Liberada'
-                          : 'Nao liberada'
-                        : entryRecord?.status === 'denied'
-                        ? 'Bloqueada'
-                        : '--'}
-                    </strong>
+                    <strong>{turnstileStatusLabel}</strong>
                   </div>
                 </div>
-                <button type="button" className="button secondary" onClick={handleResetFlow}>
-                  Nova Entrada
-                </button>
+                <div className="academy-checkin-stage-note">
+                  <strong>Status:</strong> {statusMessage || 'Siga as etapas para concluir o check-in do aluno.'}
+                </div>
+                {errorMessage ? (
+                  <div className="academy-checkin-stage-note academy-checkin-stage-note-error">
+                    <strong>Atencao:</strong> {errorMessage}
+                  </div>
+                ) : null}
               </section>
-            </div>
+
+              <section className="academy-checkin-side-card">
+                <p className="academy-checkin-side-kicker">Recepcao</p>
+                <h4>Checklist rapido</h4>
+                <ul className="academy-checkin-side-list">
+                  <li>Confirme o studentId antes de continuar para a selfie.</li>
+                  <li>Capture selfie com boa luz e rosto centralizado.</li>
+                  <li>Somente biometria aprovada libera a catraca.</li>
+                  <li>Use "Nova Entrada" ao finalizar cada aluno.</li>
+                </ul>
+                <div className="academy-checkin-side-actions">
+                  {step === 1 && nfcSupported ? (
+                    <button
+                      type="button"
+                      className="button secondary"
+                      onClick={handleReadNfc}
+                      disabled={loading === 'nfc'}
+                    >
+                      {loading === 'nfc' ? 'Lendo NFC...' : 'Ler NFC agora'}
+                    </button>
+                  ) : null}
+                  <button type="button" className="button secondary" onClick={handleResetFlow}>
+                    Reiniciar fluxo
+                  </button>
+                </div>
+              </section>
+            </aside>
           </div>
         </div>
       </AcademyGate>

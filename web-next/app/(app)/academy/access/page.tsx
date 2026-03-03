@@ -129,6 +129,7 @@ export default function AcademyAccessPage() {
     reloadAcademy,
   } = useAcademyData();
   const [scope, setScope] = useState<AccessProfileScope>('academy-student');
+  const [scopeTouched, setScopeTouched] = useState(false);
   const [selectedProfileId, setSelectedProfileId] = useState('');
   const [biometricId, setBiometricId] = useState('');
   const [nfcTagId, setNfcTagId] = useState('');
@@ -211,6 +212,7 @@ export default function AcademyAccessPage() {
   );
 
   useEffect(() => {
+    if (scopeTouched) return;
     if (availableProfiles.length) return;
     const fallbackScope = PROFILE_SCOPE_ORDER.find((item) =>
       allProfiles.some((profile) => profile.kind === item)
@@ -218,7 +220,7 @@ export default function AcademyAccessPage() {
     if (fallbackScope && fallbackScope !== scope) {
       setScope(fallbackScope);
     }
-  }, [allProfiles, availableProfiles.length, scope]);
+  }, [allProfiles, availableProfiles.length, scope, scopeTouched]);
 
   useEffect(() => {
     if (!availableProfiles.length) {
@@ -644,7 +646,10 @@ export default function AcademyAccessPage() {
                     key={item}
                     type="button"
                     className={`academy-access-kind-button ${scope === item ? 'is-active' : ''}`}
-                    onClick={() => setScope(item)}
+                    onClick={() => {
+                      setScopeTouched(true);
+                      setScope(item);
+                    }}
                   >
                     {PROFILE_SCOPE_LABEL[item]}
                   </button>
