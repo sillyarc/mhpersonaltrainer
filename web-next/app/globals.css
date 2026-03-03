@@ -21030,142 +21030,154 @@
   }
 
   .academy-checkin-flow-page {
+    --checkin-ink: #10253a;
+    --checkin-muted: #546b83;
+    --checkin-border: rgba(16, 37, 58, 0.15);
+    --checkin-soft-surface: #f6f9fc;
     display: grid;
-    gap: 18px;
-    width: min(1320px, 100%);
+    gap: 24px;
+    width: min(1680px, 100%);
     margin: 0 auto;
-    padding: 8px 4px 18px;
+    padding: 14px 10px 30px;
+    color: var(--checkin-ink);
   }
 
   .academy-checkin-layout {
     display: grid;
-    grid-template-columns: minmax(0, 1.42fr) minmax(320px, 0.78fr);
-    gap: 18px;
+    grid-template-columns: minmax(0, 1.56fr) minmax(360px, 0.84fr);
+    gap: 24px;
     align-items: start;
   }
 
   .academy-checkin-modal.is-inline {
     width: 100%;
     margin: 0;
-    border-radius: 20px;
-    padding: 24px;
-    gap: 18px;
+    border-radius: 24px;
+    padding: 30px;
+    gap: 22px;
+    box-shadow: 0 24px 48px rgba(11, 29, 51, 0.14);
   }
 
   .academy-checkin-modal.is-inline .academy-checkin-header h3 {
-    margin-top: 4px;
-    font-size: clamp(1.2rem, 1.06rem + 0.46vw, 1.48rem);
+    margin-top: 6px;
+    font-size: clamp(1.34rem, 1.12rem + 0.62vw, 1.74rem);
     letter-spacing: 0.01em;
   }
 
   .academy-checkin-modal.is-inline .academy-checkin-body {
-    gap: 16px;
+    gap: 18px;
   }
 
   .academy-checkin-modal.is-inline .academy-checkin-status {
-    padding: 12px 14px;
-    border-radius: 14px;
-    font-size: 0.92rem;
+    padding: 14px 16px;
+    border-radius: 15px;
+    font-size: 1rem;
+    color: var(--checkin-muted);
+    background: var(--checkin-soft-surface);
+    border: 1px solid var(--checkin-border);
   }
 
   .academy-checkin-stepper {
     display: grid;
     grid-template-columns: repeat(5, minmax(0, 1fr));
-    gap: 10px;
+    gap: 12px;
   }
 
   .academy-checkin-step-chip {
-    border: 1px solid rgba(11, 29, 51, 0.14);
-    border-radius: 14px;
-    padding: 11px 12px;
+    border: 1px solid var(--checkin-border);
+    border-radius: 16px;
+    padding: 13px 14px;
     display: grid;
-    gap: 4px;
-    background: rgba(11, 29, 51, 0.04);
+    gap: 6px;
+    background: var(--checkin-soft-surface);
   }
 
   .academy-checkin-step-chip strong {
-    font-size: 0.9rem;
-    color: var(--hub-ink);
+    font-size: 0.98rem;
+    color: var(--checkin-ink);
   }
 
   .academy-checkin-step-chip span {
-    font-size: 0.79rem;
-    color: var(--hub-muted);
-    line-height: 1.2;
+    font-size: 0.88rem;
+    color: var(--checkin-muted);
+    line-height: 1.28;
   }
 
   .academy-checkin-step-chip.is-active {
-    border-color: rgba(37, 99, 235, 0.35);
-    background: rgba(37, 99, 235, 0.12);
+    border-color: rgba(37, 99, 235, 0.42);
+    background: rgba(37, 99, 235, 0.14);
+    box-shadow: 0 10px 20px rgba(37, 99, 235, 0.14);
   }
 
   .academy-checkin-step-chip.is-done {
-    border-color: rgba(16, 185, 129, 0.35);
-    background: rgba(16, 185, 129, 0.12);
+    border-color: rgba(16, 185, 129, 0.38);
+    background: rgba(16, 185, 129, 0.14);
   }
 
   .academy-checkin-step-chip.is-error {
-    border-color: rgba(239, 68, 68, 0.35);
-    background: rgba(239, 68, 68, 0.12);
+    border-color: rgba(239, 68, 68, 0.38);
+    background: rgba(239, 68, 68, 0.13);
   }
 
   .academy-checkin-stage {
-    border: 1px solid rgba(11, 29, 51, 0.12);
-    border-radius: 16px;
-    padding: 14px;
+    border: 1px solid var(--checkin-border);
+    border-radius: 18px;
+    padding: 17px;
     display: grid;
-    gap: 12px;
-    background: rgba(11, 29, 51, 0.03);
+    gap: 13px;
+    background: linear-gradient(180deg, #ffffff, #f8fbff);
+    box-shadow: 0 10px 24px rgba(11, 29, 51, 0.07);
   }
 
   .academy-checkin-stage.is-active {
-    border-color: rgba(11, 58, 106, 0.28);
-    background: rgba(11, 58, 106, 0.05);
-    box-shadow: inset 0 0 0 1px rgba(11, 58, 106, 0.08);
+    border-color: rgba(11, 58, 106, 0.32);
+    background: linear-gradient(180deg, rgba(226, 240, 255, 0.55), rgba(248, 251, 255, 0.95));
+    box-shadow: inset 0 0 0 1px rgba(11, 58, 106, 0.1), 0 12px 24px rgba(11, 58, 106, 0.08);
   }
 
   .academy-checkin-stage-head {
     display: flex;
     flex-wrap: wrap;
-    gap: 8px;
+    gap: 10px;
     align-items: baseline;
     justify-content: space-between;
   }
 
   .academy-checkin-stage-head strong {
-    color: var(--hub-ink);
-    font-size: 0.99rem;
+    color: var(--checkin-ink);
+    font-size: 1.03rem;
   }
 
   .academy-checkin-stage-head span {
-    color: var(--hub-muted);
-    font-size: 0.86rem;
+    color: var(--checkin-muted);
+    font-size: 0.92rem;
   }
 
   .academy-checkin-stage-note {
-    border-radius: 12px;
-    border: 1px solid rgba(11, 29, 51, 0.1);
-    background: rgba(255, 255, 255, 0.75);
-    padding: 10px 12px;
-    font-size: 0.88rem;
-    color: var(--hub-muted);
+    border-radius: 13px;
+    border: 1px solid var(--checkin-border);
+    background: #ffffff;
+    padding: 11px 13px;
+    font-size: 0.92rem;
+    color: var(--checkin-muted);
   }
 
   .academy-checkin-stage-note strong {
-    color: var(--hub-ink);
+    color: var(--checkin-ink);
   }
 
   .academy-checkin-stage-note.academy-checkin-stage-note-error {
-    border-color: rgba(185, 28, 28, 0.22);
-    background: rgba(254, 242, 242, 0.7);
+    border-color: rgba(185, 28, 28, 0.24);
+    background: rgba(254, 242, 242, 0.86);
     color: #991b1b;
   }
 
   .academy-checkin-modal.is-inline .academy-checkin-field input,
   .academy-checkin-modal.is-inline .academy-checkin-field select,
   .academy-checkin-modal.is-inline .academy-checkin-field textarea {
-    min-height: 44px;
-    padding: 11px 13px;
+    min-height: 48px;
+    padding: 12px 14px;
+    font-size: 0.95rem;
   }
 
   .academy-checkin-capture-preview {
@@ -21173,115 +21185,117 @@
   }
 
   .academy-checkin-modal.is-inline .academy-checkin-camera {
-    min-height: 220px;
-    border-radius: 16px;
+    min-height: 250px;
+    border-radius: 17px;
   }
 
   .academy-checkin-modal.is-inline .academy-checkin-camera video {
-    min-height: 220px;
+    min-height: 250px;
   }
 
   .academy-checkin-modal.is-inline .academy-checkin-actions-inline {
-    gap: 10px;
+    gap: 11px;
   }
 
   .academy-checkin-score-grid {
     display: grid;
-    gap: 10px;
+    gap: 12px;
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 
   .academy-checkin-score-grid > div {
-    border: 1px solid rgba(11, 29, 51, 0.14);
-    border-radius: 12px;
-    background: rgba(11, 29, 51, 0.04);
-    padding: 10px 12px;
+    border: 1px solid var(--checkin-border);
+    border-radius: 13px;
+    background: #f7fbff;
+    padding: 11px 13px;
     display: grid;
-    gap: 4px;
+    gap: 5px;
   }
 
   .academy-checkin-score-grid span {
-    color: var(--hub-muted);
-    font-size: 0.78rem;
+    color: var(--checkin-muted);
+    font-size: 0.84rem;
   }
 
   .academy-checkin-score-grid strong {
-    color: var(--hub-ink);
-    font-size: 0.92rem;
+    color: var(--checkin-ink);
+    font-size: 1.01rem;
   }
 
   .academy-checkin-side {
     display: grid;
-    gap: 14px;
+    gap: 16px;
     position: sticky;
-    top: 104px;
+    top: 98px;
   }
 
   .academy-checkin-side-card {
-    border: 1px solid rgba(11, 29, 51, 0.12);
-    border-radius: 18px;
-    padding: 16px;
-    background: rgba(11, 29, 51, 0.04);
+    border: 1px solid var(--checkin-border);
+    border-radius: 20px;
+    padding: 18px;
+    background: linear-gradient(180deg, #ffffff, #f3f8fd);
+    box-shadow: 0 18px 34px rgba(11, 29, 51, 0.11);
     display: grid;
-    gap: 12px;
+    gap: 14px;
   }
 
   .academy-checkin-side-kicker {
-    font-size: 0.72rem;
-    letter-spacing: 0.14em;
+    font-size: 0.74rem;
+    letter-spacing: 0.16em;
     text-transform: uppercase;
     font-weight: 700;
-    color: var(--hub-muted);
+    color: var(--checkin-muted);
   }
 
   .academy-checkin-side-card h4 {
-    font-size: 1.02rem;
-    color: var(--hub-ink);
+    font-size: 1.1rem;
+    color: var(--checkin-ink);
   }
 
   .academy-checkin-side-grid {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 10px;
+    gap: 11px;
   }
 
   .academy-checkin-side-grid > div {
-    border: 1px solid rgba(11, 29, 51, 0.12);
+    border: 1px solid var(--checkin-border);
     border-radius: 12px;
-    background: rgba(255, 255, 255, 0.72);
-    padding: 10px 11px;
+    background: #ffffff;
+    padding: 11px 12px;
     display: grid;
-    gap: 4px;
+    gap: 5px;
   }
 
   .academy-checkin-side-grid span {
-    color: var(--hub-muted);
-    font-size: 0.78rem;
+    color: var(--checkin-muted);
+    font-size: 0.81rem;
   }
 
   .academy-checkin-side-grid strong {
-    color: var(--hub-ink);
-    font-size: 0.89rem;
+    color: var(--checkin-ink);
+    font-size: 0.94rem;
   }
 
   .academy-checkin-side-list {
     margin: 0;
-    padding-left: 18px;
+    padding-left: 19px;
     display: grid;
-    gap: 8px;
-    color: var(--hub-muted);
-    font-size: 0.89rem;
+    gap: 9px;
+    color: var(--checkin-muted);
+    font-size: 0.93rem;
+    line-height: 1.4;
   }
 
   .academy-checkin-side-actions {
     display: flex;
     flex-wrap: wrap;
-    gap: 8px;
+    gap: 10px;
   }
 
   .academy-checkin-side-actions .button {
     flex: 1;
-    min-width: 160px;
+    min-width: 170px;
   }
 
   .academy-checkin-feedback-error {
@@ -39205,6 +39219,36 @@
   color: #a8bfdf !important;
 }
 
+:root[data-theme='dark'] .academy-ultra-blue-modal.academy-checkin-flow-page {
+  --checkin-ink: #e8efff;
+  --checkin-muted: #a8bfdf;
+  --checkin-border: rgba(110, 148, 205, 0.42);
+  --checkin-soft-surface: rgba(23, 53, 83, 0.78);
+}
+
+:root[data-theme='dark'] .academy-ultra-blue-modal .academy-checkin-step-chip,
+:root[data-theme='dark'] .academy-ultra-blue-modal .academy-checkin-score-grid > div {
+  background: rgba(23, 53, 83, 0.76);
+  border-color: rgba(110, 148, 205, 0.4);
+}
+
+:root[data-theme='dark'] .academy-ultra-blue-modal .academy-checkin-stage {
+  background: rgba(18, 43, 70, 0.84);
+  border-color: rgba(110, 148, 205, 0.38);
+  box-shadow: 0 14px 28px rgba(2, 8, 20, 0.4);
+}
+
+:root[data-theme='dark'] .academy-ultra-blue-modal .academy-checkin-stage.is-active {
+  background: rgba(24, 56, 92, 0.9);
+  border-color: rgba(122, 168, 255, 0.56);
+  box-shadow: inset 0 0 0 1px rgba(122, 168, 255, 0.28), 0 14px 26px rgba(2, 8, 20, 0.44);
+}
+
+:root[data-theme='dark'] .academy-ultra-blue-modal .academy-checkin-stage-note {
+  background: rgba(15, 38, 62, 0.88);
+  border-color: rgba(110, 148, 205, 0.34);
+}
+
 @media (max-width: 900px) {
   .academy-ultra-blue-page::before {
     inset: -24px -20px -60px;
@@ -39710,7 +39754,58 @@
 :root[data-theme='light'] .academy-ultra-blue-modal .academy-checkin-side-kicker,
 :root[data-theme='light'] .academy-ultra-blue-modal .academy-checkin-side-grid span,
 :root[data-theme='light'] .academy-ultra-blue-modal .academy-checkin-side-list {
-  color: #7f90a1;
+  color: #6f8194 !important;
+}
+
+:root[data-theme='light'] .academy-ultra-blue-modal :is(
+    .academy-checkin-header span,
+    .academy-checkin-field span,
+    .academy-checkin-toggle,
+    .academy-checkin-face-state span,
+    .academy-checkin-photo-card > span,
+    .academy-checkin-photo-card p,
+    .academy-checkin-stage-head span,
+    .academy-checkin-stage-note,
+    .academy-checkin-modal .subtle
+  ) {
+  color: #5c7084 !important;
+}
+
+:root[data-theme='light'] .academy-ultra-blue-modal :is(
+    .academy-checkin-header h3,
+    .academy-checkin-stage-head strong,
+    .academy-checkin-stage-note strong,
+    .academy-checkin-step-chip strong,
+    .academy-checkin-score-grid strong,
+    .academy-checkin-side-card h4,
+    .academy-checkin-side-grid strong
+  ) {
+  color: #1f3347 !important;
+}
+
+:root[data-theme='light'] .academy-ultra-blue-modal .academy-checkin-step-chip {
+  background: #edf3f8 !important;
+  border-color: rgba(36, 54, 71, 0.18) !important;
+}
+
+:root[data-theme='light'] .academy-ultra-blue-modal .academy-checkin-step-chip.is-active {
+  background: #dbe7f5 !important;
+  border-color: #8ea8c4 !important;
+}
+
+:root[data-theme='light'] .academy-ultra-blue-modal .academy-checkin-stage {
+  background: #ffffff !important;
+  border-color: rgba(36, 54, 71, 0.16) !important;
+}
+
+:root[data-theme='light'] .academy-ultra-blue-modal .academy-checkin-stage.is-active {
+  background: #f4f8fd !important;
+  border-color: #9fb1c3 !important;
+}
+
+:root[data-theme='light'] .academy-ultra-blue-modal .academy-checkin-stage-note {
+  background: #f6f9fc !important;
+  border-color: rgba(36, 54, 71, 0.14) !important;
 }
 
 :root[data-theme='light'] :is(.academy-billing-v10, .app-shell.app-shell-academy-blue .app-content .academy-billing-v10) {
