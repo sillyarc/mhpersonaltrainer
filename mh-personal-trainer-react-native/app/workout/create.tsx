@@ -772,6 +772,7 @@ export default function CreateWorkoutScreen() {
               onChangeText={setAerobicObservacoes}
               multiline
               numberOfLines={3}
+              autoGrow
             />
           </Card>
         )}

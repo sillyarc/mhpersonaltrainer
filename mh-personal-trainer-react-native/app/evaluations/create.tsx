@@ -1486,7 +1486,7 @@ export default function CreateEvaluationScreen() {
               />
             </TouchableOpacity>
             <Text style={[styles.headerTitle, { color: colors.text }]}>
-              {step === 'type' ? 'Nova avaliaÃ§Ã£o' : `AvaliaÃ§Ã£o ${getEvaluationTypeLabel(selectedType!)}`}
+              {step === 'type' ? 'Nova avaliação' : `Avaliação ${getEvaluationTypeLabel(selectedType!)}`}
             </Text>
             <View style={{ width: 40 }} />
           </View>

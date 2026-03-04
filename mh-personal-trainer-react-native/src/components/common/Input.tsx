@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   View,
   TextInput,
@@ -7,6 +7,8 @@ import {
   TouchableOpacity,
   ViewStyle,
   TextStyle,
+  NativeSyntheticEvent,
+  TextInputContentSizeChangeEventData,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../../hooks/useTheme';
@@ -23,6 +25,7 @@ interface InputProps {
   autoCapitalize?: 'none' | 'sentences' | 'words' | 'characters';
   multiline?: boolean;
   numberOfLines?: number;
+  autoGrow?: boolean;
   disabled?: boolean;
   readOnly?: boolean;
   icon?: keyof typeof Ionicons.glyphMap;
@@ -44,6 +47,7 @@ export function Input({
   autoCapitalize = 'none',
   multiline = false,
   numberOfLines = 1,
+  autoGrow = false,
   disabled = false,
   readOnly = false,
   icon,
@@ -56,6 +60,14 @@ export function Input({
   const { colors } = useTheme();
   const [isFocused, setIsFocused] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
+  const minMultilineHeight = useMemo(() => Math.max(1, numberOfLines) * 24, [numberOfLines]);
+  const [multilineHeight, setMultilineHeight] = useState(minMultilineHeight);
+
+  useEffect(() => {
+    if (multiline && autoGrow) {
+      setMultilineHeight(minMultilineHeight);
+    }
+  }, [autoGrow, minMultilineHeight, multiline]);
 
   const handleFocus = () => {
     setIsFocused(true);
@@ -73,6 +85,15 @@ export function Input({
     return colors.border;
   };
 
+  const handleContentSizeChange = (
+    event: NativeSyntheticEvent<TextInputContentSizeChangeEventData>
+  ) => {
+    if (!multiline || !autoGrow) return;
+    const contentHeight = Math.ceil(event.nativeEvent.contentSize.height);
+    if (!Number.isFinite(contentHeight) || contentHeight <= 0) return;
+    setMultilineHeight(Math.max(minMultilineHeight, contentHeight + spacing.sm));
+  };
+
   return (
     <View style={[styles.container, style]}>
       {label && (
@@ -84,6 +105,7 @@ export function Input({
           {
             borderColor: getBorderColor(),
             backgroundColor: colors.surface,
+            alignItems: multiline ? 'flex-start' : 'center',
           },
           disabled && styles.disabled,
         ]}
@@ -100,7 +122,11 @@ export function Input({
           style={[
             styles.input,
             { color: colors.text },
-            multiline && { height: numberOfLines * 24, textAlignVertical: 'top' },
+            multiline && {
+              minHeight: minMultilineHeight,
+              height: autoGrow ? multilineHeight : minMultilineHeight,
+              textAlignVertical: 'top',
+            },
             inputStyle,
           ]}
           placeholder={placeholder}
@@ -112,6 +138,7 @@ export function Input({
           autoCapitalize={autoCapitalize}
           multiline={multiline}
           numberOfLines={numberOfLines}
+          onContentSizeChange={handleContentSizeChange}
           editable={!disabled && !readOnly}
           onFocus={handleFocus}
           onBlur={handleBlur}

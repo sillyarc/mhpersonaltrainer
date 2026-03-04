@@ -106,11 +106,11 @@ export default function EvaluationDetailScreen() {
   const chargeableTypes: EvaluationType[] = ['fisica', 'personalizada', 'postural'];
   const isPersonal = role === 'personal' || role === 'professor';
   const hasPremiumAiAccess = isPremiumUserRecord((user || {}) as Record<string, any>);
-  const premiumPageTop = '#071A2D';
-  const premiumPageBottom = '#0E243B';
-  const premiumCard = '#0B1626';
-  const premiumSurface = '#10253C';
-  const premiumBorder = 'rgba(149, 209, 255, 0.18)';
+  const premiumPageTop = '#FFFFFF';
+  const premiumPageBottom = '#F5F9FD';
+  const premiumCard = '#FFFFFF';
+  const premiumSurface = '#F7FAFF';
+  const premiumBorder = '#E3EBF3';
 
   useEffect(() => {
     loadEvaluation();
@@ -2212,7 +2212,7 @@ export default function EvaluationDetailScreen() {
       style={styles.container}
     >
       <SafeAreaView style={styles.container}>
-        <View style={[styles.header, { borderBottomColor: premiumBorder, backgroundColor: 'rgba(5, 16, 30, 0.7)' }]}>
+        <View style={[styles.header, { borderBottomColor: premiumBorder, backgroundColor: '#FFFFFF' }]}>
           <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
             <Ionicons name="arrow-back" size={24} color={colors.text} />
           </TouchableOpacity>
@@ -2286,7 +2286,7 @@ function InsightMetricBar({ label, value }: { label: string; value: number }) {
           {Math.round(safeValue)}%
         </Text>
       </View>
-      <View style={[styles.aiMetricTrack, { backgroundColor: '#10253C' }]}>
+      <View style={[styles.aiMetricTrack, { backgroundColor: '#E7EEF6' }]}>
         <View
           style={[
             styles.aiMetricFill,
@@ -2332,21 +2332,21 @@ const styles = StyleSheet.create({
   },
   overviewCard: {
     marginBottom: spacing.lg,
-    backgroundColor: '#0B1626',
+    backgroundColor: '#FFFFFF',
     borderWidth: 1,
-    borderColor: 'rgba(149, 209, 255, 0.18)',
+    borderColor: '#E3EBF3',
   },
   chargeCard: {
     marginBottom: spacing.lg,
-    backgroundColor: '#0B1626',
+    backgroundColor: '#FFFFFF',
     borderWidth: 1,
-    borderColor: 'rgba(149, 209, 255, 0.18)',
+    borderColor: '#E3EBF3',
   },
   aiCard: {
     marginBottom: spacing.lg,
-    backgroundColor: '#0B1626',
+    backgroundColor: '#FFFFFF',
     borderWidth: 1,
-    borderColor: 'rgba(149, 209, 255, 0.18)',
+    borderColor: '#E3EBF3',
   },
   aiHeader: {
     flexDirection: 'row',
@@ -2451,9 +2451,9 @@ const styles = StyleSheet.create({
   },
   chartCard: {
     marginBottom: spacing.lg,
-    backgroundColor: '#0B1626',
+    backgroundColor: '#FFFFFF',
     borderWidth: 1,
-    borderColor: 'rgba(149, 209, 255, 0.18)',
+    borderColor: '#E3EBF3',
   },
   chartTitle: {
     fontSize: 16,
@@ -2563,9 +2563,9 @@ const styles = StyleSheet.create({
   },
   section: {
     marginBottom: spacing.lg,
-    backgroundColor: '#0B1626',
+    backgroundColor: '#FFFFFF',
     borderWidth: 1,
-    borderColor: 'rgba(149, 209, 255, 0.18)',
+    borderColor: '#E3EBF3',
   },
   sectionTitle: {
     fontSize: 16,
@@ -2809,7 +2809,7 @@ const styles = StyleSheet.create({
   testResultItem: {
     paddingVertical: spacing.md,
     borderBottomWidth: 1,
-    borderBottomColor: 'rgba(149, 209, 255, 0.18)',
+    borderBottomColor: '#E3EBF3',
   },
   testResultHeader: {
     flexDirection: 'row',
