@@ -8,6 +8,7 @@ import {
   ScrollView,
   KeyboardAvoidingView,
   Platform,
+  Keyboard,
 } from 'react-native';
 import { showAlert } from '@utils/alert';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -129,6 +130,17 @@ export default function AIChatScreen() {
       flatListRef.current?.scrollToEnd({ animated: true });
     }, 100);
   }, []);
+
+  useEffect(() => {
+    const showSubscription = Keyboard.addListener('keyboardDidShow', scrollToBottom);
+    const hideSubscription = Keyboard.addListener('keyboardDidHide', () => {
+      setTimeout(() => scrollToBottom(), 60);
+    });
+    return () => {
+      showSubscription.remove();
+      hideSubscription.remove();
+    };
+  }, [scrollToBottom]);
 
   useEffect(() => {
     if (!user?.uid) return;
@@ -1863,6 +1875,7 @@ const WEEKDAY_OPTIONS = [
 
       <ChatInput
         onSend={handleSend}
+        onAfterSend={scrollToBottom}
         disabled={isLoading || !conversationId}
         loading={isLoading}
         placeholder="Pergunte algo ao assistente..."
@@ -2006,5 +2019,4 @@ const styles = StyleSheet.create({
     flex: 1,
   },
 });
-
 

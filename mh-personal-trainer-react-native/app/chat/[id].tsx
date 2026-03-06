@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { View, Text, StyleSheet, FlatList, TouchableOpacity, KeyboardAvoidingView, Platform } from 'react-native';
+import { View, Text, StyleSheet, FlatList, TouchableOpacity, KeyboardAvoidingView, Platform, Keyboard } from 'react-native';
 import { showAlert, AlertButton } from '@utils/alert';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router, useLocalSearchParams } from 'expo-router';
@@ -51,9 +51,9 @@ const EXTRA_REACTION_OPTIONS = [
 export default function ChatDetailScreen() {
   const { colors } = useTheme();
   const { user, role } = useAuthStore();
+  const insets = useSafeAreaInsets();
   const { id, name, avatar } = useLocalSearchParams<{ id: string; name?: string; avatar?: string }>();
   const flatListRef = useRef<FlatList>(null);
-  const insets = useSafeAreaInsets();
 
   const [messages, setMessages] = useState<Message[]>([]);
   const [headerName, setHeaderName] = useState(name || 'Conversa');
@@ -157,6 +157,17 @@ export default function ChatDetailScreen() {
       if (meta?.photoUrl) setHeaderAvatar(meta.photoUrl);
     });
   }, [conversationId, user?.uid]);
+
+  useEffect(() => {
+    const showSubscription = Keyboard.addListener('keyboardDidShow', scrollToBottom);
+    const hideSubscription = Keyboard.addListener('keyboardDidHide', () => {
+      setTimeout(() => scrollToBottom(), 60);
+    });
+    return () => {
+      showSubscription.remove();
+      hideSubscription.remove();
+    };
+  }, [scrollToBottom]);
 
   const handleMenuPress = () => {
     if (!conversationId) return;
@@ -334,6 +345,7 @@ export default function ChatDetailScreen() {
             renderItem={renderMessage}
             keyExtractor={(item) => item.id}
             keyboardShouldPersistTaps="handled"
+            keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'}
             contentContainerStyle={[
               styles.messagesList,
               { paddingBottom: spacing.md + insets.bottom + 8 },
@@ -356,6 +368,7 @@ export default function ChatDetailScreen() {
 
         <ChatInput
           onSend={handleSend}
+          onAfterSend={scrollToBottom}
           disabled={isSending}
           loading={isSending}
           placeholder="Digite sua mensagem..."
@@ -400,6 +413,7 @@ const styles = StyleSheet.create({
   messagesList: {
     paddingVertical: spacing.md,
     flexGrow: 1,
+    justifyContent: 'flex-end',
   },
   emptyContainer: {
     flex: 1,

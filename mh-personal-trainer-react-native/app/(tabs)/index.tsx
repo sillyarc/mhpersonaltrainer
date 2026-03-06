@@ -62,6 +62,17 @@ const hasValidPersonalCode = (code?: string | number | null) => {
   return false;
 };
 
+const DEFAULT_PERSONAL_INVITE_BASE = 'https://mhpersonaltrainer.com.br/invite';
+
+const buildPersonalInviteLink = (base: string, code: string) => {
+  const trimmedBase = base.trim();
+  const trimmedCode = code.trim();
+  if (!trimmedBase || !trimmedCode) return '';
+  const normalizedBase = trimmedBase.endsWith('/') ? trimmedBase.slice(0, -1) : trimmedBase;
+  const joiner = normalizedBase.includes('?') ? '&' : '?';
+  return `${normalizedBase}${joiner}code=${encodeURIComponent(trimmedCode)}`;
+};
+
 const ACTIVE_SUBSCRIPTION_STATUSES = new Set(['active', 'trialing', 'past_due']);
 
 const formatSubscriptionDateLabel = (value?: any) => {
@@ -1493,6 +1504,16 @@ interface PersonalHomeProps extends BaseHomeProps {
 function PersonalHomeScreen({ padding, refreshing, onRefresh, alunos, stats, error }: PersonalHomeProps) {
   const { colors, typography, spacing, borderRadius } = useTheme();
   const { user } = useAuthStore();
+  const [personalCode, setPersonalCode] = useState('');
+  const [upcomingEvaluations, setUpcomingEvaluations] = useState<Array<{
+    id: string;
+    studentId: string;
+    nome: string;
+    tipo: string;
+    horario: string;
+    photoUrl?: string;
+    personalPhotoUrl?: string;
+  }>>([]);
 
   const now = new Date();
   const totalAlunos = stats?.totalAlunos ?? alunos.length;
@@ -1508,15 +1529,57 @@ function PersonalHomeScreen({ padding, refreshing, onRefresh, alunos, stats, err
   const evolucao = totalAlunos > 0 ? Math.round((alunosComTreino / totalAlunos) * 100) : 0;
   const firstName = user?.displayName?.split(' ')[0] || 'Personal';
   const recentAlunos = alunos.slice(0, 5);
-  const [upcomingEvaluations, setUpcomingEvaluations] = useState<Array<{
-    id: string;
-    studentId: string;
-    nome: string;
-    tipo: string;
-    horario: string;
-    photoUrl?: string;
-    personalPhotoUrl?: string;
-  }>>([]);
+  const inviteLink = useMemo(
+    () =>
+      buildPersonalInviteLink(
+        process.env.EXPO_PUBLIC_APP_INVITE_URL || DEFAULT_PERSONAL_INVITE_BASE,
+        personalCode
+      ),
+    [personalCode]
+  );
+
+  useEffect(() => {
+    if (!user?.uid) {
+      setPersonalCode('');
+      return;
+    }
+
+    let active = true;
+    firestoreService.getCodigoPersonal(user.uid)
+      .then((code) => {
+        if (!active) return;
+        const resolved = String(code ?? user?.codigoPersonal ?? '').trim();
+        setPersonalCode(resolved && resolved !== '0' ? resolved : '');
+      })
+      .catch(() => {
+        if (!active) return;
+        const fallback = String(user?.codigoPersonal ?? '').trim();
+        setPersonalCode(fallback && fallback !== '0' ? fallback : '');
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [user?.codigoPersonal, user?.uid]);
+
+  const handleShareInviteLink = useCallback(async () => {
+    if (!inviteLink || !personalCode) {
+      showAlert('Link indisponivel', 'Defina seu codigo do personal para gerar o link de cadastro.');
+      return;
+    }
+    try {
+      await Share.share({
+        title: 'Convite MH Personal Trainer',
+        message: [
+          'Vamos treinar juntos no MH Personal Trainer.',
+          `Use meu codigo ${personalCode} para criar sua conta.`,
+          inviteLink,
+        ].join('\n'),
+      });
+    } catch (err: any) {
+      showAlert('Erro', err?.message || 'Nao foi possivel compartilhar o link de cadastro.');
+    }
+  }, [inviteLink, personalCode]);
 
   const formatUpcomingDate = (date: Date) => {
     const today = new Date();
@@ -1702,6 +1765,76 @@ function PersonalHomeScreen({ padding, refreshing, onRefresh, alunos, stats, err
             <Ionicons name="cash-outline" size={26} color={colors.primary} />
             <Text style={[{ color: colors.primaryText, marginTop: spacing.sm, textAlign: 'center' }, typography.labelSmall]}>
               Assinatura
+            </Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+
+      <View style={[styles.section, { paddingHorizontal: padding }]}>
+        <View
+          style={[
+            styles.sectionCard,
+            {
+              backgroundColor: colors.secondaryBackground,
+              borderRadius: borderRadius.lg,
+              padding: spacing.lg,
+            },
+          ]}
+        >
+          <Text style={[{ color: colors.primaryText }, typography.titleMedium]}>Link de cadastro</Text>
+          <Text
+            style={[
+              styles.personalInviteDescription,
+              { color: colors.secondaryText, marginTop: spacing.xs },
+              typography.bodySmall,
+            ]}
+          >
+            Envie para o aluno criar conta ja vinculado ao seu codigo.
+          </Text>
+          <View
+            style={[
+              styles.personalInviteLinkBox,
+              {
+                backgroundColor: colors.primaryBackground,
+                borderColor: colors.border,
+                borderRadius: borderRadius.md,
+                marginTop: spacing.sm,
+              },
+            ]}
+          >
+            <Text
+              numberOfLines={1}
+              style={[{ color: inviteLink ? colors.primaryText : colors.secondaryText }, typography.labelSmall]}
+            >
+              {inviteLink || 'Defina seu codigo para gerar o link de cadastro.'}
+            </Text>
+          </View>
+          <TouchableOpacity
+            style={[
+              styles.personalInviteButton,
+              {
+                backgroundColor: inviteLink ? colors.primary : colors.primaryBackground,
+                borderColor: inviteLink ? colors.primary : colors.border,
+                borderRadius: borderRadius.md,
+                marginTop: spacing.md,
+              },
+            ]}
+            onPress={handleShareInviteLink}
+            disabled={!inviteLink}
+          >
+            <Ionicons
+              name="share-social-outline"
+              size={16}
+              color={inviteLink ? colors.info : colors.secondaryText}
+            />
+            <Text
+              style={[
+                styles.personalInviteButtonText,
+                { color: inviteLink ? colors.info : colors.secondaryText },
+                typography.labelMedium,
+              ]}
+            >
+              Compartilhar link
             </Text>
           </TouchableOpacity>
         </View>
@@ -5880,6 +6013,25 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 8,
   },
+  personalInviteDescription: {
+    lineHeight: 18,
+  },
+  personalInviteLinkBox: {
+    borderWidth: 1,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+  },
+  personalInviteButton: {
+    borderWidth: 1,
+    paddingVertical: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexDirection: 'row',
+    gap: 8,
+  },
+  personalInviteButtonText: {
+    fontWeight: '700',
+  },
   performanceRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -7896,5 +8048,4 @@ const styles = StyleSheet.create({
     fontWeight: '800',
   },
 });
-
 

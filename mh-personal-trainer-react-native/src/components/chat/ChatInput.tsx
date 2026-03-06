@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -6,7 +6,7 @@ import {
   TouchableOpacity,
   StyleSheet,
   ActivityIndicator,
-  Platform,
+  Keyboard,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -23,6 +23,7 @@ interface ChatInputProps {
     content: string;
   } | null;
   onCancelReply?: () => void;
+  onAfterSend?: () => void;
 }
 
 export function ChatInput({
@@ -32,23 +33,27 @@ export function ChatInput({
   placeholder = 'Digite sua mensagem...',
   replyTo,
   onCancelReply,
+  onAfterSend,
 }: ChatInputProps) {
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
   const [message, setMessage] = useState('');
+  const inputRef = useRef<TextInput>(null);
 
   const handleSend = () => {
     const trimmed = message.trim();
     if (trimmed && !disabled && !loading) {
       onSend(trimmed);
       setMessage('');
+      onAfterSend?.();
+      inputRef.current?.blur();
+      Keyboard.dismiss();
     }
   };
 
   const canSend = message.trim().length > 0 && !disabled && !loading;
 
-  const bottomPadding =
-    Platform.OS === 'ios' ? Math.max(insets.bottom, spacing.sm) : 0;
+  const bottomPadding = Math.max(insets.bottom, spacing.sm);
 
   return (
     <View
@@ -83,6 +88,7 @@ export function ChatInput({
       ) : null}
       <View style={[styles.inputContainer, { backgroundColor: colors.surface }]}>
         <TextInput
+          ref={inputRef}
           style={[styles.input, { color: colors.text }]}
           value={message}
           onChangeText={setMessage}

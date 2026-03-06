@@ -1,6 +1,10 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity } from 'react-native';
 import { showAlert } from '@utils/alert';
+import {
+  buildExerciseNameLookup,
+  resolveExerciseVideoUrlByName,
+} from '@utils/exerciseLookup';
 import { coerceMetricValue } from '@utils/workoutMetrics';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router, useLocalSearchParams } from 'expo-router';
@@ -10,7 +14,12 @@ import { Button, Loading } from '../../src/components/common';
 import { ExerciseCard } from '../../src/components/workout/ExerciseCard';
 import { spacing, borderRadius } from '../../src/theme';
 import { WorkoutExercise } from '../../src/types/workout';
-import { fetchAvailableExercises, fetchUserWorkoutById, archiveUserWorkout } from '../../src/services/workouts';
+import {
+  fetchAvailableExercises,
+  fetchUserWorkoutById,
+  archiveUserWorkout,
+  updateUserWorkout,
+} from '../../src/services/workouts';
 import { useAuthStore } from '../../src/store/authStore';
 
 interface WorkoutDetail {
@@ -30,8 +39,6 @@ export default function WorkoutDetailScreen() {
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
 
-  const normalizeName = (value: string) => value.trim().toLowerCase();
-
   const targetUserId = studentId || user?.uid;
   const isPersonal = role === 'personal' || role === 'professor';
 
@@ -43,47 +50,58 @@ export default function WorkoutDetailScreen() {
       }
       const result = await fetchUserWorkoutById(targetUserId, id);
       if (result.data) {
-        const storedVideoUrls = result.data.videoUrls || [];
-        let videoUrlByName = new Map<string, string>();
-        const needsVideoFallback = (result.data.treino || []).some(
-          (treino, index) => !storedVideoUrls[index] && treino
+        const loadedWorkout = result.data;
+        const storedVideoUrls = loadedWorkout.videoUrls || [];
+        const normalizedStoredVideoUrls = storedVideoUrls.map((item) =>
+          typeof item === 'string' ? item.trim() : ''
         );
-        if (needsVideoFallback) {
+        let exerciseLookup = buildExerciseNameLookup([]);
+        const workoutEntries = loadedWorkout.treino || [];
+        if (workoutEntries.length > 0) {
           const exercisesResult = await fetchAvailableExercises();
           if (exercisesResult.data) {
-            exercisesResult.data.forEach((exercise) => {
-              const resolvedUrl =
-                exercise.videoUrl1080 || exercise.videoUrl720 || exercise.videoUrl;
-              if (resolvedUrl) {
-                videoUrlByName.set(normalizeName(exercise.nomeDoTreino), resolvedUrl);
-              }
-            });
+            exerciseLookup = buildExerciseNameLookup(exercisesResult.data);
           }
         }
-        const exercises: WorkoutExercise[] = (result.data.treino || []).map((name, index) => ({
-          videoUrl:
-            storedVideoUrls[index] ||
-            videoUrlByName.get(normalizeName(name)) ||
-            undefined,
-          exerciseId: `${result.data.id}-${index}`,
-          nome: name,
-          series: coerceMetricValue(result.data.seriesRep?.[index], 3),
-          repeticoes: coerceMetricValue(result.data.repeticoes?.[index], 12),
-          carga: coerceMetricValue(result.data.carga?.[index], 0),
-          intervalo: coerceMetricValue(result.data.intervalo?.[index], 60),
-        }));
-        const lastCompletedAt = result.data.lastCompletedAt ? new Date(result.data.lastCompletedAt) : null;
+        const resolvedVideoUrls: string[] = [];
+        const exercises: WorkoutExercise[] = workoutEntries.map((rawName, index) => {
+          const name = typeof rawName === 'string' ? rawName : String(rawName || '');
+          const resolvedVideoUrl = resolveExerciseVideoUrlByName(
+            name,
+            normalizedStoredVideoUrls[index] || '',
+            exerciseLookup
+          );
+          resolvedVideoUrls[index] = resolvedVideoUrl || '';
+          return {
+            videoUrl: resolvedVideoUrl,
+            exerciseId: `${loadedWorkout.id}-${index}`,
+            nome: name,
+            series: coerceMetricValue(loadedWorkout.seriesRep?.[index], 3),
+            repeticoes: coerceMetricValue(loadedWorkout.repeticoes?.[index], 12),
+            carga: coerceMetricValue(loadedWorkout.carga?.[index], 0),
+            intervalo: coerceMetricValue(loadedWorkout.intervalo?.[index], 60),
+          };
+        });
+        const shouldSyncVideoUrls =
+          resolvedVideoUrls.length > 0 &&
+          resolvedVideoUrls.some((url, index) => url !== (normalizedStoredVideoUrls[index] || ''));
+        if (shouldSyncVideoUrls) {
+          void updateUserWorkout(targetUserId, loadedWorkout.id, {
+            videoUrls: resolvedVideoUrls,
+          });
+        }
+        const lastCompletedAt = loadedWorkout.lastCompletedAt ? new Date(loadedWorkout.lastCompletedAt) : null;
         const today = new Date();
         const completedToday = !!lastCompletedAt
           && lastCompletedAt.getFullYear() === today.getFullYear()
           && lastCompletedAt.getMonth() === today.getMonth()
           && lastCompletedAt.getDate() === today.getDate();
         setWorkout({
-          id: result.data.id,
-          name: result.data.nomeDoTreino,
-          description: result.data.obsInstrucao || 'Treino personalizado',
+          id: loadedWorkout.id,
+          name: loadedWorkout.nomeDoTreino,
+          description: loadedWorkout.obsInstrucao || 'Treino personalizado',
           exercises,
-          isArchived: !!result.data.arquivos,
+          isArchived: !!loadedWorkout.arquivos,
           completedToday,
         });
       }

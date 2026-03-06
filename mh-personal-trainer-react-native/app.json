@@ -28,6 +28,7 @@
         "backgroundColor": "#1a1a2e"
       },
       "backgroundColor": "#1D2428",
+      "softwareKeyboardLayoutMode": "resize",
       "package": "com.mycompany.mfitfitnessapp",
       "edgeToEdgeEnabled": true,
       "versionCode": 111,
@@ -88,4 +89,3 @@
     }
   }
 }
-

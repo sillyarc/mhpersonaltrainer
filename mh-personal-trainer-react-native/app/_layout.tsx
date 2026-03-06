@@ -1,7 +1,8 @@
 import React, { useEffect, useMemo, useRef } from 'react';
-import { Linking, Platform, Pressable, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
+import { AppState, Linking, Platform, Pressable, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
+import * as NavigationBar from 'expo-navigation-bar';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { PaperProvider, MD3DarkTheme, MD3LightTheme } from 'react-native-paper';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
@@ -160,6 +161,31 @@ export default function RootLayout() {
     }
   }, [language]);
 
+  useEffect(() => {
+    if (Platform.OS !== 'android') return;
+
+    const applyImmersiveMode = async () => {
+      try {
+        await NavigationBar.setPositionAsync('absolute');
+        await NavigationBar.setBackgroundColorAsync('#00000000');
+        await NavigationBar.setBehaviorAsync('overlay-swipe');
+        await NavigationBar.setVisibilityAsync('hidden');
+      } catch {
+        // Ignore unsupported devices or runtime limitations.
+      }
+    };
+
+    void applyImmersiveMode();
+
+    const appStateSubscription = AppState.addEventListener('change', (state) => {
+      if (state === 'active') {
+        void applyImmersiveMode();
+      }
+    });
+
+    return () => appStateSubscription.remove();
+  }, []);
+
   if (Platform.OS === 'web' && !allowWeb) {
     return (
       <View style={styles.webGate}>
@@ -202,6 +228,7 @@ export default function RootLayout() {
           <QueryClientProvider client={queryClient}>
             <PaperProvider theme={paperTheme}>
               <StatusBar
+                hidden={Platform.OS !== 'web'}
                 style={colorScheme === 'dark' ? 'light' : 'dark'}
                 backgroundColor={colors.background}
               />

@@ -57,7 +57,7 @@ export default function ProfileScreen() {
       ? [
           {
             icon: 'key-outline',
-            label: 'CÃ³digo do personal',
+            label: 'código do personal',
             route: '/personal/change-code',
           },
         ]
@@ -392,4 +392,3 @@ const styles = StyleSheet.create({
     marginBottom: spacing.xl,
   },
 });
-

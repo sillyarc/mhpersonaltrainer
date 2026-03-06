@@ -281,7 +281,7 @@ export async function fetchWorkoutProgress(
   }
 }
 
-export async function fetchAvailableExercises(category?: string): Promise<QueryResult<any[]>> {
+export async function fetchAvailableExercises(category?: string): Promise<QueryResult<Exercise[]>> {
   try {
     const exercisesRef = collection(db, 'treinors');
     let q = query(exercisesRef);

@@ -16,6 +16,10 @@ import {
 import DraggableFlatList from 'react-native-draggable-flatlist';
 import { showAlert } from '@utils/alert';
 import {
+  buildExerciseNameLookup,
+  resolveExerciseVideoUrlByName,
+} from '@utils/exerciseLookup';
+import {
   coerceMetricValue,
   formatMetricText,
   formatMetricWithSuffix,
@@ -100,7 +104,6 @@ export default function CreateWorkoutScreen() {
     typeof studentId === 'string' ? studentId : null
   );
 
-  const normalizeName = (value: string) => value.trim().toLowerCase();
   const normalizeCategory = (value: string) =>
     value
       .normalize('NFD')
@@ -296,38 +299,49 @@ export default function CreateWorkoutScreen() {
       if (!isEditing || !targetUserId || !editId) return;
       const result = await fetchUserWorkoutById(targetUserId, editId);
       if (result.data) {
-        const storedVideoUrls = result.data.videoUrls || [];
-        let videoUrlByName = new Map<string, string>();
-        const needsVideoFallback = (result.data.treino || []).some(
-          (treino, index) => !storedVideoUrls[index] && treino
+        const loadedWorkout = result.data;
+        const storedVideoUrls = loadedWorkout.videoUrls || [];
+        const normalizedStoredVideoUrls = storedVideoUrls.map((item) =>
+          typeof item === 'string' ? item.trim() : ''
         );
-        if (needsVideoFallback) {
+        let exerciseLookup = buildExerciseNameLookup([]);
+        const workoutEntries = loadedWorkout.treino || [];
+        if (workoutEntries.length > 0) {
           const exercisesResult = await fetchAvailableExercises();
           if (exercisesResult.data) {
-            exercisesResult.data.forEach((exercise) => {
-              const resolvedUrl =
-                exercise.videoUrl1080 || exercise.videoUrl720 || exercise.videoUrl;
-              if (resolvedUrl) {
-                videoUrlByName.set(normalizeName(exercise.nomeDoTreino), resolvedUrl);
-              }
-            });
+            exerciseLookup = buildExerciseNameLookup(exercisesResult.data);
           }
         }
-        setName(result.data.nomeDoTreino || '');
-        setDescription(result.data.obsInstrucao || '');
-        setWorkoutDate(result.data.data || result.data.createdAt || new Date());
-        const mappedExercises: WorkoutExercise[] = (result.data.treino || []).map((treino, index) => ({
-          videoUrl:
-            storedVideoUrls[index] ||
-            videoUrlByName.get(normalizeName(treino)) ||
-            undefined,
-          exerciseId: `${result.data.id}-${index}`,
-          nome: treino,
-          series: coerceMetricValue(result.data.seriesRep?.[index], 3),
-          repeticoes: coerceMetricValue(result.data.repeticoes?.[index], 12),
-          carga: coerceMetricValue(result.data.carga?.[index], 0),
-          intervalo: coerceMetricValue(result.data.intervalo?.[index], 60),
-        }));
+        setName(loadedWorkout.nomeDoTreino || '');
+        setDescription(loadedWorkout.obsInstrucao || '');
+        setWorkoutDate(loadedWorkout.data || loadedWorkout.createdAt || new Date());
+        const resolvedVideoUrls: string[] = [];
+        const mappedExercises: WorkoutExercise[] = workoutEntries.map((rawName, index) => {
+          const treino = typeof rawName === 'string' ? rawName : String(rawName || '');
+          const resolvedVideoUrl = resolveExerciseVideoUrlByName(
+            treino,
+            normalizedStoredVideoUrls[index] || '',
+            exerciseLookup
+          );
+          resolvedVideoUrls[index] = resolvedVideoUrl || '';
+          return {
+            videoUrl: resolvedVideoUrl,
+            exerciseId: `${loadedWorkout.id}-${index}`,
+            nome: treino,
+            series: coerceMetricValue(loadedWorkout.seriesRep?.[index], 3),
+            repeticoes: coerceMetricValue(loadedWorkout.repeticoes?.[index], 12),
+            carga: coerceMetricValue(loadedWorkout.carga?.[index], 0),
+            intervalo: coerceMetricValue(loadedWorkout.intervalo?.[index], 60),
+          };
+        });
+        const shouldSyncVideoUrls =
+          resolvedVideoUrls.length > 0 &&
+          resolvedVideoUrls.some((url, index) => url !== (normalizedStoredVideoUrls[index] || ''));
+        if (shouldSyncVideoUrls) {
+          void updateUserWorkout(targetUserId, loadedWorkout.id, {
+            videoUrls: resolvedVideoUrls,
+          });
+        }
         setExercises(mappedExercises);
       }
     };

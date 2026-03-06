@@ -2,6 +2,10 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { AppState, View, Text, StyleSheet, ScrollView, TouchableOpacity, Modal, TextInput, KeyboardAvoidingView, Keyboard, Platform, TouchableWithoutFeedback, Image, Animated, Dimensions, PanResponder } from 'react-native';
 import { showAlert } from '@utils/alert';
 import {
+  buildExerciseNameLookup,
+  resolveExerciseVideoUrlByName,
+} from '@utils/exerciseLookup';
+import {
   coerceMetricValue,
   formatMetricText,
   toNumericMetric,
@@ -126,8 +130,6 @@ export default function StartWorkoutScreen() {
   ).current;
   const partyFloatingStartRef = useRef(getPartyFloatingDefault());
 
-  const normalizeName = (value: string) => value.trim().toLowerCase();
-
   const targetUserId = studentId || user?.uid;
   const resolvedWorkoutId = workoutId || id;
   const partyPanelLayout = useMemo(() => {
@@ -230,34 +232,44 @@ export default function StartWorkoutScreen() {
       const loadedWorkout = result.data;
       if (loadedWorkout) {
         const storedVideoUrls = loadedWorkout.videoUrls || [];
-        let videoUrlByName = new Map<string, string>();
-        const needsVideoFallback = (loadedWorkout.treino || []).some(
-          (treino, index) => !storedVideoUrls[index] && treino
+        const normalizedStoredVideoUrls = storedVideoUrls.map((item) =>
+          typeof item === 'string' ? item.trim() : ''
         );
-        if (needsVideoFallback) {
+        let exerciseLookup = buildExerciseNameLookup([]);
+        const workoutEntries = loadedWorkout.treino || [];
+        if (workoutEntries.length > 0) {
           const exercisesResult = await fetchAvailableExercises();
           if (exercisesResult.data) {
-            exercisesResult.data.forEach((exercise) => {
-              const resolvedUrl =
-                exercise.videoUrl1080 || exercise.videoUrl720 || exercise.videoUrl;
-              if (resolvedUrl) {
-                videoUrlByName.set(normalizeName(exercise.nomeDoTreino), resolvedUrl);
-              }
-            });
+            exerciseLookup = buildExerciseNameLookup(exercisesResult.data);
           }
         }
-        const exercises: WorkoutExercise[] = (loadedWorkout.treino || []).map((name, index) => ({
-          videoUrl:
-            storedVideoUrls[index] ||
-            videoUrlByName.get(normalizeName(name)) ||
-            undefined,
-          exerciseId: `${loadedWorkout.id}-${index}`,
-          nome: name,
-          series: coerceMetricValue(loadedWorkout.seriesRep?.[index], 3),
-          repeticoes: coerceMetricValue(loadedWorkout.repeticoes?.[index], 12),
-          carga: coerceMetricValue(loadedWorkout.carga?.[index], 0),
-          intervalo: coerceMetricValue(loadedWorkout.intervalo?.[index], 60),
-        }));
+        const resolvedVideoUrls: string[] = [];
+        const exercises: WorkoutExercise[] = workoutEntries.map((rawName, index) => {
+          const name = typeof rawName === 'string' ? rawName : String(rawName || '');
+          const resolvedVideoUrl = resolveExerciseVideoUrlByName(
+            name,
+            normalizedStoredVideoUrls[index] || '',
+            exerciseLookup
+          );
+          resolvedVideoUrls[index] = resolvedVideoUrl || '';
+          return {
+            videoUrl: resolvedVideoUrl,
+            exerciseId: `${loadedWorkout.id}-${index}`,
+            nome: name,
+            series: coerceMetricValue(loadedWorkout.seriesRep?.[index], 3),
+            repeticoes: coerceMetricValue(loadedWorkout.repeticoes?.[index], 12),
+            carga: coerceMetricValue(loadedWorkout.carga?.[index], 0),
+            intervalo: coerceMetricValue(loadedWorkout.intervalo?.[index], 60),
+          };
+        });
+        const shouldSyncVideoUrls =
+          resolvedVideoUrls.length > 0 &&
+          resolvedVideoUrls.some((url, index) => url !== (normalizedStoredVideoUrls[index] || ''));
+        if (shouldSyncVideoUrls) {
+          void updateUserWorkout(targetUserId, loadedWorkout.id, {
+            videoUrls: resolvedVideoUrls,
+          });
+        }
         const initialOverrides = exercises.reduce<Record<string, number>>((acc, exercise) => {
           acc[exercise.exerciseId] = normalizeWeight(toNumericMetric(exercise.carga, 0));
           return acc;
@@ -597,6 +609,15 @@ export default function StartWorkoutScreen() {
       sets: [],
       completed: false,
     };
+    if (currentProgress.completed) {
+      if (currentExerciseIndex < totalExercises - 1) {
+        setCurrentExerciseIndex((prev) => prev + 1);
+        setCurrentSetIndex(0);
+      } else {
+        handleFinishWorkout();
+      }
+      return;
+    }
 
     const newSet: SetProgress = {
       setNumber: currentSetIndex + 1,
@@ -641,20 +662,42 @@ export default function StartWorkoutScreen() {
     totalExercises,
   ]);
 
+  const handleSelectExercise = useCallback(
+    (index: number) => {
+      if (!workout) return;
+      const boundedIndex = Math.max(0, Math.min(index, workout.exercises.length - 1));
+      const selectedExercise = workout.exercises[boundedIndex];
+      if (!selectedExercise) return;
+
+      const totalSets = toNumericMetric(selectedExercise.series, 1);
+      const completedSets = exerciseProgress.get(selectedExercise.exerciseId)?.sets.length || 0;
+      const nextSetIndex =
+        completedSets >= totalSets ? Math.max(0, totalSets - 1) : completedSets;
+
+      setShowRestTimer(false);
+      setCurrentExerciseIndex(boundedIndex);
+      setCurrentSetIndex(nextSetIndex);
+    },
+    [exerciseProgress, workout]
+  );
+
   const handleRestComplete = () => {
     setShowRestTimer(false);
     const currentProgress = exerciseProgress.get(currentExercise?.exerciseId || '');
 
     if (currentProgress?.completed && currentExerciseIndex < totalExercises - 1) {
-      setCurrentExerciseIndex((prev) => prev + 1);
-      setCurrentSetIndex(0);
+      handleSelectExercise(currentExerciseIndex + 1);
     }
+  };
+
+  const handlePreviousExercise = () => {
+    if (currentExerciseIndex <= 0) return;
+    handleSelectExercise(currentExerciseIndex - 1);
   };
 
   const handleSkipExercise = () => {
     if (currentExerciseIndex < totalExercises - 1) {
-      setCurrentExerciseIndex((prev) => prev + 1);
-      setCurrentSetIndex(0);
+      handleSelectExercise(currentExerciseIndex + 1);
     } else {
       handleFinishWorkout();
     }
@@ -697,7 +740,7 @@ export default function StartWorkoutScreen() {
       clearPartyPresence();
       showAlert(
         'Finalizar treino',
-        `ParabÃ©ns! VoÃ§Ãª completou ${completedExercises} de ${totalExercises} exercÃ­cios em ${formatDuration(elapsedSeconds)}.`,
+        `ParabÃƒÆ’Ã‚Â©ns! VoÃƒÆ’Ã‚Â§ÃƒÆ’Ã‚Âª completou ${completedExercises} de ${totalExercises} exercÃƒÆ’Ã‚Â­cios em ${formatDuration(elapsedSeconds)}.`,
         [
           {
             text: 'Ver resumo',
@@ -732,8 +775,8 @@ export default function StartWorkoutScreen() {
     clearPartyPresence();
     setShowFeedbackModal(false);
     showAlert(
-      'Treino concluÃ­do',
-      `ParabÃ©ns! VoÃ§Ãª completou ${completedExercises} de ${totalExercises} exercÃ­cios em ${formatDuration(elapsedSeconds)}.`,
+      'Treino concluÃƒÆ’Ã‚Â­do',
+      `ParabÃƒÆ’Ã‚Â©ns! VoÃƒÆ’Ã‚Â§ÃƒÆ’Ã‚Âª completou ${completedExercises} de ${totalExercises} exercÃƒÆ’Ã‚Â­cios em ${formatDuration(elapsedSeconds)}.`,
       [{ text: 'Fechar', onPress: () => router.back() }]
     );
   };
@@ -741,7 +784,7 @@ export default function StartWorkoutScreen() {
   const handleCancelWorkout = () => {
     showAlert(
       'Cancelar treino',
-      'Tem certeza que deseja cancelar o treino? Seu progresso serÃ¡ perdido.',
+      'Tem certeza que deseja cancelar o treino? Seu progresso serÃƒÆ’Ã‚Â¡ perdido.',
       [
         { text: 'Continuar', style: 'cancel' },
         {
@@ -889,7 +932,7 @@ export default function StartWorkoutScreen() {
                       {item.userName} {isMe ? '(voce)' : ''}
                     </Text>
                     <Text style={[styles.partyPlayerMeta, { color: colors.secondaryText }]}>
-                      {formatDuration(item.elapsedSeconds)} Â· {formatWeightKg(item.totalCargaKg)} Â· {item.completedSets} series
+                      {formatDuration(item.elapsedSeconds)} Ãƒâ€šÃ‚Â· {formatWeightKg(item.totalCargaKg)} Ãƒâ€šÃ‚Â· {item.completedSets} series
                     </Text>
                   </View>
                   <View>
@@ -904,7 +947,10 @@ export default function StartWorkoutScreen() {
 
       {currentExercise?.videoUrl ? (
         <View style={[styles.videoCard, { backgroundColor: colors.card }]}>
-          <ExerciseVideo uri={currentExercise.videoUrl} />
+          <ExerciseVideo
+            key={`${currentExercise.exerciseId}:${currentExercise.videoUrl}`}
+            uri={currentExercise.videoUrl}
+          />
         </View>
       ) : null}
 
@@ -992,7 +1038,7 @@ export default function StartWorkoutScreen() {
             </View>
 
             <View style={styles.setsContainer}>
-              <Text style={[styles.setsTitle, { color: colors.secondaryText }]}>SÃ©ries</Text>
+              <Text style={[styles.setsTitle, { color: colors.secondaryText }]}>SÃƒÆ’Ã‚Â©ries</Text>
               <View style={styles.setsGrid}>
                 {Array.from({ length: currentSeriesCount }).map((_, index) => {
                   const progressItem = exerciseProgress.get(currentExercise.exerciseId);
@@ -1029,7 +1075,7 @@ export default function StartWorkoutScreen() {
 
             <View style={styles.actionButtons}>
               <Button
-                title="Completar sÃ©rie"
+                title="completar sess\u00E3o"
                 onPress={handleCompleteSet}
                 fullWidth
                 size="large"
@@ -1042,31 +1088,47 @@ export default function StartWorkoutScreen() {
                   />
                 }
               />
-              <TouchableOpacity
-                style={[styles.skipButton, { borderColor: colors.border }]}
-                onPress={handleSkipExercise}
-              >
-                <Text style={[styles.skipButtonText, { color: colors.secondaryText }]}>
-                  Pular exercÃ­cio
-                </Text>
-              </TouchableOpacity>
+              <View style={styles.navigationRow}>
+                <TouchableOpacity
+                  style={[
+                    styles.previousButton,
+                    { borderColor: colors.border },
+                    currentExerciseIndex <= 0 && styles.navButtonDisabled,
+                  ]}
+                  onPress={handlePreviousExercise}
+                  disabled={currentExerciseIndex <= 0}
+                >
+                  <Text style={[styles.skipButtonText, { color: colors.secondaryText }]}>
+                    voltar exercicio
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.skipButton, { borderColor: colors.border }]}
+                  onPress={handleSkipExercise}
+                >
+                  <Text style={[styles.skipButtonText, { color: colors.secondaryText }]}>
+                    pular exercicio
+                  </Text>
+                </TouchableOpacity>
+              </View>
             </View>
           </View>
         )}
 
         <View style={styles.upcomingSection}>
           <Text style={[styles.upcomingTitle, { color: colors.primaryText }]}>
-            PrÃ³ximos exercÃ­cios
+            PrÃƒÆ’Ã‚Â³ximos exercÃƒÆ’Ã‚Â­cios
           </Text>
-          {workout.exercises.slice(currentExerciseIndex + 1).map((exercise, index) => {
-            const actualIndex = currentExerciseIndex + 1 + index;
+          {workout.exercises.map((exercise, index) => {
             const progressItem = exerciseProgress.get(exercise.exerciseId);
             return (
               <ExerciseCard
                 key={exercise.exerciseId}
                 exercise={exercise}
-                index={actualIndex}
+                index={index}
                 isCompleted={progressItem?.completed}
+                isActive={index === currentExerciseIndex}
+                onPress={() => handleSelectExercise(index)}
               />
             );
           })}
@@ -1074,7 +1136,7 @@ export default function StartWorkoutScreen() {
             <View style={[styles.lastExercise, { backgroundColor: colors.surface }]}>
               <Ionicons name="flag" size={32} color={colors.success} />
               <Text style={[styles.lastExerciseText, { color: colors.secondaryText }]}>
-                Este ? o Ãšltimo exercÃ­cio!
+                Este ? o ÃƒÆ’Ã…Â¡ltimo exercÃƒÆ’Ã‚Â­cio!
               </Text>
             </View>
           )}
@@ -1092,7 +1154,7 @@ export default function StartWorkoutScreen() {
                 Como foi o treino?
               </Text>
               <Text style={[styles.feedbackSubtitle, { color: colors.secondaryText }]}>
-                Sua avaliaÃ§Ã£o ajuda seu personal.
+                Sua avaliaÃƒÆ’Ã‚Â§ÃƒÆ’Ã‚Â£o ajuda seu personal.
               </Text>
               <View style={styles.starsRow}>
                 {Array.from({ length: 5 }).map((_, index) => (
@@ -1152,7 +1214,7 @@ export default function StartWorkoutScreen() {
           <View style={styles.restModalContent}>
             <Text style={[styles.restTitle, { color: colors.primaryText }]}>Tempo de descanso</Text>
             <Text style={[styles.restSubtitle, { color: colors.secondaryText }]}>
-              Prepare-se para a prÃ³xima sÃ©rie
+              Prepare-se para a prÃƒÆ’Ã‚Â³xima sÃƒÆ’Ã‚Â©rie
             </Text>
 
             <View style={styles.timerContainer}>
@@ -1463,11 +1525,26 @@ const styles = StyleSheet.create({
   actionButtons: {
     gap: spacing.md,
   },
-  skipButton: {
+  navigationRow: {
+    flexDirection: 'row',
+    gap: spacing.sm,
+  },
+  previousButton: {
+    flex: 1,
     paddingVertical: spacing.md,
     alignItems: 'center',
     borderWidth: 1,
     borderRadius: borderRadius.lg,
+  },
+  skipButton: {
+    flex: 1,
+    paddingVertical: spacing.md,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderRadius: borderRadius.lg,
+  },
+  navButtonDisabled: {
+    opacity: 0.45,
   },
   skipButtonText: {
     fontSize: 14,
@@ -1698,3 +1775,4 @@ function ExerciseVideo({ uri }: { uri: string }) {
     </View>
   );
 }
+
