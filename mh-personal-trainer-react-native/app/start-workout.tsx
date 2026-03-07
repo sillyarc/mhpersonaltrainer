@@ -68,6 +68,28 @@ const formatWeightKg = (value: number) => {
   return `${normalized.toFixed(1)}kg`;
 };
 
+const decodeUnicodeEscapes = (value: string) =>
+  value.replace(/\\u([0-9a-fA-F]{4})/g, (_, code) =>
+    String.fromCharCode(parseInt(code, 16))
+  );
+
+const repairMojibakeText = (value: string) => {
+  if (!/[ÃÂ]/.test(value)) return value;
+  try {
+    return decodeURIComponent(escape(value));
+  } catch {
+    return value;
+  }
+};
+
+const normalizeWorkoutText = (value: unknown, fallback = '') => {
+  if (value === null || value === undefined) return fallback;
+  if (typeof value === 'string') {
+    return repairMojibakeText(decodeUnicodeEscapes(value)).trim();
+  }
+  return repairMojibakeText(decodeUnicodeEscapes(String(value))).trim();
+};
+
 const clampValue = (value: number, min: number, max: number) =>
   Math.min(max, Math.max(min, value));
 
@@ -245,7 +267,7 @@ export default function StartWorkoutScreen() {
         }
         const resolvedVideoUrls: string[] = [];
         const exercises: WorkoutExercise[] = workoutEntries.map((rawName, index) => {
-          const name = typeof rawName === 'string' ? rawName : String(rawName || '');
+          const name = normalizeWorkoutText(rawName);
           const resolvedVideoUrl = resolveExerciseVideoUrlByName(
             name,
             normalizedStoredVideoUrls[index] || '',
@@ -276,7 +298,11 @@ export default function StartWorkoutScreen() {
         }, {});
         persistedWorkoutLoadRef.current = initialOverrides;
         setExerciseWeightOverrides(initialOverrides);
-        setWorkout({ id: loadedWorkout.id, name: loadedWorkout.nomeDoTreino, exercises });
+        setWorkout({
+          id: loadedWorkout.id,
+          name: normalizeWorkoutText(loadedWorkout.nomeDoTreino, 'Treino'),
+          exercises,
+        });
         const startTime = Date.now();
         workoutStartTimeRef.current = startTime;
         pausedAtRef.current = null;
@@ -740,7 +766,7 @@ export default function StartWorkoutScreen() {
       clearPartyPresence();
       showAlert(
         'Finalizar treino',
-        `ParabÃƒÆ’Ã‚Â©ns! VoÃƒÆ’Ã‚Â§ÃƒÆ’Ã‚Âª completou ${completedExercises} de ${totalExercises} exercÃƒÆ’Ã‚Â­cios em ${formatDuration(elapsedSeconds)}.`,
+        `Parabéns! Você completou ${completedExercises} de ${totalExercises} exercícios em ${formatDuration(elapsedSeconds)}.`,
         [
           {
             text: 'Ver resumo',
@@ -775,8 +801,8 @@ export default function StartWorkoutScreen() {
     clearPartyPresence();
     setShowFeedbackModal(false);
     showAlert(
-      'Treino concluÃƒÆ’Ã‚Â­do',
-      `ParabÃƒÆ’Ã‚Â©ns! VoÃƒÆ’Ã‚Â§ÃƒÆ’Ã‚Âª completou ${completedExercises} de ${totalExercises} exercÃƒÆ’Ã‚Â­cios em ${formatDuration(elapsedSeconds)}.`,
+      'Treino concluído',
+      `Parabéns! Você completou ${completedExercises} de ${totalExercises} exercícios em ${formatDuration(elapsedSeconds)}.`,
       [{ text: 'Fechar', onPress: () => router.back() }]
     );
   };
@@ -784,7 +810,7 @@ export default function StartWorkoutScreen() {
   const handleCancelWorkout = () => {
     showAlert(
       'Cancelar treino',
-      'Tem certeza que deseja cancelar o treino? Seu progresso serÃƒÆ’Ã‚Â¡ perdido.',
+      'Tem certeza que deseja cancelar o treino? Seu progresso será perdido.',
       [
         { text: 'Continuar', style: 'cancel' },
         {
@@ -879,7 +905,7 @@ export default function StartWorkoutScreen() {
             <View>
               <Text style={[styles.partyAnchorTitle, { color: colors.primaryText }]}>Disputa ao vivo</Text>
               <Text style={[styles.partyAnchorSubtitle, { color: colors.secondaryText }]}>
-                Ranking perto de voce
+                Ranking perto de você
               </Text>
             </View>
             <TouchableOpacity onPress={() => setShowPartyRankingModal(false)} style={styles.headerButton}>
@@ -890,7 +916,7 @@ export default function StartWorkoutScreen() {
           {locationPermissionDenied ? (
             <View style={[styles.partyWarning, { backgroundColor: colors.warning + '20' }]}>
               <Text style={[styles.partyWarningText, { color: colors.warning }]}>
-                Ative a localizacao para filtrar apenas alunos proximos.
+                Ative a localização para filtrar apenas alunos próximos.
               </Text>
             </View>
           ) : null}
@@ -929,10 +955,10 @@ export default function StartWorkoutScreen() {
                   </View>
                   <View style={styles.partyPlayerInfo}>
                     <Text style={[styles.partyPlayerName, { color: colors.primaryText }]}>
-                      {item.userName} {isMe ? '(voce)' : ''}
+                      {item.userName} {isMe ? '(você)' : ''}
                     </Text>
                     <Text style={[styles.partyPlayerMeta, { color: colors.secondaryText }]}>
-                      {formatDuration(item.elapsedSeconds)} Ãƒâ€šÃ‚Â· {formatWeightKg(item.totalCargaKg)} Ãƒâ€šÃ‚Â· {item.completedSets} series
+                      {formatDuration(item.elapsedSeconds)} {'·'} {formatWeightKg(item.totalCargaKg)} {'·'} {item.completedSets} séries
                     </Text>
                   </View>
                   <View>
@@ -991,7 +1017,7 @@ export default function StartWorkoutScreen() {
                 <View>
                   <Text style={[styles.loadEditorTitle, { color: colors.primaryText }]}>Carga atual</Text>
                   <Text style={[styles.loadEditorHint, { color: colors.secondaryText }]}>
-                    Ajuste a carga para metrica do personal e IA.
+                    Ajuste a carga para métrica do personal e IA.
                   </Text>
                 </View>
                 <Text style={[styles.loadEditorValue, { color: colors.primary }]}>
@@ -1032,13 +1058,13 @@ export default function StartWorkoutScreen() {
               </View>
               <View style={styles.partyStatDivider} />
               <View style={styles.partyStatItem}>
-                <Text style={[styles.partyStatLabel, { color: colors.secondaryText }]}>Series</Text>
+                <Text style={[styles.partyStatLabel, { color: colors.secondaryText }]}>Séries</Text>
                 <Text style={[styles.partyStatValue, { color: colors.primaryText }]}>{completedSetCount}</Text>
               </View>
             </View>
 
             <View style={styles.setsContainer}>
-              <Text style={[styles.setsTitle, { color: colors.secondaryText }]}>SÃƒÆ’Ã‚Â©ries</Text>
+              <Text style={[styles.setsTitle, { color: colors.secondaryText }]}>Séries</Text>
               <View style={styles.setsGrid}>
                 {Array.from({ length: currentSeriesCount }).map((_, index) => {
                   const progressItem = exerciseProgress.get(currentExercise.exerciseId);
@@ -1075,7 +1101,7 @@ export default function StartWorkoutScreen() {
 
             <View style={styles.actionButtons}>
               <Button
-                title="completar sess\u00E3o"
+                title="completar sessão"
                 onPress={handleCompleteSet}
                 fullWidth
                 size="large"
@@ -1117,7 +1143,7 @@ export default function StartWorkoutScreen() {
 
         <View style={styles.upcomingSection}>
           <Text style={[styles.upcomingTitle, { color: colors.primaryText }]}>
-            PrÃƒÆ’Ã‚Â³ximos exercÃƒÆ’Ã‚Â­cios
+            pular proximos exercicios
           </Text>
           {workout.exercises.map((exercise, index) => {
             const progressItem = exerciseProgress.get(exercise.exerciseId);
@@ -1136,7 +1162,7 @@ export default function StartWorkoutScreen() {
             <View style={[styles.lastExercise, { backgroundColor: colors.surface }]}>
               <Ionicons name="flag" size={32} color={colors.success} />
               <Text style={[styles.lastExerciseText, { color: colors.secondaryText }]}>
-                Este ? o ÃƒÆ’Ã…Â¡ltimo exercÃƒÆ’Ã‚Â­cio!
+                Este é o último exercício!
               </Text>
             </View>
           )}
@@ -1154,7 +1180,7 @@ export default function StartWorkoutScreen() {
                 Como foi o treino?
               </Text>
               <Text style={[styles.feedbackSubtitle, { color: colors.secondaryText }]}>
-                Sua avaliaÃƒÆ’Ã‚Â§ÃƒÆ’Ã‚Â£o ajuda seu personal.
+                Sua avaliação ajuda seu personal.
               </Text>
               <View style={styles.starsRow}>
                 {Array.from({ length: 5 }).map((_, index) => (
@@ -1214,7 +1240,7 @@ export default function StartWorkoutScreen() {
           <View style={styles.restModalContent}>
             <Text style={[styles.restTitle, { color: colors.primaryText }]}>Tempo de descanso</Text>
             <Text style={[styles.restSubtitle, { color: colors.secondaryText }]}>
-              Prepare-se para a prÃƒÆ’Ã‚Â³xima sÃƒÆ’Ã‚Â©rie
+              Prepare-se para a próxima série
             </Text>
 
             <View style={styles.timerContainer}>
@@ -1246,7 +1272,7 @@ export default function StartWorkoutScreen() {
             <View style={[styles.weightEditCard, { backgroundColor: colors.secondaryBackground }]}>
               <Text style={[styles.weightEditTitle, { color: colors.primaryText }]}>Editar carga</Text>
               <Text style={[styles.weightEditSubtitle, { color: colors.secondaryText }]}>
-                Informe a carga atual em kg para este exercicio.
+                Informe a carga atual em kg para este exercício.
               </Text>
               <TextInput
                 value={weightDraft}

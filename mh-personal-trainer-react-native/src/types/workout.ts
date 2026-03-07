@@ -52,6 +52,7 @@ export interface AerobicWorkout {
   aquecimento?: string;
   voltaacalma?: string;
   observacoes?: string;
+  lastCompletedAt?: Date;
   data?: Date;
   createdAt?: Date;
   updatedAt?: Date;

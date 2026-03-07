@@ -111,6 +111,7 @@ class _EditarPerfilDoPersonalWidgetState
               child: Scaffold(
                 key: scaffoldKey,
                 backgroundColor: FlutterFlowTheme.of(context).primaryBackground,
+                resizeToAvoidBottomInset: true,
                 appBar: responsiveVisibility(
                   context: context,
                   desktop: false,
@@ -170,8 +171,15 @@ class _EditarPerfilDoPersonalWidgetState
                     : null,
                 body: SafeArea(
                   top: true,
-                  child: SingleChildScrollView(
-                    child: Column(
+                  child: AnimatedPadding(
+                    duration: Duration(milliseconds: 200),
+                    curve: Curves.easeOut,
+                    padding: EdgeInsetsDirectional.fromSTEB(
+                        0.0, 0.0, 0.0, MediaQuery.viewInsetsOf(context).bottom),
+                    child: SingleChildScrollView(
+                      keyboardDismissBehavior:
+                          ScrollViewKeyboardDismissBehavior.onDrag,
+                      child: Column(
                       mainAxisSize: MainAxisSize.max,
                       children: [
                         Padding(

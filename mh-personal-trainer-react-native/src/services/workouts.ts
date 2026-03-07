@@ -47,6 +47,27 @@ const coerceDate = (value: any): Date | undefined => {
 const coerceTimestamp = (value?: Date): Timestamp | undefined =>
   value ? Timestamp.fromDate(value) : undefined;
 
+const stripUndefinedDeep = (value: any): any => {
+  if (value === undefined) return undefined;
+  if (value instanceof Date || value instanceof Timestamp) return value;
+  if (Array.isArray(value)) {
+    return value
+      .map((item) => stripUndefinedDeep(item))
+      .filter((item) => item !== undefined);
+  }
+  if (value && typeof value === 'object') {
+    const next: Record<string, any> = {};
+    Object.entries(value).forEach(([key, item]) => {
+      const sanitized = stripUndefinedDeep(item);
+      if (sanitized !== undefined) {
+        next[key] = sanitized;
+      }
+    });
+    return next;
+  }
+  return value;
+};
+
 export async function fetchWorkouts(userId: string): Promise<QueryResult<Workout[]>> {
   try {
     const workoutsRef = collection(db, 'treinos');
@@ -320,7 +341,7 @@ export async function fetchExerciseById(exerciseId: string): Promise<QueryResult
     const ref = doc(db, 'treinors', exerciseId);
     const snapshot = await getDoc(ref);
     if (!snapshot.exists()) {
-      return { data: null, error: 'Exercício não encontrado' };
+      return { data: null, error: 'Exerc\u00edcio n\u00e3o encontrado' };
     }
     const data = snapshot.data();
     const exercise: Exercise = {
@@ -419,7 +440,7 @@ export async function fetchUserWorkoutById(
     const ref = doc(db, 'users', userId, 'createTreinos', workoutId);
     const snapshot = await getDoc(ref);
     if (!snapshot.exists()) {
-      return { data: null, error: 'Treino não encontrado' };
+      return { data: null, error: 'Treino n\u00e3o encontrado' };
     }
     const data = snapshot.data();
     const workout: UserWorkout = {
@@ -543,6 +564,9 @@ export async function fetchAerobicWorkouts(
         aquecimento: data.aquecimento,
         voltaacalma: data.voltaacalma,
         observacoes: data.observacoes,
+        lastCompletedAt:
+          data.lastCompletedAt?.toDate?.() ||
+          (data.lastCompletedAt ? new Date(data.lastCompletedAt) : undefined),
         data: coerceDate(data.data),
         createdAt: data.createdAt?.toDate?.(),
         updatedAt: data.updatedAt?.toDate?.(),
@@ -563,16 +587,19 @@ export async function createAerobicWorkout(
     const ref = collection(db, 'users', userId, 'treinoaerobico');
     const items = workout.items || (workout.treinos || []).map((nome) => ({ nome }));
     const treinos = items.map((item) => item.nome);
-    const payload: any = {
+    const payload: any = stripUndefinedDeep({
       ...workout,
       items,
       treinos,
       treino: workout.treino || treinos[0] || '',
       createdAt: Timestamp.now(),
       updatedAt: Timestamp.now(),
-    };
+    });
     if (workout.data) {
       payload.data = coerceTimestamp(workout.data);
+    }
+    if (workout.lastCompletedAt) {
+      payload.lastCompletedAt = Timestamp.fromDate(workout.lastCompletedAt);
     }
     const docRef = await addDoc(ref, payload);
     return {
@@ -582,6 +609,7 @@ export async function createAerobicWorkout(
         items,
         treinos,
         treino: payload.treino,
+        lastCompletedAt: workout.lastCompletedAt,
         createdAt: new Date(),
         updatedAt: new Date(),
       },
@@ -601,7 +629,7 @@ export async function fetchAerobicWorkoutById(
     const ref = doc(db, 'users', userId, 'treinoaerobico', workoutId);
     const snapshot = await getDoc(ref);
     if (!snapshot.exists()) {
-      return { data: null, error: 'Treino aer?bico n?o encontrado.' };
+      return { data: null, error: 'Treino aer\u00f3bico n\u00e3o encontrado.' };
     }
     const data = snapshot.data();
     const items = normalizeAerobicItems(data);
@@ -615,6 +643,9 @@ export async function fetchAerobicWorkoutById(
         aquecimento: data.aquecimento,
         voltaacalma: data.voltaacalma,
         observacoes: data.observacoes,
+        lastCompletedAt:
+          data.lastCompletedAt?.toDate?.() ||
+          (data.lastCompletedAt ? new Date(data.lastCompletedAt) : undefined),
         data: coerceDate(data.data),
         createdAt: data.createdAt?.toDate?.(),
         updatedAt: data.updatedAt?.toDate?.(),
@@ -636,13 +667,16 @@ export async function updateAerobicWorkout(
     const ref = doc(db, 'users', userId, 'treinoaerobico', workoutId);
     const items = updates.items || (updates.treinos || []).map((nome) => ({ nome }));
     const treinos = items.length ? items.map((item) => item.nome) : updates.treinos;
-    const payload: any = {
+    const payload: any = stripUndefinedDeep({
       ...updates,
       ...(items.length ? { items, treinos, treino: updates.treino || treinos?.[0] || '' } : {}),
       updatedAt: Timestamp.now(),
-    };
+    });
     if (updates.data) {
       payload.data = coerceTimestamp(updates.data);
+    }
+    if (updates.lastCompletedAt) {
+      payload.lastCompletedAt = Timestamp.fromDate(updates.lastCompletedAt);
     }
     await updateDoc(ref, payload);
     return { data: undefined, error: null };

@@ -21,6 +21,12 @@ const stripePaymentLinks = {
   semestral: process.env.EXPO_PUBLIC_STRIPE_PAYMENT_LINK_SEMESTRAL || '',
   anual: process.env.EXPO_PUBLIC_STRIPE_PAYMENT_LINK_ANUAL || '',
 };
+const PAYMENT_LINK_ENV_BY_PLAN_ID: Record<string, string> = {
+  mensal: 'EXPO_PUBLIC_STRIPE_PAYMENT_LINK_MENSAL',
+  bimestral: 'EXPO_PUBLIC_STRIPE_PAYMENT_LINK_BIMESTRAL',
+  semestral: 'EXPO_PUBLIC_STRIPE_PAYMENT_LINK_SEMESTRAL',
+  anual: 'EXPO_PUBLIC_STRIPE_PAYMENT_LINK_ANUAL',
+};
 
 const localPlans = [
   {
@@ -92,6 +98,14 @@ export default function PlanoAssinaturaScreen() {
     return true;
   };
 
+  const getExpoGoPaymentHint = (planId?: string) => {
+    const envKey = (planId && PAYMENT_LINK_ENV_BY_PLAN_ID[planId]) || '';
+    if (envKey) {
+      return `Configure ${envKey} no arquivo .env para abrir o checkout no navegador pelo Expo Go.`;
+    }
+    return 'Configure EXPO_PUBLIC_STRIPE_PAYMENT_LINK_* no arquivo .env para abrir o checkout no navegador pelo Expo Go.';
+  };
+
   const handleSelectPlan = async (plan: (typeof localPlans)[number]) => {
     if (!user?.uid || !user.email || !user.displayName) {
       showAlert('Atencao', 'Complete seu perfil antes de assinar.');
@@ -105,9 +119,12 @@ export default function PlanoAssinaturaScreen() {
       return;
     }
     if (isExpoGo) {
+      if (await openPaymentLink(plan.paymentLink)) {
+        return;
+      }
       showAlert(
         'Cartao indisponivel no Expo Go',
-        'Para cadastrar cartao e iniciar o teste de 7 dias, use um Development Build (expo run:ios/android + expo start --dev-client).'
+        `${getExpoGoPaymentHint(plan.id)} Se preferir cadastrar cartao dentro do app, rode um Development Build (expo run:ios/android + expo start --dev-client).`
       );
       return;
     }
@@ -124,7 +141,7 @@ export default function PlanoAssinaturaScreen() {
       if (result.error) {
         throw new Error(result.error);
       }
-      const subscriptionData = result.data;
+      const subscriptionData = (result.data || {}) as any;
       const details = extractSubscriptionDetails(subscriptionData);
       const backendMessage =
         subscriptionData?.message || subscriptionData?.details || subscriptionData?.error;

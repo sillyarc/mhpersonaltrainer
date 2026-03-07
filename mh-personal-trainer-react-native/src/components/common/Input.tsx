@@ -16,6 +16,7 @@ import { spacing, borderRadius } from '../../theme';
 
 interface InputProps {
   label?: string;
+  labelIcon?: keyof typeof Ionicons.glyphMap;
   placeholder?: string;
   value: string;
   onChangeText: (text: string) => void;
@@ -38,6 +39,7 @@ interface InputProps {
 
 export function Input({
   label,
+  labelIcon,
   placeholder,
   value,
   onChangeText,
@@ -97,7 +99,17 @@ export function Input({
   return (
     <View style={[styles.container, style]}>
       {label && (
-        <Text style={[styles.label, { color: colors.text }]}>{label}</Text>
+        <View style={styles.labelRow}>
+          {labelIcon ? (
+            <Ionicons
+              name={labelIcon}
+              size={18}
+              color={colors.textSecondary}
+              style={styles.labelIcon}
+            />
+          ) : null}
+          <Text style={[styles.label, { color: colors.text }]}>{label}</Text>
+        </View>
       )}
       <View
         style={[
@@ -115,7 +127,7 @@ export function Input({
             name={icon}
             size={20}
             color={colors.textSecondary}
-            style={styles.icon}
+            style={[styles.icon, multiline && styles.iconMultiline]}
           />
         )}
         <TextInput
@@ -171,7 +183,14 @@ const styles = StyleSheet.create({
   label: {
     fontSize: 14,
     fontWeight: '500',
+  },
+  labelRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
     marginBottom: spacing.sm,
+  },
+  labelIcon: {
+    marginRight: spacing.xs,
   },
   inputContainer: {
     flexDirection: 'row',
@@ -182,6 +201,9 @@ const styles = StyleSheet.create({
   },
   icon: {
     marginRight: spacing.sm,
+  },
+  iconMultiline: {
+    marginTop: spacing.md,
   },
   input: {
     flex: 1,

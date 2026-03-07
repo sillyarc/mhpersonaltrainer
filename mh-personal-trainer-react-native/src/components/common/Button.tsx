@@ -10,6 +10,20 @@ import {
 import { useTheme } from '../../hooks/useTheme';
 import { spacing, borderRadius } from '../../theme';
 
+const decodeUnicodeEscapes = (value: string) =>
+  value.replace(/\\u([0-9a-fA-F]{4})/g, (_, code) =>
+    String.fromCharCode(parseInt(code, 16))
+  );
+
+const repairMojibakeText = (value: string) => {
+  if (!/[ÃÂ]/.test(value)) return value;
+  try {
+    return decodeURIComponent(escape(value));
+  } catch {
+    return value;
+  }
+};
+
 interface ButtonProps {
   title: string;
   onPress: () => void;
@@ -36,6 +50,7 @@ export function Button({
   fullWidth = false,
 }: ButtonProps) {
   const { colors } = useTheme();
+  const normalizedTitle = repairMojibakeText(decodeUnicodeEscapes(title));
 
   const getBackgroundColor = () => {
     if (disabled) return colors.textMuted;
@@ -111,7 +126,7 @@ export function Button({
               textStyle,
             ]}
           >
-            {title}
+            {normalizedTitle}
           </Text>
         </>
       )}

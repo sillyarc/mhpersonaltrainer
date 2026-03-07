@@ -54,6 +54,8 @@ export default function ChatDetailScreen() {
   const insets = useSafeAreaInsets();
   const { id, name, avatar } = useLocalSearchParams<{ id: string; name?: string; avatar?: string }>();
   const flatListRef = useRef<FlatList>(null);
+  const currentScrollOffsetRef = useRef(0);
+  const keyboardStartOffsetRef = useRef<number | null>(null);
 
   const [messages, setMessages] = useState<Message[]>([]);
   const [headerName, setHeaderName] = useState(name || 'Conversa');
@@ -72,6 +74,18 @@ export default function ChatDetailScreen() {
     setTimeout(() => {
       flatListRef.current?.scrollToEnd({ animated: true });
     }, 80);
+  }, []);
+
+  const restoreInitialScrollPosition = useCallback(() => {
+    const targetOffset = keyboardStartOffsetRef.current;
+    if (targetOffset == null) return;
+    setTimeout(() => {
+      flatListRef.current?.scrollToOffset({
+        offset: Math.max(0, targetOffset),
+        animated: true,
+      });
+      keyboardStartOffsetRef.current = null;
+    }, 60);
   }, []);
 
   useEffect(() => {
@@ -144,6 +158,7 @@ export default function ChatDetailScreen() {
     setReplyTo(null);
     setActiveReactionMessageId(null);
     setExpandedReactionMessageId(null);
+    keyboardStartOffsetRef.current = null;
   }, [conversationId]);
 
   useEffect(() => {
@@ -159,15 +174,18 @@ export default function ChatDetailScreen() {
   }, [conversationId, user?.uid]);
 
   useEffect(() => {
-    const showSubscription = Keyboard.addListener('keyboardDidShow', scrollToBottom);
-    const hideSubscription = Keyboard.addListener('keyboardDidHide', () => {
-      setTimeout(() => scrollToBottom(), 60);
+    const showSubscription = Keyboard.addListener('keyboardDidShow', () => {
+      if (keyboardStartOffsetRef.current == null) {
+        keyboardStartOffsetRef.current = currentScrollOffsetRef.current;
+      }
+      scrollToBottom();
     });
+    const hideSubscription = Keyboard.addListener('keyboardDidHide', restoreInitialScrollPosition);
     return () => {
       showSubscription.remove();
       hideSubscription.remove();
     };
-  }, [scrollToBottom]);
+  }, [restoreInitialScrollPosition, scrollToBottom]);
 
   const handleMenuPress = () => {
     if (!conversationId) return;
@@ -351,6 +369,10 @@ export default function ChatDetailScreen() {
               { paddingBottom: spacing.md + insets.bottom + 8 },
             ]}
             onContentSizeChange={scrollToBottom}
+            onScroll={(event) => {
+              currentScrollOffsetRef.current = event.nativeEvent.contentOffset.y;
+            }}
+            scrollEventThrottle={16}
             onScrollBeginDrag={dismissReactions}
             ListEmptyComponent={
               <View style={styles.emptyContainer}>

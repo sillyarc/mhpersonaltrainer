@@ -17,7 +17,11 @@ export default function InvitePage() {
   const { register, isAuthenticated } = useAuth();
   const router = useRouter();
   const searchParams = useSearchParams();
-  const codeParam = searchParams.get('code');
+  const codeParam =
+    searchParams.get('code') ??
+    searchParams.get('codigo') ??
+    searchParams.get('codigoPersonal') ??
+    searchParams.get('personalCode');
   const code = normalizeCode(codeParam);
   const [mobileAllowed, setMobileAllowed] = useState<boolean | null>(null);
 

@@ -632,7 +632,7 @@ async function getPersonalProfileByCode(code: number | string): Promise<Personal
     const usersRef = collection(db, 'users');
     for (const value of codeVariants) {
       const usersSnapshot = await getDocs(
-        query(usersRef, where('codigoPersonal', '==', value), limit(10))
+        query(usersRef, where('codigoPersonal', '==', value))
       );
 
       for (const docSnap of usersSnapshot.docs) {

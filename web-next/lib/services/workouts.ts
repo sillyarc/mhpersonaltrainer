@@ -38,6 +38,27 @@ const coerceDate = (value: any): Date | undefined => {
   return Number.isNaN(parsed.getTime()) ? undefined : parsed;
 };
 
+const stripUndefinedDeep = (value: any): any => {
+  if (value === undefined) return undefined;
+  if (value instanceof Date || value instanceof Timestamp) return value;
+  if (Array.isArray(value)) {
+    return value
+      .map((item) => stripUndefinedDeep(item))
+      .filter((item) => item !== undefined);
+  }
+  if (value && typeof value === 'object') {
+    const next: Record<string, any> = {};
+    Object.entries(value).forEach(([key, item]) => {
+      const sanitized = stripUndefinedDeep(item);
+      if (sanitized !== undefined) {
+        next[key] = sanitized;
+      }
+    });
+    return next;
+  }
+  return value;
+};
+
 export type TreinorExercisePayload = {
   nomeDoTreino: string;
   treinosNoLIst?: string | null;
@@ -746,14 +767,14 @@ export async function createAerobicWorkout(
     const ref = collection(db, 'users', userId, 'treinoaerobico');
     const items = workout.items || (workout.treinos || []).map((nome) => ({ nome }));
     const treinos = items.map((item) => item.nome);
-    const payload = {
+    const payload = stripUndefinedDeep({
       ...workout,
       items,
       treinos,
       treino: workout.treino || treinos[0] || '',
       createdAt: Timestamp.now(),
       updatedAt: Timestamp.now(),
-    };
+    });
     const docRef = await addDoc(ref, payload);
     return {
       data: {
@@ -815,11 +836,11 @@ export async function updateAerobicWorkout(
     const ref = doc(db, 'users', userId, 'treinoaerobico', workoutId);
     const items = updates.items || (updates.treinos || []).map((nome) => ({ nome }));
     const treinos = items.length ? items.map((item) => item.nome) : updates.treinos;
-    await updateDoc(ref, {
+    await updateDoc(ref, stripUndefinedDeep({
       ...updates,
       ...(items.length ? { items, treinos, treino: updates.treino || treinos?.[0] || '' } : {}),
       updatedAt: Timestamp.now(),
-    });
+    }));
     return { data: undefined, error: null };
   } catch (error: any) {
     return { data: null, error: error.message };

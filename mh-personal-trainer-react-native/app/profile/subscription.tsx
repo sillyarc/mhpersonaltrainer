@@ -25,6 +25,13 @@ import { useAiAccessStatus } from '../../src/hooks/useAiAccessStatus';
 import { spacing, borderRadius } from '../../src/theme';
 
 const ACTIVE_SUBSCRIPTION_STATUSES = new Set(['active', 'trialing', 'past_due']);
+const PAYMENT_LINK_ENV_BY_PLAN_ID: Record<string, string> = {
+  mensal: 'EXPO_PUBLIC_STRIPE_PAYMENT_LINK_MENSAL',
+  bimestral: 'EXPO_PUBLIC_STRIPE_PAYMENT_LINK_BIMESTRAL',
+  semestral: 'EXPO_PUBLIC_STRIPE_PAYMENT_LINK_SEMESTRAL',
+  anual: 'EXPO_PUBLIC_STRIPE_PAYMENT_LINK_ANUAL',
+  'aluno-mensal': 'EXPO_PUBLIC_STRIPE_PAYMENT_LINK_ALUNO_MENSAL',
+};
 
 const formatDateLabel = (value?: any) => {
   if (!value) return '-';
@@ -165,6 +172,14 @@ export default function SubscriptionScreen() {
     return true;
   };
 
+  const getExpoGoPaymentHint = (planId?: string) => {
+    const envKey = (planId && PAYMENT_LINK_ENV_BY_PLAN_ID[planId]) || '';
+    if (envKey) {
+      return `Configure ${envKey} no arquivo .env para abrir o checkout no navegador pelo Expo Go.`;
+    }
+    return 'Configure EXPO_PUBLIC_STRIPE_PAYMENT_LINK_* no arquivo .env para abrir o checkout no navegador pelo Expo Go.';
+  };
+
   const handleSelectPlan = async (plan: (typeof subscriptionPlans)[number]) => {
     if (!user) return;
     if (Platform.OS === 'web') {
@@ -175,9 +190,12 @@ export default function SubscriptionScreen() {
       return;
     }
     if (isExpoGo) {
+      if (await openPaymentLink(plan.paymentLink)) {
+        return;
+      }
       showAlert(
         'Cartao indisponivel no Expo Go',
-        'Para cadastrar cartao e iniciar o teste de 7 dias, use um Development Build (expo run:ios/android + expo start --dev-client).'
+        `${getExpoGoPaymentHint(plan.id)} Se preferir cadastrar cartao dentro do app, rode um Development Build (expo run:ios/android + expo start --dev-client).`
       );
       return;
     }

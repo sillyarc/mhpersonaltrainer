@@ -168,7 +168,6 @@ export default function RootLayout() {
       try {
         await NavigationBar.setPositionAsync('absolute');
         await NavigationBar.setBackgroundColorAsync('#00000000');
-        await NavigationBar.setBehaviorAsync('overlay-swipe');
         await NavigationBar.setVisibilityAsync('hidden');
       } catch {
         // Ignore unsupported devices or runtime limitations.

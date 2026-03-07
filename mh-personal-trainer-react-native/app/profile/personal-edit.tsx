@@ -170,12 +170,12 @@ export default function EditPersonalProfileScreen() {
           ) : null}
         </View>
 
-        <Input label="Nome completo" value={displayName} onChangeText={setDisplayName} icon="person-outline" />
-        <Input label="Telefone" value={phoneNumber} onChangeText={setPhoneNumber} keyboardType="phone-pad" icon="call-outline" />
-        <Input label="CREF" value={cref} onChangeText={setCref} icon="document-text-outline" />
-        <Input label="Biografia" value={bio} onChangeText={setBio} multiline numberOfLines={4} icon="chatbubble-ellipses-outline" />
-        <Input label="Instagram" value={instagram} onChangeText={setInstagram} icon="logo-instagram" />
-        <Input label="LinkedIn" value={linkedin} onChangeText={setLinkedin} icon="logo-linkedin" />
+        <Input label="Nome completo" labelIcon="person-outline" value={displayName} onChangeText={setDisplayName} />
+        <Input label="Telefone" labelIcon="call-outline" value={phoneNumber} onChangeText={setPhoneNumber} keyboardType="phone-pad" />
+        <Input label="CREF" labelIcon="document-text-outline" value={cref} onChangeText={setCref} />
+        <Input label="Biografia" labelIcon="chatbubble-ellipses-outline" value={bio} onChangeText={setBio} multiline numberOfLines={4} />
+        <Input label="Instagram" labelIcon="logo-instagram" value={instagram} onChangeText={setInstagram} />
+        <Input label="LinkedIn" labelIcon="logo-linkedin" value={linkedin} onChangeText={setLinkedin} />
 
         <Button
           title="Salvar alteracoes"

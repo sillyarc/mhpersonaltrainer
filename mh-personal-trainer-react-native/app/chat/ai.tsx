@@ -85,6 +85,8 @@ export default function AIChatScreen() {
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
   const flatListRef = useRef<FlatList>(null);
+  const currentScrollOffsetRef = useRef(0);
+  const keyboardStartOffsetRef = useRef<number | null>(null);
   const messagesRef = useRef<Message[]>([]);
   const autoPromptSent = useRef(false);
   const { user, role } = useAuthStore();
@@ -131,16 +133,31 @@ export default function AIChatScreen() {
     }, 100);
   }, []);
 
+  const restoreInitialScrollPosition = useCallback(() => {
+    const targetOffset = keyboardStartOffsetRef.current;
+    if (targetOffset == null) return;
+    setTimeout(() => {
+      flatListRef.current?.scrollToOffset({
+        offset: Math.max(0, targetOffset),
+        animated: true,
+      });
+      keyboardStartOffsetRef.current = null;
+    }, 60);
+  }, []);
+
   useEffect(() => {
-    const showSubscription = Keyboard.addListener('keyboardDidShow', scrollToBottom);
-    const hideSubscription = Keyboard.addListener('keyboardDidHide', () => {
-      setTimeout(() => scrollToBottom(), 60);
+    const showSubscription = Keyboard.addListener('keyboardDidShow', () => {
+      if (keyboardStartOffsetRef.current == null) {
+        keyboardStartOffsetRef.current = currentScrollOffsetRef.current;
+      }
+      scrollToBottom();
     });
+    const hideSubscription = Keyboard.addListener('keyboardDidHide', restoreInitialScrollPosition);
     return () => {
       showSubscription.remove();
       hideSubscription.remove();
     };
-  }, [scrollToBottom]);
+  }, [restoreInitialScrollPosition, scrollToBottom]);
 
   useEffect(() => {
     if (!user?.uid) return;
@@ -165,6 +182,7 @@ export default function AIChatScreen() {
 
   useEffect(() => {
     if (!conversationId) return;
+    keyboardStartOffsetRef.current = null;
     const unsubscribe = listenToMessages(conversationId, (items) => {
       messagesRef.current = items;
       setMessages(items);
@@ -1639,6 +1657,10 @@ const WEEKDAY_OPTIONS = [
           { paddingBottom: spacing.md + insets.bottom + 8 },
         ]}
         onContentSizeChange={scrollToBottom}
+        onScroll={(event) => {
+          currentScrollOffsetRef.current = event.nativeEvent.contentOffset.y;
+        }}
+        scrollEventThrottle={16}
         ListFooterComponent={messages.length <= 1 ? renderEmptyState : null}
       />
 

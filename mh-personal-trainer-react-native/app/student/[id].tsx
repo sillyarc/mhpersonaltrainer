@@ -165,6 +165,13 @@ export default function StudentDetailScreen() {
               </Text>
             </View>
           </View>
+          <TouchableOpacity
+            style={[styles.chatButton, { backgroundColor: `${colors.primary}1A` }]}
+            onPress={() => router.push(`/chat/${id}` as any)}
+            activeOpacity={0.8}
+          >
+            <Ionicons name="chatbubble-ellipses-outline" size={20} color={colors.primary} />
+          </TouchableOpacity>
         </Card>
 
         <Card style={styles.statusCard}>
@@ -380,6 +387,16 @@ const styles = StyleSheet.create({
   },
   profileInfo: {
     flex: 1,
+  },
+  chatButton: {
+    position: 'absolute',
+    top: spacing.md,
+    right: spacing.md,
+    width: 40,
+    height: 40,
+    borderRadius: borderRadius.full,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   profileName: {
     fontSize: 16,

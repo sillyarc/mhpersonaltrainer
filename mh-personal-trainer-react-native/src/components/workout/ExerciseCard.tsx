@@ -4,7 +4,6 @@ import {
   Text,
   StyleSheet,
   TouchableOpacity,
-  Image,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../../hooks/useTheme';
@@ -22,6 +21,7 @@ interface ExerciseCardProps {
   onDragHandlePressIn?: () => void;
   onEdit?: () => void;
   onDelete?: () => void;
+  onVideoPress?: () => void;
   showActions?: boolean;
   isCompleted?: boolean;
   isActive?: boolean;
@@ -37,6 +37,7 @@ export function ExerciseCard({
   onDragHandlePressIn,
   onEdit,
   onDelete,
+  onVideoPress,
   showActions = false,
   isCompleted = false,
   isActive = false,
@@ -178,10 +179,15 @@ export function ExerciseCard({
       </View>
 
       {exercise.videoUrl && (
-        <View style={[styles.videoIndicator, { backgroundColor: colors.primary + '15' }]}>
+        <TouchableOpacity
+          style={[styles.videoIndicator, { backgroundColor: colors.primary + '15' }]}
+          onPress={onVideoPress}
+          disabled={!onVideoPress}
+          activeOpacity={onVideoPress ? 0.75 : 1}
+        >
           <Ionicons name="play-circle-outline" size={14} color={colors.primary} />
-          <Text style={[styles.videoText, { color: colors.primary }]}>Vídeo</Text>
-        </View>
+          <Text style={[styles.videoText, { color: colors.primary }]}>Video</Text>
+        </TouchableOpacity>
       )}
     </TouchableOpacity>
   );

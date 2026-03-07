@@ -3,6 +3,7 @@ import {
   Modal,
   Platform,
   StyleSheet,
+  TouchableOpacity,
   View,
 } from 'react-native';
 import DateTimePicker, { DateTimePickerEvent } from '@react-native-community/datetimepicker';
@@ -63,16 +64,19 @@ export function DateInput({
 
   return (
     <>
-      <Input
-        label={label}
-        placeholder={placeholder}
-        value={formattedValue}
-        onChangeText={() => {}}
-        icon="calendar-outline"
-        readOnly
-        disabled={disabled}
-        onPressIn={openPicker}
-      />
+      <TouchableOpacity activeOpacity={0.8} onPress={openPicker} disabled={disabled}>
+        <View pointerEvents="none">
+          <Input
+            label={label}
+            placeholder={placeholder}
+            value={formattedValue}
+            onChangeText={() => {}}
+            icon="calendar-outline"
+            readOnly
+            disabled={disabled}
+          />
+        </View>
+      </TouchableOpacity>
 
       {isOpen && Platform.OS === 'android' && (
         <DateTimePicker

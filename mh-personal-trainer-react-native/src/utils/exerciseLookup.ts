@@ -1,6 +1,6 @@
 import { Exercise } from '../types/workout';
 
-type ExerciseNameLookup = Map<string, Exercise[]>;
+export type ExerciseNameLookup = Map<string, Exercise[]>;
 
 const normalizeText = (value: string) =>
   value
@@ -95,11 +95,10 @@ export const buildExerciseNameLookup = (exercises: Exercise[]): ExerciseNameLook
   return lookup;
 };
 
-export const resolveExerciseVideoUrlByName = (
+export const resolveExerciseByName = (
   rawName: string,
-  storedUrl: string,
   lookup: ExerciseNameLookup
-): string | undefined => {
+): Exercise | undefined => {
   const normalizedRaw = normalizeText(rawName || '');
   const normalizedBase = normalizeBaseName(rawName || '');
   const keys = [normalizedBase, normalizedRaw].filter(Boolean);
@@ -108,9 +107,20 @@ export const resolveExerciseVideoUrlByName = (
     const matches = lookup.get(key) || [];
     if (!matches.length) continue;
     const selected = pickBestExercise(matches, rawName);
-    const selectedUrl = resolveVideoUrl(selected);
-    if (selectedUrl) return selectedUrl;
+    if (selected) return selected;
   }
+
+  return undefined;
+};
+
+export const resolveExerciseVideoUrlByName = (
+  rawName: string,
+  storedUrl: string,
+  lookup: ExerciseNameLookup
+): string | undefined => {
+  const selected = resolveExerciseByName(rawName, lookup);
+  const selectedUrl = resolveVideoUrl(selected);
+  if (selectedUrl) return selectedUrl;
 
   const fallback = (storedUrl || '').trim();
   return fallback || undefined;

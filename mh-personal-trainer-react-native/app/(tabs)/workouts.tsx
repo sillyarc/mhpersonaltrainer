@@ -106,9 +106,9 @@ export default function WorkoutsScreen() {
     ? 'Treinos (admin)'
     : 'Meus treinos';
 
-  const isCompletedToday = (workout: UserWorkout) => {
-    if (!workout.lastCompletedAt) return false;
-    const completed = new Date(workout.lastCompletedAt);
+  const isCompletedToday = (lastCompletedAt?: Date) => {
+    if (!lastCompletedAt) return false;
+    const completed = new Date(lastCompletedAt);
     const today = new Date();
     return (
       completed.getFullYear() === today.getFullYear() &&
@@ -137,7 +137,7 @@ export default function WorkoutsScreen() {
   });
 
   const renderWorkoutCard = ({ item }: { item: UserWorkout }) => {
-    const completedToday = isCompletedToday(item);
+    const completedToday = isCompletedToday(item.lastCompletedAt);
     return (
       <TouchableOpacity
         style={[
@@ -196,6 +196,7 @@ export default function WorkoutsScreen() {
   };
 
   const renderAerobicCard = ({ item }: { item: AerobicWorkout }) => {
+    const completedToday = isCompletedToday(item.lastCompletedAt);
     const treinos = item.treinos?.length
       ? item.treinos
       : item.treino
@@ -231,6 +232,12 @@ export default function WorkoutsScreen() {
           >
             <Ionicons name="bicycle-outline" size={20} color={colors.success} />
           </View>
+          {completedToday && (
+            <View style={[styles.statusBadge, { backgroundColor: colors.success + '20', borderRadius: borderRadius.full }]}>
+              <Ionicons name="checkmark" size={16} color={colors.success} />
+              <Text style={[styles.statusText, { color: colors.success }]}>Concluido hoje</Text>
+            </View>
+          )}
         </View>
         <Text style={[{ color: colors.primaryText, marginBottom: spacing.xs }, typography.titleMedium]}>
           {treinos[0] || 'Treino aeróbico'}

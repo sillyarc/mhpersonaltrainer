@@ -17,6 +17,7 @@ import DraggableFlatList from 'react-native-draggable-flatlist';
 import { showAlert } from '@utils/alert';
 import {
   buildExerciseNameLookup,
+  resolveExerciseByName,
   resolveExerciseVideoUrlByName,
 } from '@utils/exerciseLookup';
 import {
@@ -68,6 +69,9 @@ const CATEGORIES: { id: ExerciseCategory | null; label: string }[] = [
   { id: 'funcional', label: 'Funcional' },
 ];
 
+const resolveCatalogVideoUrl = (exercise?: Exercise | null) =>
+  exercise?.videoUrl1080 || exercise?.videoUrl720 || exercise?.videoUrl || '';
+
 export default function CreateWorkoutScreen() {
   const { colors } = useTheme();
   const { user, role } = useAuthStore();
@@ -93,6 +97,7 @@ export default function CreateWorkoutScreen() {
   const [isSaving, setIsSaving] = useState(false);
   const [assistantPrompt, setAssistantPrompt] = useState('');
   const [isGenerating, setIsGenerating] = useState(false);
+  const [isAssistantExpanded, setIsAssistantExpanded] = useState(false);
   const [isAerobic, setIsAerobic] = useState(false);
   const [aerobicItems, setAerobicItems] = useState<AerobicItemForm[]>([createEmptyAerobicItem()]);
   const [aerobicAquecimento, setAerobicAquecimento] = useState('');
@@ -117,6 +122,10 @@ export default function CreateWorkoutScreen() {
     label: student.nome,
     description: student.email,
   }));
+  const availableExerciseLookup = useMemo(
+    () => buildExerciseNameLookup(availableExercises),
+    [availableExercises]
+  );
 
   const buildWorkoutRoute = (workoutId: string, targetId: string) =>
     `/workout/${workoutId}?studentId=${targetId}`;
@@ -216,13 +225,15 @@ export default function CreateWorkoutScreen() {
         const baseId = Date.now();
         const mappedExercises = result.workout.treino.map((item, index) => {
           const parsed = parseExerciseLine(item);
+          const catalogExercise = resolveExerciseByName(parsed.name, availableExerciseLookup);
           return {
             exerciseId: `ai-${baseId}-${index}`,
-            nome: parsed.name,
+            nome: catalogExercise?.nomeDoTreino || parsed.name,
             series: parsed.series,
             repeticoes: parsed.reps,
             carga: 0,
             intervalo: parsed.rest,
+            videoUrl: resolveCatalogVideoUrl(catalogExercise) || undefined,
           } as WorkoutExercise;
         });
         setName(result.workout.nomeDaRotina || 'Treino sugerido');
@@ -391,6 +402,44 @@ export default function CreateWorkoutScreen() {
     };
     setExercises((prev) => [...prev, newExercise]);
     setShowExerciseModal(false);
+  };
+
+  const handleViewExerciseVideo = async (exercise: WorkoutExercise) => {
+    let lookup = availableExerciseLookup;
+    let catalogExercise = resolveExerciseByName(exercise.nome, lookup);
+
+    if (!catalogExercise && availableExercises.length === 0) {
+      const result = await fetchAvailableExercises();
+      if (result.data) {
+        setAvailableExercises(result.data);
+        lookup = buildExerciseNameLookup(result.data);
+        catalogExercise = resolveExerciseByName(exercise.nome, lookup);
+      }
+    }
+
+    const videoUrl = resolveCatalogVideoUrl(catalogExercise) || exercise.videoUrl || '';
+    if (!videoUrl) {
+      showAlert('Video', 'Este exercicio ainda nao possui video.');
+      return;
+    }
+
+    if (!catalogExercise?.id) {
+      showAlert('Video', 'Nao foi possivel localizar o exercicio no Firebase.');
+      return;
+    }
+
+    setExercises((prev) =>
+      prev.map((item) =>
+        item.exerciseId === exercise.exerciseId
+          ? {
+              ...item,
+              videoUrl,
+            }
+          : item
+      )
+    );
+
+    router.push(`/workout/exercise/${catalogExercise.id}` as any);
   };
 
   const handleEditExercise = (exercise: WorkoutExercise) => {
@@ -596,7 +645,7 @@ export default function CreateWorkoutScreen() {
         )}
 
         {isPersonal && !isEditing && (
-          <Card style={styles.toggleCard}>
+          <Card style={styles.toggleCard} shadow={false} padding="small">
             <View style={styles.toggleRow}>
               <View style={styles.toggleInfo}>
                 <Text style={[styles.toggleTitle, { color: colors.text }]}>
@@ -628,31 +677,59 @@ export default function CreateWorkoutScreen() {
         {!isAerobic && (
           <>
             {isPersonal && (
-              <Card style={styles.assistantCard}>
-                <Text style={[styles.assistantTitle, { color: colors.text }]}>
-                  Assistente para treinos
-                </Text>
-                <Text style={[styles.assistantSubtitle, { color: colors.textSecondary }]}>
-                  Descreva o treino desejado para gerar os exercícios.
-                </Text>
-                <Input
-                  label="Prompt"
-                  placeholder="Ex: Treino de peito e triceps para hipertrofia"
-                  value={assistantPrompt}
-                  onChangeText={setAssistantPrompt}
-                  multiline
-                  numberOfLines={3}
-                  icon="sparkles-outline"
-                  inputStyle={{ paddingVertical: spacing.sm, fontSize: 14 }}
-                />
-                <Button
-                  title="Gerar treino"
-                  onPress={handleGenerateWorkout}
-                  loading={isGenerating}
-                  disabled={isGenerating || !assistantPrompt.trim()}
-                  size="small"
-                  fullWidth
-                />
+              <Card style={styles.assistantCard} shadow={false}>
+                <TouchableOpacity
+                  style={styles.assistantHeaderRow}
+                  onPress={() => setIsAssistantExpanded((prev) => !prev)}
+                  activeOpacity={0.8}
+                >
+                  <View style={styles.assistantHeaderInfo}>
+                    <View
+                      style={[
+                        styles.assistantIconWrap,
+                        { backgroundColor: colors.primary + '18' },
+                      ]}
+                    >
+                      <Ionicons name="sparkles-outline" size={18} color={colors.primary} />
+                    </View>
+                    <View style={styles.assistantTextWrap}>
+                      <Text style={[styles.assistantTitle, { color: colors.text }]}>
+                        Assistente para treinos
+                      </Text>
+                      <Text style={[styles.assistantSubtitle, { color: colors.textSecondary }]}>
+                        Opcional: use IA para montar o treino mais rápido.
+                      </Text>
+                    </View>
+                  </View>
+                  <Ionicons
+                    name={isAssistantExpanded ? 'chevron-up' : 'chevron-down'}
+                    size={20}
+                    color={colors.textSecondary}
+                  />
+                </TouchableOpacity>
+
+                {isAssistantExpanded && (
+                  <View style={styles.assistantBody}>
+                    <Input
+                      label="Prompt"
+                      placeholder="Ex: Treino de peito e triceps para hipertrofia"
+                      value={assistantPrompt}
+                      onChangeText={setAssistantPrompt}
+                      multiline
+                      numberOfLines={3}
+                      icon="sparkles-outline"
+                      inputStyle={{ paddingVertical: spacing.sm, fontSize: 14 }}
+                    />
+                    <Button
+                      title="Gerar treino"
+                      onPress={handleGenerateWorkout}
+                      loading={isGenerating}
+                      disabled={isGenerating || !assistantPrompt.trim()}
+                      size="small"
+                      fullWidth
+                    />
+                  </View>
+                )}
               </Card>
             )}
 
@@ -713,6 +790,7 @@ export default function CreateWorkoutScreen() {
                         showActions
                         onEdit={() => handleEditExercise(item)}
                         onDelete={() => handleDeleteExercise(item.exerciseId)}
+                        onVideoPress={() => void handleViewExerciseVideo(item)}
                         onLongPress={isPersonal ? drag : undefined}
                         showDragHandle={isPersonal}
                         onDragHandlePressIn={isPersonal ? drag : undefined}
@@ -728,12 +806,12 @@ export default function CreateWorkoutScreen() {
         )}
 
         {isAerobic && (
-          <Card style={styles.aerobicCard}>
+          <Card style={styles.aerobicCard} shadow={false}>
             <Text style={[styles.aerobicTitle, { color: colors.text }]}>
               Treino aeróbico
             </Text>
             <Text style={[styles.aerobicSubtitle, { color: colors.textSecondary }]}>
-              Adicione atividades com séries, repetições e carga.
+              Cadastre atividades de forma simples e objetiva.
             </Text>
             <View style={[styles.aerobicItemsHeader, { borderBottomColor: colors.border }]}>
               <Text style={[styles.aerobicItemsTitle, { color: colors.text }]}>Atividades</Text>
@@ -744,27 +822,42 @@ export default function CreateWorkoutScreen() {
             </View>
 
             {aerobicItems.map((item, index) => (
-              <View
-                key={item.id}
-                style={[
-                  styles.aerobicItemCard,
-                  { backgroundColor: colors.surface, borderColor: colors.border },
-                ]}
-              >
-                <View style={styles.aerobicItemHeader}>
-                  <Text style={[styles.aerobicItemTitle, { color: colors.text }]}>
-                    Treino {index + 1}
+              <View key={item.id} style={styles.aerobicItemRow}>
+                <View
+                  style={[
+                    styles.aerobicItemIndex,
+                    {
+                      backgroundColor: colors.surface,
+                      borderColor: colors.border,
+                    },
+                  ]}
+                >
+                  <Text style={[styles.aerobicItemIndexText, { color: colors.textSecondary }]}>
+                    {index + 1}
                   </Text>
-                  <TouchableOpacity onPress={() => handleRemoveAerobicItem(item.id)}>
-                    <Ionicons name="trash-outline" size={18} color={colors.error} />
-                  </TouchableOpacity>
                 </View>
-                <Input
-                  label="Atividade"
-                  placeholder="Ex: Corrida leve"
-                  value={item.nome}
-                  onChangeText={(value) => handleChangeAerobicItem(item.id, 'nome', value)}
-                />
+                <View style={styles.aerobicItemInputWrap}>
+                  <Input
+                    placeholder={`Ex: Caminhada ${index + 1}`}
+                    value={item.nome}
+                    onChangeText={(value) => handleChangeAerobicItem(item.id, 'nome', value)}
+                    style={styles.aerobicItemInput}
+                  />
+                </View>
+                <TouchableOpacity
+                  style={[
+                    styles.aerobicRemoveButton,
+                    { backgroundColor: colors.error + '12' },
+                  ]}
+                  onPress={() => handleRemoveAerobicItem(item.id)}
+                  disabled={aerobicItems.length === 1}
+                >
+                  <Ionicons
+                    name="trash-outline"
+                    size={18}
+                    color={aerobicItems.length === 1 ? colors.textMuted : colors.error}
+                  />
+                </TouchableOpacity>
               </View>
             ))}
             <Input
@@ -1008,10 +1101,10 @@ const styles = StyleSheet.create({
     paddingBottom: spacing['2xl'],
   },
   section: {
-    marginTop: spacing.md,
+    marginTop: spacing.sm,
   },
   toggleCard: {
-    marginTop: spacing.md,
+    marginTop: spacing.sm,
   },
   toggleRow: {
     flexDirection: 'row',
@@ -1032,19 +1125,44 @@ const styles = StyleSheet.create({
     lineHeight: 16,
   },
   assistantCard: {
-    marginTop: spacing.md,
+    marginTop: spacing.sm,
+  },
+  assistantHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: spacing.sm,
+  },
+  assistantHeaderInfo: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+    gap: spacing.sm,
+  },
+  assistantIconWrap: {
+    width: 34,
+    height: 34,
+    borderRadius: borderRadius.md,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  assistantTextWrap: {
+    flex: 1,
   },
   assistantTitle: {
-    fontSize: 16,
+    fontSize: 15,
     fontWeight: '600',
-    marginBottom: spacing.xs,
+    marginBottom: 2,
   },
   assistantSubtitle: {
     fontSize: 12,
-    marginBottom: spacing.md,
+    lineHeight: 16,
+  },
+  assistantBody: {
+    marginTop: spacing.md,
   },
   aerobicCard: {
-    marginTop: spacing.md,
+    marginTop: spacing.sm,
   },
   aerobicTitle: {
     fontSize: 16,
@@ -1076,21 +1194,38 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '600',
   },
-  aerobicItemCard: {
-    borderWidth: 1,
-    borderRadius: borderRadius.lg,
-    padding: spacing.md,
+  aerobicItemRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
     gap: spacing.sm,
     marginBottom: spacing.sm,
   },
-  aerobicItemHeader: {
-    flexDirection: 'row',
+  aerobicItemIndex: {
+    width: 32,
+    height: 32,
+    borderRadius: borderRadius.md,
+    borderWidth: 1,
     alignItems: 'center',
-    justifyContent: 'space-between',
+    justifyContent: 'center',
+    marginTop: 8,
   },
-  aerobicItemTitle: {
+  aerobicItemIndexText: {
     fontSize: 14,
     fontWeight: '600',
+  },
+  aerobicItemInputWrap: {
+    flex: 1,
+  },
+  aerobicItemInput: {
+    marginBottom: 0,
+  },
+  aerobicRemoveButton: {
+    width: 34,
+    height: 34,
+    borderRadius: borderRadius.md,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 7,
   },
   sectionHeader: {
     flexDirection: 'row',
