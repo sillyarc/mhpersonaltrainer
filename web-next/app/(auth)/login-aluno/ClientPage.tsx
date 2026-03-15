@@ -19,6 +19,8 @@ export default function LoginAlunoPage() {
   const searchParams = useSearchParams();
   const redirectParam = searchParams.get('redirect');
   const redirectTo = resolveRedirect(redirectParam);
+  const registerHref = redirectTo.startsWith('/invite') ? redirectTo : '/register-aluno';
+  const inviteHref = redirectTo.startsWith('/invite') ? redirectTo : '/invite';
 
   const [mobileAllowed, setMobileAllowed] = useState<boolean | null>(null);
   const [email, setEmail] = useState('');
@@ -118,7 +120,7 @@ export default function LoginAlunoPage() {
           <Link href="/login" className="auth-link">
             Entrar como personal
           </Link>
-          <Link href="/register-aluno" className="auth-link">
+          <Link href={registerHref} className="auth-link">
             Criar conta de aluno
           </Link>
         </div>
@@ -196,12 +198,12 @@ export default function LoginAlunoPage() {
         <Link href="/forgot-password" className="auth-link">
           Esqueci a senha
         </Link>
-        <Link href="/register-aluno" className="auth-link">
+        <Link href={registerHref} className="auth-link">
           Criar conta de aluno
         </Link>
       </div>
       <div className="auth-links">
-        <Link href="/invite" className="auth-link">
+        <Link href={inviteHref} className="auth-link">
           Tenho convite
         </Link>
         <Link href="/login" className="auth-link">

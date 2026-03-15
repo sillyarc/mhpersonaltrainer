@@ -9,6 +9,7 @@ export interface NotificationItem {
   paraTodos?: boolean;
   tipo?: string;
   treinoId?: string;
+  workoutUserId?: string;
   avOnlineId?: string;
   evaluationId?: string;
   evaluationType?: EvaluationType;

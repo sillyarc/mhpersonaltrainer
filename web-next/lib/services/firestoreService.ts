@@ -15,7 +15,8 @@ import {
   serverTimestamp,
   arrayRemove,
   deleteField,
-  DocumentReference
+  DocumentReference,
+  type Firestore
 } from 'firebase/firestore';
 import { getFirebaseDb } from './firebase';
 import { User } from '../types/user';
@@ -638,9 +639,12 @@ async function getPersonalAccount(uid: string): Promise<PersonalAccount | null> 
   }
 }
 
-async function getPersonalProfileByCode(code: number | string): Promise<PersonalProfile | null> {
+async function getPersonalProfileByCode(
+  code: number | string,
+  sourceDb?: Firestore
+): Promise<PersonalProfile | null> {
   try {
-    const db = getFirebaseDb();
+    const db = sourceDb || getFirebaseDb();
     const { numeric, string } = normalizePersonalCode(code);
     if ((numeric === null || numeric <= 0) && (!string || string === '0')) return null;
     const codeVariants = new Set<number | string>();

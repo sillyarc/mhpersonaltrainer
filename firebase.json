@@ -31,6 +31,27 @@
     ],
     "rewrites": [
       {
+        "source": "/api/invite/personal",
+        "function": {
+          "functionId": "resolveInvitePersonal",
+          "region": "southamerica-east1"
+        }
+      },
+      {
+        "source": "/api/mobile-auth/start",
+        "function": {
+          "functionId": "startMobileAuthHandoff",
+          "region": "southamerica-east1"
+        }
+      },
+      {
+        "source": "/api/mobile-auth/consume",
+        "function": {
+          "functionId": "consumeMobileAuthHandoff",
+          "region": "southamerica-east1"
+        }
+      },
+      {
         "source": "/workout/exercise/**",
         "destination": "/workout/exercise/placeholder.html"
       },

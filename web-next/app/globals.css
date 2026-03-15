@@ -40670,11 +40670,141 @@
     box-shadow: var(--refresh-card-shadow);
   }
 
-  .student-bottom-nav {
-    border-top: 1px solid var(--refresh-glass-border);
+  .student-shell :is(
+      .student-card,
+      .student-metric,
+      .student-quick-card,
+      .student-list-item,
+      .student-progress-card,
+      .student-progress-metric,
+      .student-self-card,
+      .student-personal-card,
+      .student-loading,
+      .student-workout-card,
+      .student-workout-info-card,
+      .student-exercise-card,
+      .student-current-card,
+      .student-start-card,
+      .student-chat-ai-row,
+      .student-chat-detail-header,
+      .student-chat-compose,
+      .student-profile-action
+    ),
+  .student-shell .student-chat-bubble:not(.is-own) {
+    border: 1px solid var(--refresh-card-border);
+    background: var(--refresh-card-bg);
+    box-shadow: var(--refresh-card-shadow);
+  }
+
+  .student-shell :is(
+      .student-chat-search,
+      .student-chat-back,
+      .student-workout-back,
+      .student-workout-back-btn,
+      .student-start-action,
+      .student-start-skip,
+      .student-chip.is-link,
+      .student-profile-file
+    ),
+  .student-shell .student-chat-compose input {
+    background: var(--refresh-input-bg);
+    border: 1px solid var(--refresh-input-border);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
+  }
+
+  .student-shell :is(
+      .student-empty-state,
+      .student-empty,
+      .student-workouts-empty,
+      .student-workout-empty,
+      .student-workout-error,
+      .student-chat-empty,
+      .student-chat-loading
+    ) {
+    border: 1px dashed var(--refresh-input-border);
     background: var(--refresh-glass-bg);
-    box-shadow: 0 -12px 28px rgba(8, 20, 34, 0.22);
+    box-shadow: none;
+  }
+
+  .student-shell :is(.student-chat-item, .student-self-menu-item) {
+    border-color: var(--refresh-glass-border);
+  }
+
+  .student-bottom-nav {
+    border: 1px solid var(--refresh-glass-border);
+    background: linear-gradient(180deg, rgba(8, 20, 34, 0.94), rgba(10, 24, 42, 0.96));
+    box-shadow: 0 -12px 28px rgba(8, 20, 34, 0.28);
     backdrop-filter: blur(14px);
+  }
+
+  :root[data-theme='dark'] .student-shell :is(
+      .student-card--hero,
+      .student-home-hero,
+      .student-feature-card.is-assistant
+    ) {
+    background: linear-gradient(160deg, rgba(11, 28, 49, 0.96), rgba(15, 42, 72, 0.92));
+    border-color: rgba(114, 178, 238, 0.24);
+    box-shadow: 0 22px 42px rgba(2, 9, 20, 0.54);
+  }
+
+  :root[data-theme='dark'] .student-shell .student-hero-card-link.is-empty {
+    background: rgba(79, 170, 255, 0.12);
+  }
+
+  :root[data-theme='dark'] .student-shell .student-start-progress {
+    background: rgba(255, 255, 255, 0.12);
+  }
+
+  :root[data-theme='dark'] .student-shell :is(
+      .student-home-action,
+      .student-home-avatar,
+      .student-hero-icon,
+      .student-personal-avatar,
+      .student-chat-ai-icon,
+      .student-chat-avatar,
+      .student-chat-detail-avatar,
+      .student-self-avatar,
+      .student-self-menu-icon,
+      .student-workout-badge,
+      .student-workout-stat-icon,
+      .student-exercise-index,
+      .student-start-index,
+      .student-current-number,
+      .student-set-circle,
+      .student-function-icon.is-treinos
+    ) {
+    background: rgba(79, 170, 255, 0.14);
+    color: #a3ceff;
+  }
+
+  :root[data-theme='dark'] .student-shell :is(
+      .student-home-action,
+      .student-chat-back,
+      .student-workout-back,
+      .student-workout-back-btn,
+      .student-start-action,
+      .student-start-skip,
+      .student-chat-compose input,
+      .student-profile-file
+    ):focus,
+  :root[data-theme='dark'] .student-shell :is(
+      .student-home-action,
+      .student-chat-back,
+      .student-workout-back,
+      .student-workout-back-btn,
+      .student-start-action,
+      .student-start-skip,
+      .student-chat-compose input,
+      .student-profile-file
+    ):focus-visible {
+    border-color: var(--refresh-input-focus);
+    box-shadow: 0 0 0 3px rgba(66, 143, 216, 0.16);
+    outline: none;
+  }
+
+  :root[data-theme='dark'] .student-shell .student-chat-search:focus-within {
+    border-color: var(--refresh-input-focus);
+    box-shadow: 0 0 0 3px rgba(66, 143, 216, 0.16);
   }
 
   .auth-panel,

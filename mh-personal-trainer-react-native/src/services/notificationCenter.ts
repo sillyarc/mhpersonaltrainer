@@ -13,9 +13,11 @@ import {
 import { db } from './firebase';
 import { NotificationItem } from '../types/notification';
 import { EvaluationType } from '../types/evaluation';
+import { WorkoutSessionStatus } from '../types/workout';
 import { Platform } from 'react-native';
 import * as Device from 'expo-device';
 import { sendPushNotificationToUser } from './notifications';
+import { firestoreService } from './firestoreService';
 
 interface QueryResult<T> {
   data: T | null;
@@ -31,6 +33,7 @@ const mapNotification = (id: string, data: any): NotificationItem => ({
   paraTodos: data.paraTodos || false,
   tipo: data.tipo,
   treinoId: data.treino?.id,
+  workoutUserId: data.treino?.userId,
   avOnlineId: data.avOnline?.id,
   evaluationId: data.avaliacao?.id,
   evaluationType: data.avaliacao?.type,
@@ -59,6 +62,38 @@ const getMobileDeviceLabel = () => {
   const osName = Device.osName || Platform.OS;
   return `${osName} - ${model}`;
 };
+
+const hasValidPersonalCode = (value?: string | number | null) => {
+  if (value === null || value === undefined) return false;
+  if (typeof value === 'number') return value > 0;
+  const trimmed = String(value).trim();
+  return trimmed.length > 0 && trimmed !== '0';
+};
+
+const formatEvaluationTypeLabel = (type?: EvaluationType) => {
+  const labels: Record<EvaluationType, string> = {
+    online: 'avaliacao online',
+    personalizada: 'avaliacao personalizada',
+    postural: 'avaliacao postural',
+    fisica: 'avaliacao fisica',
+  };
+  return type ? labels[type] || 'avaliacao' : 'avaliacao';
+};
+
+async function resolvePersonalNotificationTarget(personalCode?: string | number | null) {
+  if (!hasValidPersonalCode(personalCode)) return null;
+  try {
+    const profile = await firestoreService.getPersonalProfileByCode(personalCode as string | number);
+    if (!profile?.uid) return null;
+    return {
+      userId: profile.uid,
+      name: profile.displayName || 'Personal',
+    };
+  } catch (error) {
+    console.error('Error resolving personal notification target:', error);
+    return null;
+  }
+}
 
 const formatExerciseCountLabel = (count?: number) => {
   const total = Math.max(0, Number(count || 0));
@@ -217,7 +252,10 @@ export async function createNotification(
       readBy: Array.isArray(payload.readBy) ? payload.readBy : [],
     };
     if (payload.treinoId) {
-      notificationData.treino = { id: payload.treinoId };
+      notificationData.treino = {
+        id: payload.treinoId,
+        userId: payload.workoutUserId || payload.para || null,
+      };
     }
     if (payload.avOnlineId) {
       notificationData.avOnline = { id: payload.avOnlineId };
@@ -411,6 +449,7 @@ export async function sendWorkoutCompletionReminder(payload: {
     para: payload.studentId,
     paraTodos: false,
     treinoId: payload.workoutId,
+    workoutUserId: payload.studentId,
     unread: true,
     readBy: [],
   });
@@ -429,6 +468,70 @@ export async function sendWorkoutCompletionReminder(payload: {
       type: 'workout_reminder',
       workoutId: payload.workoutId,
       remainingExercises: remainingCount,
+    },
+  });
+
+  return result;
+}
+
+export async function notifyPersonalStudentWorkoutStatus(payload: {
+  personalCode?: string | number | null;
+  studentId: string;
+  studentName?: string;
+  workoutId: string;
+  workoutName?: string;
+  status: WorkoutSessionStatus;
+  remainingExercises?: number;
+}): Promise<QueryResult<NotificationItem>> {
+  if (!payload.studentId || !payload.workoutId || !payload.status) {
+    return { data: null, error: 'Dados do treino invalidos.' };
+  }
+
+  const personalTarget = await resolvePersonalNotificationTarget(payload.personalCode);
+  if (!personalTarget?.userId || personalTarget.userId === payload.studentId) {
+    return { data: null, error: null };
+  }
+
+  const studentLabel = payload.studentName?.trim() || 'Seu aluno';
+  const workoutLabel = payload.workoutName?.trim() || 'treino';
+  const remainingCount = Math.max(0, Number(payload.remainingExercises || 0));
+
+  const titleByStatus: Record<WorkoutSessionStatus, string> = {
+    completed: 'Aluno concluiu treino',
+    partial: 'Aluno concluiu treino com pendencias',
+    not_completed: 'Aluno nao concluiu treino',
+  };
+
+  const descriptionByStatus: Record<WorkoutSessionStatus, string> = {
+    completed: `${studentLabel} concluiu o treino "${workoutLabel}".`,
+    partial: `${studentLabel} concluiu o treino "${workoutLabel}" com ${formatExerciseCountLabel(remainingCount)} faltando.`,
+    not_completed: `${studentLabel} encerrou o treino "${workoutLabel}" sem concluir exercicios.`,
+  };
+
+  const result = await createNotification({
+    titulo: titleByStatus[payload.status],
+    descricao: descriptionByStatus[payload.status],
+    tipo: 'Treino',
+    para: personalTarget.userId,
+    paraTodos: false,
+    treinoId: payload.workoutId,
+    workoutUserId: payload.studentId,
+    unread: true,
+    readBy: [],
+  });
+
+  if (result.error) {
+    return result;
+  }
+
+  await sendPushNotificationToUser(personalTarget.userId, {
+    title: titleByStatus[payload.status],
+    body: descriptionByStatus[payload.status],
+    data: {
+      type: 'student_workout_status',
+      workoutId: payload.workoutId,
+      workoutUserId: payload.studentId,
+      status: payload.status,
     },
   });
 
@@ -483,6 +586,119 @@ export async function sendEvaluationCompletionReminder(payload: {
       evaluationId: payload.evaluationId,
       evaluationType: payload.evaluationType,
       pendingQuestions,
+    },
+  });
+
+  return result;
+}
+
+export async function notifyPersonalStudentEvaluationStatus(payload: {
+  personalCode?: string | number | null;
+  studentId: string;
+  studentName?: string;
+  evaluationId: string;
+  evaluationType: EvaluationType;
+  status: 'completed' | 'not_completed';
+}): Promise<QueryResult<NotificationItem>> {
+  if (!payload.studentId || !payload.evaluationId || !payload.evaluationType) {
+    return { data: null, error: 'Dados da avaliacao invalidos.' };
+  }
+
+  const personalTarget = await resolvePersonalNotificationTarget(payload.personalCode);
+  if (!personalTarget?.userId || personalTarget.userId === payload.studentId) {
+    return { data: null, error: null };
+  }
+
+  const studentLabel = payload.studentName?.trim() || 'Seu aluno';
+  const evaluationLabel = formatEvaluationTypeLabel(payload.evaluationType);
+  const title =
+    payload.status === 'completed'
+      ? 'Aluno concluiu avaliacao'
+      : 'Aluno nao concluiu avaliacao';
+  const description =
+    payload.status === 'completed'
+      ? `${studentLabel} concluiu a ${evaluationLabel}.`
+      : `${studentLabel} nao concluiu a ${evaluationLabel} no prazo.`;
+
+  const result = await createNotification({
+    titulo: title,
+    descricao: description,
+    tipo: 'Avaliacao',
+    para: personalTarget.userId,
+    paraTodos: false,
+    evaluationId: payload.evaluationId,
+    evaluationType: payload.evaluationType,
+    evaluationUserId: payload.studentId,
+    unread: true,
+    readBy: [],
+  });
+
+  if (result.error) {
+    return result;
+  }
+
+  await sendPushNotificationToUser(personalTarget.userId, {
+    title,
+    body: description,
+    data: {
+      type: 'student_evaluation_status',
+      evaluationId: payload.evaluationId,
+      evaluationType: payload.evaluationType,
+      evaluationUserId: payload.studentId,
+      status: payload.status,
+    },
+  });
+
+  return result;
+}
+
+export async function notifyPersonalStudentLinkedByCode(payload: {
+  personalCode?: string | number | null;
+  studentId: string;
+  studentName?: string;
+  studentEmail?: string;
+  source?: 'register' | 'profile_update';
+}): Promise<QueryResult<NotificationItem>> {
+  if (!payload.studentId) {
+    return { data: null, error: 'Aluno invalido.' };
+  }
+
+  const personalTarget = await resolvePersonalNotificationTarget(payload.personalCode);
+  if (!personalTarget?.userId || personalTarget.userId === payload.studentId) {
+    return { data: null, error: null };
+  }
+
+  const studentLabel =
+    payload.studentName?.trim() ||
+    payload.studentEmail?.trim() ||
+    'Um aluno';
+  const isRegister = payload.source !== 'profile_update';
+  const title = isRegister ? 'Novo aluno com seu codigo' : 'Aluno vinculado ao seu codigo';
+  const description = isRegister
+    ? `${studentLabel} criou uma conta usando o seu codigo.`
+    : `${studentLabel} vinculou o perfil ao seu codigo.`;
+
+  const result = await createNotification({
+    titulo: title,
+    descricao: description,
+    tipo: 'Sistema',
+    para: personalTarget.userId,
+    paraTodos: false,
+    unread: true,
+    readBy: [],
+  });
+
+  if (result.error) {
+    return result;
+  }
+
+  await sendPushNotificationToUser(personalTarget.userId, {
+    title,
+    body: description,
+    data: {
+      type: 'student_linked_personal_code',
+      studentId: payload.studentId,
+      source: payload.source || 'register',
     },
   });
 

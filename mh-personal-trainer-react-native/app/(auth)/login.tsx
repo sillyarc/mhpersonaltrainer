@@ -15,11 +15,12 @@ import * as WebBrowser from 'expo-web-browser';
 import * as Google from 'expo-auth-session/providers/google';
 import * as AppleAuthentication from 'expo-apple-authentication';
 import * as Crypto from 'expo-crypto';
-import { router } from 'expo-router';
+import { router, useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { showAlert } from '@utils/alert';
 import { useAuth } from '../../src/hooks/useAuth';
 import { useTheme } from '../../src/hooks/useTheme';
+import { readInviteCodeParam } from '../../src/services/inviteLinking';
 import {
   getGoogleNativeSignInErrorMessage,
   getGoogleNativeRuntimeUnavailableMessage,
@@ -34,6 +35,8 @@ WebBrowser.maybeCompleteAuthSession();
 export default function LoginScreen() {
   const { login, loginWithGoogle, loginWithApple } = useAuth();
   const { colors, isDark, typography } = useTheme();
+  const params = useLocalSearchParams<{ inviteCode?: string | string[] }>();
+  const inviteCode = readInviteCodeParam(params.inviteCode);
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -57,6 +60,14 @@ export default function LoginScreen() {
     return Object.keys(newErrors).length === 0;
   };
 
+  const goAfterLogin = () => {
+    if (inviteCode) {
+      router.replace(`/invite?code=${encodeURIComponent(inviteCode)}` as any);
+      return;
+    }
+    router.replace('/(tabs)');
+  };
+
   const handleLogin = async () => {
     if (!validate()) return;
 
@@ -65,7 +76,7 @@ export default function LoginScreen() {
     setLoading(false);
 
     if (result.success) {
-      router.replace('/(tabs)');
+      goAfterLogin();
     } else {
       showAlert('Erro', result.error || 'Erro ao fazer login');
     }
@@ -99,7 +110,7 @@ export default function LoginScreen() {
 
         const result = await loginWithGoogle(tokens.idToken, tokens.accessToken);
         if (result.success) {
-          router.replace('/(tabs)');
+          goAfterLogin();
         } else {
           showAlert('Erro', result.error || 'Erro ao fazer login com Google.');
         }
@@ -167,7 +178,7 @@ export default function LoginScreen() {
       setSocialLoading(false);
 
       if (result.success) {
-        router.replace('/(tabs)');
+        goAfterLogin();
       } else {
         showAlert('Erro', result.error || 'Erro ao fazer login com Apple.');
       }
@@ -196,7 +207,7 @@ export default function LoginScreen() {
       const result = await loginWithGoogle(idToken, accessToken);
       setSocialLoading(false);
       if (result.success) {
-        router.replace('/(tabs)');
+        goAfterLogin();
       } else {
         showAlert('Erro', result.error || 'Erro ao fazer login com Google.');
       }
@@ -242,7 +253,9 @@ export default function LoginScreen() {
             <Text
               style={[styles.subtitle, { color: colors.secondaryText, ...typography.bodyMedium }]}
             >
-              Entre com seu e-mail e senha que voce criou.
+              {inviteCode
+                ? `Entre para ativar o convite do personal ${inviteCode}.`
+                : 'Entre com seu e-mail e senha que voce criou.'}
             </Text>
 
             <View style={styles.inputContainer}>
@@ -391,7 +404,15 @@ export default function LoginScreen() {
               <Text style={[styles.footerText, { color: colors.secondaryText, ...typography.bodyMedium }]}>
                 Nao tem uma conta?{' '}
               </Text>
-              <TouchableOpacity onPress={() => router.push('/(auth)/register')}>
+              <TouchableOpacity
+                onPress={() =>
+                  router.push(
+                    inviteCode
+                      ? (`/(auth)/register?inviteCode=${encodeURIComponent(inviteCode)}` as any)
+                      : '/(auth)/register'
+                  )
+                }
+              >
                 <Text style={[styles.footerLink, { color: colors.primary, ...typography.titleSmall }]}>
                   Cadastre-se
                 </Text>

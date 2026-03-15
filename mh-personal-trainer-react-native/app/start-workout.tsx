@@ -22,6 +22,7 @@ import { WorkoutTimer } from '../src/components/workout/WorkoutTimer';
 import { spacing, borderRadius } from '../src/theme';
 import { WorkoutExercise, WorkoutSessionStatus, SetProgress, ExerciseProgress } from '../src/types/workout';
 import { fetchAvailableExercises, fetchUserWorkoutById, updateUserWorkout } from '../src/services/workouts';
+import { notifyPersonalStudentWorkoutStatus } from '../src/services/notificationCenter';
 import { useAuthStore } from '../src/store/authStore';
 import { submitWorkoutFeedback } from '../src/services/feedback';
 import * as Location from 'expo-location';
@@ -869,8 +870,21 @@ export default function StartWorkoutScreen() {
       showAlert('Erro', result.error);
       return null;
     }
+
+    if (role === 'aluno' && user?.uid && hasValidPersonalCode(user.codigoPersonal)) {
+      void notifyPersonalStudentWorkoutStatus({
+        personalCode: user.codigoPersonal,
+        studentId: user.uid,
+        studentName: user.displayName,
+        workoutId: workout.id,
+        workoutName: workout.name,
+        status: currentSessionStatus,
+        remainingExercises: remainingExercisesCount,
+      });
+    }
+
     return finishedAt;
-  }, [currentSessionStatus, exerciseProgress, remainingExercisesCount, targetUserId, workout]);
+  }, [currentSessionStatus, exerciseProgress, remainingExercisesCount, role, targetUserId, user?.codigoPersonal, user?.displayName, user?.uid, workout]);
 
   const finalizeWorkoutSession = useCallback(
     async (closeLabel: string) => {

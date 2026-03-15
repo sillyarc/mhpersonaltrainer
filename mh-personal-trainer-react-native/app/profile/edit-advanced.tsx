@@ -12,6 +12,7 @@ import { useAuth } from '../../src/hooks/useAuth';
 import { db, storage } from '../../src/services/firebase';
 import { getStorageErrorMessage } from '../../src/services/firebaseErrors';
 import { firestoreService } from '../../src/services/firestoreService';
+import { notifyPersonalStudentLinkedByCode } from '../../src/services/notificationCenter';
 import { Button, Input, Avatar, Loading, DateInput } from '../../src/components/common';
 import { spacing, borderRadius } from '../../src/theme';
 import { formatDateString, parseDateString } from '@utils/date';
@@ -83,6 +84,7 @@ export default function EditProfileAdvancedScreen() {
 
     setLoading(true);
     try {
+      const previousPersonalCode = user?.codigoPersonal ? Number(user.codigoPersonal) : null;
       const codigoNumero = codigoPersonal ? Number(codigoPersonal) : null;
       let personalNameToSave = '';
       if (codigoPersonal && (codigoNumero === null || Number.isNaN(codigoNumero) || codigoNumero <= 0)) {
@@ -117,6 +119,16 @@ export default function EditProfileAdvancedScreen() {
         payload.nameDoSeuPersonal = codigoNumero ? personalNameToSave : '';
       }
       await updateDoc(doc(db, 'users', user.uid), payload);
+
+      if (!isPersonal && codigoNumero && codigoNumero !== previousPersonalCode) {
+        void notifyPersonalStudentLinkedByCode({
+          personalCode: codigoNumero,
+          studentId: user.uid,
+          studentName: displayName || user.displayName,
+          studentEmail: user.email,
+          source: 'profile_update',
+        });
+      }
 
       await refreshUser?.();
       showAlert('Sucesso', 'Perfil atualizado com sucesso!');

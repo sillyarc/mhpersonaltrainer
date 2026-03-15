@@ -1576,6 +1576,7 @@ function PersonalHomeScreen({ padding, refreshing, onRefresh, alunos, stats, err
   const { colors, typography, spacing, borderRadius } = useTheme();
   const { user } = useAuthStore();
   const [personalCode, setPersonalCode] = useState('');
+  const [notificationBadge, setNotificationBadge] = useState(0);
   const [upcomingEvaluations, setUpcomingEvaluations] = useState<Array<{
     id: string;
     studentId: string;
@@ -1607,6 +1608,30 @@ function PersonalHomeScreen({ padding, refreshing, onRefresh, alunos, stats, err
         personalCode
       ),
     [personalCode]
+  );
+
+  const refreshNotificationBadge = useCallback(async () => {
+    if (!user?.uid) {
+      setNotificationBadge(0);
+      await setBadgeCount(0);
+      return;
+    }
+
+    try {
+      const result = await countPendingNotificationsForUser(user.uid);
+      const total = Math.max(0, Number(result.data || 0));
+      setNotificationBadge(total);
+      await setBadgeCount(total);
+    } catch (_) {
+      setNotificationBadge(0);
+      await setBadgeCount(0);
+    }
+  }, [user?.uid]);
+
+  useFocusEffect(
+    useCallback(() => {
+      void refreshNotificationBadge();
+    }, [refreshNotificationBadge])
   );
 
   useEffect(() => {
@@ -1761,6 +1786,27 @@ function PersonalHomeScreen({ padding, refreshing, onRefresh, alunos, stats, err
               <View style={styles.headerRight}>
                 <TouchableOpacity
                   style={[styles.iconButton, { backgroundColor: colors.primaryBackground, borderRadius: borderRadius.full }]}
+                  onPress={() => router.push('/notifications' as any)}
+                >
+                  <Ionicons name="notifications-outline" size={22} color={colors.primaryText} />
+                  {notificationBadge > 0 ? (
+                    <View
+                      style={[
+                        styles.badgeDot,
+                        {
+                          backgroundColor: colors.error || colors.primary,
+                          borderRadius: borderRadius.full,
+                        },
+                      ]}
+                    >
+                      <Text style={[styles.badgeText, { color: '#fff' }]}>
+                        {notificationBadge > 99 ? '99+' : notificationBadge}
+                      </Text>
+                    </View>
+                  ) : null}
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.iconButton, { backgroundColor: colors.primaryBackground, borderRadius: borderRadius.full, marginLeft: spacing.sm }]}
                   onPress={() => router.push('/profile/personal-edit' as any)}
                 >
                   {user?.photoUrl ? (

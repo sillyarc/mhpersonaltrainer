@@ -30,6 +30,8 @@ import { auth, db } from './firebaseClient';
 import type { AuthState, User, UserRole } from './types/user';
 import { firestoreService } from './services/firestoreService';
 import { notifyUserLoginSecurityAlert } from './services/notificationCenter';
+import { normalizeEmailInput } from './utils/email';
+import { fetchInvitePersonalCapacity } from './services/inviteService';
 
 interface AuthContextValue extends AuthState {
   login: (email: string, password: string) => Promise<{ success: boolean; error?: string }>;
@@ -408,7 +410,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const login = useCallback(async (email: string, password: string) => {
     try {
-      const result = await signInWithEmailAndPassword(auth, email, password);
+      const normalizedEmail = normalizeEmailInput(email);
+      const result = await signInWithEmailAndPassword(auth, normalizedEmail, password);
       const userData = await fetchUserDoc(result.user.uid);
       if (!userData) {
         await ensureUserDocument(result.user);
@@ -416,7 +419,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       await refreshUser();
       void notifyUserLoginSecurityAlert({
         userId: result.user.uid,
-        userName: userData?.displayName || result.user.displayName || email,
+        userName: userData?.displayName || result.user.displayName || normalizedEmail,
         loginMethod: 'email-senha',
       });
       return { success: true };
@@ -427,7 +430,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const loginAsPersonal = useCallback(async (email: string, password: string) => {
     try {
-      const result = await signInWithEmailAndPassword(auth, email, password);
+      const normalizedEmail = normalizeEmailInput(email);
+      const result = await signInWithEmailAndPassword(auth, normalizedEmail, password);
       const userData = await fetchUserDoc(result.user.uid);
       if (!userData) {
         await signOut(auth);
@@ -440,7 +444,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setUserState(userData);
       void notifyUserLoginSecurityAlert({
         userId: result.user.uid,
-        userName: userData.displayName || result.user.displayName || email,
+        userName: userData.displayName || result.user.displayName || normalizedEmail,
         loginMethod: 'email-senha',
       });
       return { success: true };
@@ -513,13 +517,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       additionalData?: Partial<User>
     ) => {
       try {
+        const normalizedEmail = normalizeEmailInput(email);
         const payloadAdditional: Partial<User> = { ...(additionalData || {}) };
         const shouldCheckStudentCapacity = !toBool(payloadAdditional.professorAccount);
         const personalCodeCandidate = shouldCheckStudentCapacity
           ? normalizePersonalCodeValue(payloadAdditional.codigoPersonal)
           : null;
         if (personalCodeCandidate !== null) {
-          const capacity = await firestoreService.getPersonalStudentCapacityByCode(personalCodeCandidate);
+          const capacity =
+            (await fetchInvitePersonalCapacity(String(personalCodeCandidate))) ||
+            (await firestoreService.getPersonalStudentCapacityByCode(personalCodeCandidate));
           if (!capacity.allowed) {
             const message =
               capacity.reason === 'personal_not_found'
@@ -535,15 +542,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           }
         }
 
-        const result = await createUserWithEmailAndPassword(auth, email, password);
+        const result = await createUserWithEmailAndPassword(auth, normalizedEmail, password);
         await setDoc(doc(db, 'users', result.user.uid), {
-          email,
+          email: normalizedEmail,
           display_name: displayName,
           uid: result.user.uid,
           created_time: serverTimestamp(),
           last_active_time: serverTimestamp(),
           professorAccount: false,
-          admin: isAdminEmail(email),
+          admin: isAdminEmail(normalizedEmail),
           assinatura: false,
           planoChatGPT: false,
           acessoSuspenso: false,
@@ -571,7 +578,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const resetPassword = useCallback(async (email: string) => {
     try {
-      await sendPasswordResetEmail(auth, email);
+      await sendPasswordResetEmail(auth, normalizeEmailInput(email));
       return { success: true };
     } catch (error: any) {
       return { success: false, error: getAuthErrorMessage(error.code) };

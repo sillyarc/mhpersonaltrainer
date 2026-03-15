@@ -28,7 +28,10 @@ import {
   isPremiumUserRecord,
 } from '../../src/services/ai';
 import { AnalysisResult, analyzePostureImage } from '../../src/services/aiAnalysis';
-import { sendEvaluationCompletionReminder } from '../../src/services/notificationCenter';
+import {
+  notifyPersonalStudentEvaluationStatus,
+  sendEvaluationCompletionReminder,
+} from '../../src/services/notificationCenter';
 import { 
   fetchEvaluationById, 
   deleteEvaluation,
@@ -151,10 +154,20 @@ export default function EvaluationDetailScreen() {
           setEvaluation((prev) =>
             prev ? { ...prev, status: 'nao_realizada' } : prev
           );
+          if (!isPersonal && user?.uid === personalized.userId) {
+            void notifyPersonalStudentEvaluationStatus({
+              personalCode: user.codigoPersonal,
+              studentId: personalized.userId,
+              studentName: user.displayName,
+              evaluationId: personalized.id,
+              evaluationType: personalized.type,
+              status: 'not_completed',
+            });
+          }
         }
       })
       .finally(() => setExpiringEvaluation(false));
-  }, [evaluation, expiringEvaluation]);
+  }, [evaluation, expiringEvaluation, isPersonal, user?.codigoPersonal, user?.displayName, user?.uid]);
 
   const loadEvaluation = async () => {
     if (!id || !type) {
@@ -284,6 +297,14 @@ export default function EvaluationDetailScreen() {
           }
         : prev
     );
+    void notifyPersonalStudentEvaluationStatus({
+      personalCode: user.codigoPersonal,
+      studentId: personalized.userId,
+      studentName: user.displayName,
+      evaluationId: personalized.id,
+      evaluationType: personalized.type,
+      status: 'completed',
+    });
     showAlert('Respostas enviadas', 'Seu personal vai revisar a avaliacao.');
   };
 

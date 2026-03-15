@@ -1,18 +1,21 @@
 import React, { useState } from 'react';
 import { View, Text, StyleSheet, KeyboardAvoidingView, Platform, ScrollView, TouchableOpacity, Image } from 'react-native';
 import { showAlert } from '@utils/alert';
-import { router } from 'expo-router';
+import { router, useLocalSearchParams } from 'expo-router';
 import { useTranslation } from 'react-i18next';
 import { Ionicons } from '@expo/vector-icons';
 import { Button, Input } from '../../src/components/common';
 import { useAuth } from '../../src/hooks/useAuth';
 import { useTheme } from '../../src/hooks/useTheme';
+import { readInviteCodeParam } from '../../src/services/inviteLinking';
 import { spacing, borderRadius } from '../../src/theme';
 
 export default function RegisterScreen() {
   const { t } = useTranslation();
   const { colors, isDark } = useTheme();
   const { register } = useAuth();
+  const params = useLocalSearchParams<{ inviteCode?: string | string[] }>();
+  const inviteCode = readInviteCodeParam(params.inviteCode);
 
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
@@ -37,7 +40,12 @@ export default function RegisterScreen() {
     if (!validate()) return;
 
     setLoading(true);
-    const result = await register(email, password, name);
+    const numericInviteCode = inviteCode ? Number(inviteCode) : null;
+    const extraData =
+      numericInviteCode && Number.isFinite(numericInviteCode) && numericInviteCode > 0
+        ? { codigoPersonal: numericInviteCode }
+        : undefined;
+    const result = await register(email, password, name, extraData);
     setLoading(false);
 
     if (result.success) {
@@ -82,7 +90,9 @@ export default function RegisterScreen() {
               Criar Conta
             </Text>
             <Text style={[styles.subtitle, { color: colors.textSecondary }]}>
-              Preencha seus dados para se cadastrar
+              {inviteCode
+                ? `Preencha seus dados para entrar com o convite ${inviteCode}`
+                : 'Preencha seus dados para se cadastrar'}
             </Text>
 
             <View style={styles.form}>

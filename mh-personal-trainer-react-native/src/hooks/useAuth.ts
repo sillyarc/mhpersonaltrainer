@@ -3,6 +3,7 @@ import {
   signInWithEmailAndPassword, 
   createUserWithEmailAndPassword,
   signInWithCredential,
+  signInWithCustomToken,
   GoogleAuthProvider,
   OAuthProvider,
   signOut,
@@ -14,7 +15,10 @@ import {
 import { collection, doc, getDoc, getDocs, limit, query, setDoc, updateDoc, where, serverTimestamp } from 'firebase/firestore';
 import { initializeFirebase } from '../services/firebase';
 import { firestoreService } from '../services/firestoreService';
-import { notifyUserLoginSecurityAlert } from '../services/notificationCenter';
+import {
+  notifyPersonalStudentLinkedByCode,
+  notifyUserLoginSecurityAlert,
+} from '../services/notificationCenter';
 import { useAuthStore } from '../store/authStore';
 import { User } from '../types/user';
 import { getCurrentLanguage, normalizeSupportedLanguage } from '../i18n';
@@ -361,6 +365,26 @@ export function useAuth() {
     []
   );
 
+  const loginWithCustomToken = useCallback(
+    async (customToken: string, loginMethod: string = 'custom-token') => {
+      setLoading(true);
+      try {
+        const result = await signInWithCustomToken(auth, customToken);
+        await fetchUserData(result.user.uid);
+        void notifyUserLoginSecurityAlert({
+          userId: result.user.uid,
+          userName: result.user.displayName || result.user.email || 'Usuario',
+          loginMethod,
+        });
+        return { success: true };
+      } catch (error: any) {
+        setLoading(false);
+        return { success: false, error: getAuthErrorMessage(error.code) };
+      }
+    },
+    []
+  );
+
   const register = useCallback(async (
     email: string, 
     password: string, 
@@ -407,6 +431,15 @@ export function useAuth() {
         ...payloadAdditional,
       };
       await setDoc(doc(db, 'users', result.user.uid), userData);
+      if (personalCodeCandidate !== null) {
+        void notifyPersonalStudentLinkedByCode({
+          personalCode: personalCodeCandidate,
+          studentId: result.user.uid,
+          studentName: displayName,
+          studentEmail: email,
+          source: 'register',
+        });
+      }
       await fetchUserData(result.user.uid);
       return { success: true };
     } catch (error: any) {
@@ -482,6 +515,7 @@ export function useAuth() {
     loginAsPersonal,
     loginWithGoogle,
     loginWithApple,
+    loginWithCustomToken,
     register,
     logout,
     resetPassword,

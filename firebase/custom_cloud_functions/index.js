@@ -75,6 +75,13 @@ exports.notifyStudentOnPosturalEvaluationAssigned =
 exports.notifyStudentOnPhysicalEvaluationAssigned =
   personalNotifications.notifyStudentOnPhysicalEvaluationAssigned;
 
+const resolveInvitePersonal = require("./resolve_invite_personal.js");
+exports.resolveInvitePersonal = resolveInvitePersonal.resolveInvitePersonal;
+
+const mobileAuthHandoff = require("./mobile_auth_handoff.js");
+exports.startMobileAuthHandoff = mobileAuthHandoff.startMobileAuthHandoff;
+exports.consumeMobileAuthHandoff = mobileAuthHandoff.consumeMobileAuthHandoff;
+
 const notificationAiDispatcher = require("./notification_ai_dispatcher.js");
 exports.runNotificationAssistantAutoDispatch =
   notificationAiDispatcher.runNotificationAssistantAutoDispatch;

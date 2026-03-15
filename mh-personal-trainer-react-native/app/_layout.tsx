@@ -1,7 +1,8 @@
 import React, { useEffect, useMemo, useRef } from 'react';
 import { AppState, Linking, Platform, Pressable, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
-import { Stack } from 'expo-router';
+import { Stack, router } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
+import * as ExpoLinking from 'expo-linking';
 import * as NavigationBar from 'expo-navigation-bar';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { PaperProvider, MD3DarkTheme, MD3LightTheme } from 'react-native-paper';
@@ -48,6 +49,38 @@ const getWebAccessAllowed = (width: number) => {
   return uaMatch || (widthMatch && touchMatch);
 };
 
+const parseInviteNavigationTarget = (url: string) => {
+  try {
+    const parsed = ExpoLinking.parse(url);
+    const path = String(parsed.path || '').replace(/^\/+/, '');
+    const hostname = String(parsed.hostname || '').trim();
+    const primarySegment = path.split('/')[0] || '';
+    const target =
+      primarySegment === 'invite' || primarySegment === 'mobile-auth'
+        ? primarySegment
+        : hostname;
+
+    if (target === 'invite') {
+      const code =
+        parsed.queryParams?.code ||
+        parsed.queryParams?.codigo ||
+        parsed.queryParams?.codigoPersonal ||
+        parsed.queryParams?.personalCode;
+      if (!code) return null;
+      return `/invite?code=${encodeURIComponent(String(code))}`;
+    }
+
+    if (target === 'mobile-auth') {
+      const handoff = parsed.queryParams?.handoff;
+      if (!handoff) return null;
+      return `/mobile-auth?handoff=${encodeURIComponent(String(handoff))}`;
+    }
+  } catch (error) {
+    console.warn('Failed to parse deeplink:', error);
+  }
+  return null;
+};
+
 export default function RootLayout() {
   const { colorScheme, language, setLanguage } = useAppStore();
   const { user, setUser, setLoading } = useAuthStore();
@@ -56,6 +89,7 @@ export default function RootLayout() {
   const colors = getThemeColors(colorScheme);
   const notifiedUserRef = useRef<string | null>(null);
   const syncedLanguageRef = useRef<string | null>(null);
+  const lastHandledLinkRef = useRef<string | null>(null);
 
   const allowWeb = useMemo(() => getWebAccessAllowed(width), [width]);
 
@@ -209,6 +243,30 @@ export default function RootLayout() {
     return () => appStateSubscription.remove();
   }, []);
 
+  useEffect(() => {
+    const handleUrl = (url?: string | null) => {
+      if (!url || lastHandledLinkRef.current === url) return;
+      const target = parseInviteNavigationTarget(url);
+      if (!target) return;
+      lastHandledLinkRef.current = url;
+      router.replace(target as any);
+    };
+
+    Linking.getInitialURL()
+      .then((url) => {
+        handleUrl(url);
+      })
+      .catch(() => {});
+
+    const subscription = Linking.addEventListener('url', ({ url }) => {
+      handleUrl(url);
+    });
+
+    return () => {
+      subscription.remove();
+    };
+  }, []);
+
   if (Platform.OS === 'web' && !allowWeb) {
     return (
       <View style={styles.webGate}>
@@ -266,6 +324,8 @@ export default function RootLayout() {
                   }}
                 >
                   <Stack.Screen name="index" />
+                  <Stack.Screen name="invite" />
+                  <Stack.Screen name="mobile-auth" />
                   <Stack.Screen name="(auth)" options={{ headerShown: false }} />
                   <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
                 </Stack>

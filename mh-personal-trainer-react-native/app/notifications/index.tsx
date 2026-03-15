@@ -135,7 +135,17 @@ export default function NotificationsScreen() {
 
   const handleNotificationPress = (item: NotificationItem) => {
     if (item.tipo && item.tipo.toLowerCase().includes('treino') && item.treinoId) {
-      router.push(`/start-workout?workoutId=${item.treinoId}`);
+      if (item.workoutUserId && user?.uid && item.workoutUserId !== user.uid) {
+        router.push({
+          pathname: '/workout/[id]',
+          params: { id: item.treinoId, studentId: item.workoutUserId },
+        });
+      } else {
+        router.push({
+          pathname: '/start-workout',
+          params: { workoutId: item.treinoId },
+        });
+      }
       return;
     }
 

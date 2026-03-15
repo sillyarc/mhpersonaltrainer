@@ -1,6 +1,6 @@
 import { initializeApp, getApps, getApp, type FirebaseApp } from 'firebase/app';
 import { getAuth, type Auth } from 'firebase/auth';
-import type { Firestore } from 'firebase/firestore';
+import { getFirestore, type Firestore } from 'firebase/firestore';
 import type { FirebaseStorage } from 'firebase/storage';
 import { auth, db, storage } from '../firebaseClient';
 
@@ -38,6 +38,12 @@ const firebaseConfig = {
 let app: FirebaseApp | null = null;
 const SECONDARY_APP_NAME = 'academy-secondary';
 
+function getOrCreateSecondaryApp(): FirebaseApp {
+  return getApps().some((item) => item.name === SECONDARY_APP_NAME)
+    ? getApp(SECONDARY_APP_NAME)
+    : initializeApp(firebaseConfig, SECONDARY_APP_NAME);
+}
+
 export function initializeFirebase() {
   if (!app) {
     app = getApps().length ? getApp() : initializeApp(firebaseConfig);
@@ -68,8 +74,9 @@ export function getFirebaseApp(): FirebaseApp {
 }
 
 export function getSecondaryAuth(): Auth {
-  const secondaryApp = getApps().some((item) => item.name === SECONDARY_APP_NAME)
-    ? getApp(SECONDARY_APP_NAME)
-    : initializeApp(firebaseConfig, SECONDARY_APP_NAME);
-  return getAuth(secondaryApp);
+  return getAuth(getOrCreateSecondaryApp());
+}
+
+export function getSecondaryDb(): Firestore {
+  return getFirestore(getOrCreateSecondaryApp());
 }
