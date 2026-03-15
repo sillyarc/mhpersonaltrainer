@@ -15,7 +15,7 @@ export type StartMobileAuthHandoffResult = {
 };
 
 export function buildMobileAuthHandoffUrl(handoffId: string): string {
-  return `mhpersonaltrainer:///mobile-auth?handoff=${encodeURIComponent(handoffId)}`;
+  return `mhpersonaltrainer://mobile-auth?handoff=${encodeURIComponent(handoffId)}`;
 }
 
 export async function startMobileAuthHandoff(options: {

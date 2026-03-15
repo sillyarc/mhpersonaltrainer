@@ -43,7 +43,7 @@ const getIsAndroid = () => {
 const buildSchemeDeepLink = (path: string, query?: Record<string, string>) => {
   const normalizedPath = path.replace(/^\/+/, '');
   const search = new URLSearchParams(query || {}).toString();
-  return `mhpersonaltrainer:///${normalizedPath}${search ? `?${search}` : ''}`;
+  return `mhpersonaltrainer://${normalizedPath}${search ? `?${search}` : ''}`;
 };
 
 const buildIntentDeepLink = (path: string, query?: Record<string, string>) => {
@@ -99,7 +99,6 @@ export default function InvitePage() {
   const [appOpenError, setAppOpenError] = useState('');
   const [handoffLoading, setHandoffLoading] = useState(false);
   const [handoffDeepLink, setHandoffDeepLink] = useState('');
-  const appOpenStartedRef = useRef(false);
   const handoffStartedRef = useRef(false);
 
   const codigoPersonal = useMemo(() => resolveCodigoPersonal(code), [code]);
@@ -107,7 +106,6 @@ export default function InvitePage() {
   const inviteDeepLink = useMemo(() => buildInviteAppDeepLink(code), [code]);
 
   useEffect(() => {
-    appOpenStartedRef.current = false;
     handoffStartedRef.current = false;
     setAppOpenError('');
     setHandoffDeepLink('');
@@ -167,26 +165,6 @@ export default function InvitePage() {
       active = false;
     };
   }, [code, mobileAllowed]);
-
-  useEffect(() => {
-    if (mobileAllowed !== true || !inviteDeepLink.openUrl || appOpenStartedRef.current || isAuthenticated) {
-      return;
-    }
-
-    appOpenStartedRef.current = true;
-    setAppOpenError('');
-    const timer = window.setTimeout(() => {
-      try {
-        window.location.href = inviteDeepLink.openUrl;
-      } catch (openError) {
-        setAppOpenError(getErrorMessage(openError));
-      }
-    }, 180);
-
-    return () => {
-      window.clearTimeout(timer);
-    };
-  }, [inviteDeepLink.openUrl, isAuthenticated, mobileAllowed]);
 
   useEffect(() => {
     let active = true;
@@ -320,7 +298,7 @@ export default function InvitePage() {
           <p className="auth-kicker">Convite</p>
           <h1>Abrindo seu app</h1>
           <p className="subtle">
-            Seu convite ja esta pronto. Toque abaixo para voltar ao app via deeplink.
+            Seu convite ja esta pronto. Depois do login web, vamos voltar voce ao app via deeplink.
           </p>
         </div>
 
@@ -376,7 +354,7 @@ export default function InvitePage() {
         <p className="auth-kicker">Convite</p>
         <h1>Crie sua conta de aluno</h1>
         <p className="subtle">
-          Seu acesso sera vinculado ao personal que enviou o convite. Se voce ja tem o app, ele sera aberto automaticamente.
+          Seu acesso sera vinculado ao personal que enviou o convite. Depois de entrar no navegador, voce volta ao app automaticamente.
         </p>
       </div>
 
@@ -468,15 +446,15 @@ export default function InvitePage() {
           <button
             type="button"
             className="auth-submit"
+            disabled={!handoffDeepLink}
             onClick={() => {
-              if (inviteDeepLink.openUrl && typeof window !== 'undefined') {
-                window.location.href = inviteDeepLink.openUrl;
+              if (handoffDeepLink && typeof window !== 'undefined') {
+                window.location.href = handoffDeepLink;
                 return;
               }
-              window.location.href = '/app';
             }}
           >
-            Abrir app
+            {handoffDeepLink ? 'Abrir app' : 'Preparando app...'}
           </button>
         ) : (
           <button type="submit" className="auth-submit" disabled={loading}>

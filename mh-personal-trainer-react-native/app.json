@@ -30,6 +30,20 @@
       "backgroundColor": "#1D2428",
       "softwareKeyboardLayoutMode": "resize",
       "package": "com.mycompany.mfitfitnessapp",
+      "intentFilters": [
+        {
+          "action": "VIEW",
+          "data": [
+            {
+              "scheme": "mhpersonaltrainer"
+            }
+          ],
+          "category": [
+            "BROWSABLE",
+            "DEFAULT"
+          ]
+        }
+      ],
       "edgeToEdgeEnabled": true,
       "versionCode": 111,
       "permissions": [
