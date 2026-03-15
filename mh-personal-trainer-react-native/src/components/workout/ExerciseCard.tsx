@@ -9,6 +9,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../../hooks/useTheme';
 import { spacing, borderRadius } from '../../theme';
 import { WorkoutExercise } from '../../types/workout';
+import { isGifMediaUrl } from '../../utils/exerciseLookup';
 import { formatMetricText, formatMetricWithSuffix } from '../../utils/workoutMetrics';
 
 interface ExerciseCardProps {
@@ -25,6 +26,8 @@ interface ExerciseCardProps {
   showActions?: boolean;
   isCompleted?: boolean;
   isActive?: boolean;
+  statusLabel?: string;
+  statusTone?: 'success' | 'warning' | 'neutral';
 }
 
 export function ExerciseCard({
@@ -41,12 +44,23 @@ export function ExerciseCard({
   showActions = false,
   isCompleted = false,
   isActive = false,
+  statusLabel,
+  statusTone = 'neutral',
 }: ExerciseCardProps) {
   const { colors } = useTheme();
   const seriesLabel = formatMetricText(exercise.series);
   const repsLabel = formatMetricText(exercise.repeticoes);
   const cargaLabel = formatMetricWithSuffix(exercise.carga, ' kg');
   const intervaloLabel = formatMetricWithSuffix(exercise.intervalo, 's');
+  const isCardPressEnabled = Boolean(onPress || onLongPress);
+  const activeMediaUrl = exercise.videoUrl || exercise.gifUrl || '';
+  const isGif = exercise.mediaType === 'gif' || isGifMediaUrl(activeMediaUrl);
+  const statusColor =
+    statusTone === 'warning'
+      ? colors.warning
+      : statusTone === 'success'
+      ? colors.success
+      : colors.textMuted;
 
   return (
     <TouchableOpacity
@@ -62,8 +76,8 @@ export function ExerciseCard({
       onPress={onPress}
       onLongPress={onLongPress}
       delayLongPress={delayLongPress}
-      disabled={!onPress && !onLongPress}
-      activeOpacity={onPress || onLongPress ? 0.7 : 1}
+      disabled={!isCardPressEnabled && !onVideoPress}
+      activeOpacity={isCardPressEnabled ? 0.7 : 1}
     >
       <View style={styles.content}>
         {showDragHandle && (
@@ -102,16 +116,25 @@ export function ExerciseCard({
         </View>
 
         <View style={styles.info}>
-          <Text
-            style={[
-              styles.name,
-              { color: colors.text },
-              isCompleted && styles.completedText,
-            ]}
-            numberOfLines={1}
-          >
-            {exercise.nome}
-          </Text>
+          <View style={styles.nameRow}>
+            <Text
+              style={[
+                styles.name,
+                { color: colors.text },
+                isCompleted && styles.completedText,
+              ]}
+              numberOfLines={1}
+            >
+              {exercise.nome}
+            </Text>
+            {statusLabel ? (
+              <View style={[styles.statusBadge, { backgroundColor: statusColor + '18' }]}>
+                <Text style={[styles.statusBadgeText, { color: statusColor }]}>
+                  {statusLabel}
+                </Text>
+              </View>
+            ) : null}
+          </View>
           <View style={styles.details}>
             <View style={styles.detailItem}>
               <Ionicons name="repeat-outline" size={14} color={colors.textMuted} />
@@ -178,17 +201,21 @@ export function ExerciseCard({
         )}
       </View>
 
-      {exercise.videoUrl && (
+      {activeMediaUrl ? (
         <TouchableOpacity
           style={[styles.videoIndicator, { backgroundColor: colors.primary + '15' }]}
           onPress={onVideoPress}
           disabled={!onVideoPress}
           activeOpacity={onVideoPress ? 0.75 : 1}
         >
-          <Ionicons name="play-circle-outline" size={14} color={colors.primary} />
-          <Text style={[styles.videoText, { color: colors.primary }]}>Video</Text>
+          <Ionicons
+            name={isGif ? 'images-outline' : 'play-circle-outline'}
+            size={14}
+            color={colors.primary}
+          />
+          <Text style={[styles.videoText, { color: colors.primary }]}>{isGif ? 'GIF' : 'Video'}</Text>
         </TouchableOpacity>
-      )}
+      ) : null}
     </TouchableOpacity>
   );
 }
@@ -230,10 +257,25 @@ const styles = StyleSheet.create({
   info: {
     flex: 1,
   },
+  nameRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    marginBottom: spacing.xs,
+  },
   name: {
     fontSize: 15,
     fontWeight: '600',
-    marginBottom: spacing.xs,
+    flex: 1,
+  },
+  statusBadge: {
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 4,
+    borderRadius: borderRadius.full,
+  },
+  statusBadgeText: {
+    fontSize: 11,
+    fontWeight: '700',
   },
   completedText: {
     textDecorationLine: 'line-through',

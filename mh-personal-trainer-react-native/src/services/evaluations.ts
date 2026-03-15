@@ -1,10 +1,10 @@
 import {
   collection,
-  collectionGroup,
   doc,
   getDocs,
   getDoc,
   addDoc,
+  setDoc,
   updateDoc,
   deleteDoc,
   query,
@@ -519,41 +519,86 @@ const buildInlinePersonalizedQuestions = (
   return { perguntas, respostas };
 };
 
-async function fetchPersonalizedQuestions(evaluationId: string): Promise<{
+const resolvePersonalizedQuestionType = (data: DocumentData): EvaluationQuestion['tipo'] => {
+  if (data.multiplaEscolha) return 'multipla_escolha';
+  if (data.sim || data.nao) return 'sim_nao';
+  if (data.numero) return 'escala';
+  return 'texto';
+};
+
+const buildPersonalizedQuestionSignature = (question: {
+  pergunta?: string;
+  tipo?: EvaluationQuestion['tipo'];
+  opcoes?: string[];
+}): string => {
+  const pergunta = String(question.pergunta || '').trim().toLowerCase();
+  const tipo = String(question.tipo || 'texto');
+  const opcoes = Array.isArray(question.opcoes) ? question.opcoes.map((item) => item.trim().toLowerCase()) : [];
+  return `${pergunta}::${tipo}::${opcoes.join('|')}`;
+};
+
+const buildPersonalizedQuestionDocData = (
+  evaluationId: string,
+  question: EvaluationQuestion,
+  index: number
+) => ({
+  questionId: question.id,
+  uidDaAvaliacao: evaluationId,
+  pergunta: question.pergunta,
+  texto: question.tipo === 'texto',
+  multiplaEscolha: question.tipo === 'multipla_escolha',
+  numero: question.tipo === 'escala',
+  sim: question.tipo === 'sim_nao',
+  nao: false,
+  obrigatoria: question.obrigatoria ?? false,
+  ordem: index,
+  respostasMultiplas: question.opcoes || [],
+  respostaAluno: null,
+  respostaCerta: null,
+});
+
+async function fetchPersonalizedQuestions(userId: string, evaluationId: string): Promise<{
   perguntas: EvaluationQuestion[];
   respostas: EvaluationAnswer[];
 }> {
   try {
-    const perguntasRef = collectionGroup(db, 'perguntasDasAvaliacoesPersonalizadas');
-    const snapshot = await getDocs(
-      query(perguntasRef, where('uidDaAvaliacao', '==', evaluationId))
+    const perguntasRef = collection(
+      db,
+      'users',
+      userId,
+      COLLECTION_MAP.personalizada,
+      evaluationId,
+      'perguntasDasAvaliacoesPersonalizadas'
     );
+    const snapshot = await getDocs(perguntasRef);
 
     const perguntas: EvaluationQuestion[] = [];
     const respostas: EvaluationAnswer[] = [];
 
-    snapshot.forEach((docItem) => {
-      const data = docItem.data();
-      const tipo = data.multiplaEscolha
-        ? 'multipla_escolha'
-        : data.sim || data.nao
-        ? 'sim_nao'
-        : data.numero
-        ? 'escala'
-        : 'texto';
+    const docs = snapshot.docs
+      .map((docItem) => ({ docItem, data: docItem.data() }))
+      .sort((a, b) => {
+        const orderA = typeof a.data.ordem === 'number' ? a.data.ordem : Number.MAX_SAFE_INTEGER;
+        const orderB = typeof b.data.ordem === 'number' ? b.data.ordem : Number.MAX_SAFE_INTEGER;
+        return orderA - orderB;
+      });
+
+    docs.forEach(({ docItem, data }) => {
+      const tipo = resolvePersonalizedQuestionType(data);
+      const questionId = String(data.questionId || docItem.id);
 
       perguntas.push({
-        id: docItem.id,
+        id: questionId,
         pergunta: data.pergunta || 'Pergunta',
         tipo,
         opcoes: Array.isArray(data.respostasMultiplas) ? data.respostasMultiplas : [],
-        obrigatoria: false,
+        obrigatoria: Boolean(data.obrigatoria),
       });
 
       const respostaAluno = data.respostaAluno ?? data.respostaCerta;
       if (respostaAluno !== undefined && respostaAluno !== null && String(respostaAluno).length > 0) {
         respostas.push({
-          questionId: docItem.id,
+          questionId,
           resposta: respostaAluno,
         });
       }
@@ -577,7 +622,7 @@ async function fetchCollectionByUser(
 
   for (const docItem of snapshot.docs) {
     if (type === 'personalizada') {
-      const { perguntas, respostas } = await fetchPersonalizedQuestions(docItem.id);
+      const { perguntas, respostas } = await fetchPersonalizedQuestions(userId, docItem.id);
       const inline = buildInlinePersonalizedQuestions(docItem.id, docItem.data());
       evaluations.push(
         mapEvaluationDoc(
@@ -703,7 +748,7 @@ export async function fetchEvaluationById(
       const snapshot = await getDoc(docRef);
       if (snapshot.exists()) {
         if (type === 'personalizada') {
-          const { perguntas, respostas } = await fetchPersonalizedQuestions(snapshot.id);
+          const { perguntas, respostas } = await fetchPersonalizedQuestions(userId, snapshot.id);
           const inline = buildInlinePersonalizedQuestions(snapshot.id, snapshot.data());
           return {
             data: applyPersonalizedOverdueStatus(
@@ -758,6 +803,7 @@ export async function createOnlineEvaluation(
     const evalRef = collection(db, 'users', evaluation.userId, collectionName);
     const docRef = await addDoc(evalRef, {
       uid: evaluation.userId,
+      ...(evaluation.personalId ? { personalId: evaluation.personalId } : {}),
       status: evaluation.status,
       peso: evaluation.peso,
       estatura: evaluation.altura,
@@ -799,7 +845,12 @@ export async function createPersonalizedEvaluation(
     }
 
     const evalRef = collection(db, 'users', evaluation.userId, collectionName);
-    const inlineQuestions = evaluation.perguntas?.map((pergunta) => ({
+    const normalizedQuestions =
+      evaluation.perguntas?.map((pergunta, index) => ({
+        ...pergunta,
+        id: String(pergunta.id || `q_${index}`),
+      })) || [];
+    const inlineQuestions = normalizedQuestions.map((pergunta) => ({
       id: pergunta.id,
       pergunta: pergunta.pergunta,
       tipo: pergunta.tipo,
@@ -808,6 +859,7 @@ export async function createPersonalizedEvaluation(
     }));
     const docRef = await addDoc(evalRef, {
       uid: evaluation.userId,
+      ...(evaluation.personalId ? { personalId: evaluation.personalId } : {}),
       nomeDaAvaliacao: 'Avaliacao personalizada',
       observacao: evaluation.resultado || '',
       categoriaDaAvaliacao: 'Personalizada',
@@ -821,28 +873,21 @@ export async function createPersonalizedEvaluation(
       updatedAt: Timestamp.now(),
     });
 
-    if (evaluation.perguntas?.length) {
+    if (normalizedQuestions.length) {
       const perguntasRef = collection(db, 'users', evaluation.userId, collectionName, docRef.id, 'perguntasDasAvaliacoesPersonalizadas');
       await Promise.all(
-        evaluation.perguntas.map((pergunta, index) =>
-          addDoc(perguntasRef, {
-            pergunta: pergunta.pergunta,
-            uidDaAvaliacao: docRef.id,
-            texto: pergunta.tipo === 'texto',
-            multiplaEscolha: pergunta.tipo === 'multipla_escolha',
-            numero: pergunta.tipo === 'escala',
-            sim: pergunta.tipo === 'sim_nao',
-            nao: false,
-            respostasMultiplas: pergunta.opcoes || [],
-            respostaAluno: null,
-            respostaCerta: null,
-          })
+        normalizedQuestions.map((pergunta, index) =>
+          setDoc(
+            doc(perguntasRef, pergunta.id),
+            buildPersonalizedQuestionDocData(docRef.id, pergunta, index)
+          )
         )
       );
     }
 
     const newEvaluation: PersonalizedEvaluation = {
       ...evaluation,
+      perguntas: normalizedQuestions,
       id: docRef.id,
       createdAt: new Date(),
       updatedAt: new Date(),
@@ -866,6 +911,7 @@ export async function createPosturalEvaluation(
     const evalRef = collection(db, 'users', evaluation.userId, collectionName);
     const docRef = await addDoc(evalRef, {
       uid: evaluation.userId,
+      ...(evaluation.personalId ? { personalId: evaluation.personalId } : {}),
       dateForAvaliacaoPostural: Timestamp.fromDate(evaluation.date || new Date()),
       status: evaluation.status,
       fotoFrontal: evaluation.fotosPostura?.anterior || null,
@@ -901,6 +947,7 @@ export async function createPhysicalTestEvaluation(
     const evalRef = collection(db, 'users', evaluation.userId, collectionName);
     const docRef = await addDoc(evalRef, {
       uid: evaluation.userId,
+      ...(evaluation.personalId ? { personalId: evaluation.personalId } : {}),
       status: evaluation.status,
       peso: evaluation.composicaoCorporal?.peso || null,
       estatura: evaluation.composicaoCorporal?.altura || null,
@@ -964,18 +1011,70 @@ export async function submitPersonalizedAnswers(params: {
       'perguntasDasAvaliacoesPersonalizadas'
     );
     const respondedAt = Timestamp.now();
-    await Promise.all(
-      params.answers.map((answer) =>
-        updateDoc(doc(respostasRef, answer.questionId), {
-          respostaAluno: answer.resposta,
-          respondidoEm: respondedAt,
-        })
-      )
-    );
     const evalRef = doc(db, 'users', params.userId, collectionName, params.evaluationId);
+    const evaluationSnapshot = await getDoc(evalRef);
+    const inline = evaluationSnapshot.exists()
+      ? buildInlinePersonalizedQuestions(params.evaluationId, evaluationSnapshot.data())
+      : { perguntas: [], respostas: [] };
+    const inlineById = new Map(
+      inline.perguntas.map((question, index) => [question.id, { question, index }] as const)
+    );
+    const existingSnapshot = await getDocs(respostasRef);
+    const docIdByQuestionId = new Map<string, string>();
+    const docIdBySignature = new Map<string, string>();
+
+    existingSnapshot.forEach((docItem) => {
+      const data = docItem.data();
+      const tipo = resolvePersonalizedQuestionType(data);
+      const logicalQuestionId = String(data.questionId || docItem.id);
+      docIdByQuestionId.set(docItem.id, docItem.id);
+      docIdByQuestionId.set(logicalQuestionId, docItem.id);
+      const signature = buildPersonalizedQuestionSignature({
+        pergunta: data.pergunta,
+        tipo,
+        opcoes: Array.isArray(data.respostasMultiplas) ? data.respostasMultiplas : [],
+      });
+      if (signature && !docIdBySignature.has(signature)) {
+        docIdBySignature.set(signature, docItem.id);
+      }
+    });
+
+    await Promise.all(
+      params.answers.map((answer, index) => {
+        const inlineQuestion = inlineById.get(answer.questionId);
+        const signature = inlineQuestion
+          ? buildPersonalizedQuestionSignature(inlineQuestion.question)
+          : '';
+        const targetDocId =
+          docIdByQuestionId.get(answer.questionId) ||
+          (signature ? docIdBySignature.get(signature) : undefined) ||
+          answer.questionId;
+        const questionData = inlineQuestion
+          ? buildPersonalizedQuestionDocData(
+              params.evaluationId,
+              inlineQuestion.question,
+              inlineQuestion.index
+            )
+          : {
+              questionId: answer.questionId,
+              uidDaAvaliacao: params.evaluationId,
+              ordem: index,
+            };
+        return setDoc(
+          doc(respostasRef, targetDocId),
+          {
+            ...questionData,
+            respostaAluno: answer.resposta,
+            respondidoEm: respondedAt,
+          },
+          { merge: true }
+        );
+      })
+    );
     await updateDoc(evalRef, {
       status: 'em_andamento',
       terminou: true,
+      respostas: params.answers,
       respondidoEm: respondedAt,
       updatedAt: Timestamp.now(),
     });

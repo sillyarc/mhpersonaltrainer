@@ -136,11 +136,206 @@ async function notifyPersonal({
     para: personalId,
     paraTodos: false,
     data: FieldValue.serverTimestamp(),
+    unread: true,
+    readBy: [],
     autoEvent: true,
     eventType: eventType || "auto_event",
     meta: meta || {},
     soundHint: "soft_ping",
   });
+}
+
+async function notifyStudent({
+  studentId,
+  title,
+  description,
+  tipo,
+  publico,
+  eventType,
+  meta,
+  workoutId,
+  evaluationId,
+  evaluationType,
+}) {
+  if (!studentId || !title || !description) return;
+  const db = getFirestore();
+  const payload = {
+    titulo: title,
+    descricao: description,
+    tipo: tipo || "Sistema",
+    publico: publico || "sistema",
+    para: studentId,
+    paraTodos: false,
+    data: FieldValue.serverTimestamp(),
+    unread: true,
+    readBy: [],
+    autoEvent: true,
+    eventType: eventType || "auto_event",
+    meta: meta || {},
+    soundHint: "soft_ping",
+  };
+
+  if (workoutId) {
+    payload.treino = { id: workoutId };
+  }
+
+  if (evaluationId) {
+    payload.avaliacao = {
+      id: evaluationId,
+      type: evaluationType || null,
+      userId: studentId,
+    };
+  }
+
+  await db.collection("notificacao").add(payload);
+}
+
+function getExplicitPersonalId(data) {
+  const candidate =
+    data?.personalId || data?.professorId || data?.personal || data?.uidPersonal;
+  return candidate ? String(candidate).trim() : "";
+}
+
+function getExplicitPersonalCode(data) {
+  const candidates = [
+    data?.codigoDoPersonal,
+    data?.codigoPersonal,
+    data?.codigoProfessor,
+    data?.codigoDoProfessor,
+    data?.personalCode,
+  ];
+  for (const candidate of candidates) {
+    const normalized = normalizeCode(candidate);
+    if (normalized) return normalized;
+  }
+  return null;
+}
+
+function hasMeaningfulValue(value) {
+  if (value === null || value === undefined) return false;
+  if (typeof value === "string") return value.trim() !== "";
+  if (Array.isArray(value)) return value.length > 0;
+  return true;
+}
+
+function hasAnyMeaningfulField(data, fields) {
+  return fields.some((field) => hasMeaningfulValue(data?.[field]));
+}
+
+function isLegacyWorkoutAssignment(data) {
+  if (!data || typeof data !== "object") return false;
+  if (getExplicitPersonalCode(data)) return true;
+  if (hasMeaningfulValue(data.createdAt) || hasMeaningfulValue(data.updatedAt)) {
+    return false;
+  }
+  return hasAnyMeaningfulField(data, [
+    "nomeDoTreino",
+    "treino",
+    "treinoNoList",
+    "uidTreinos",
+    "yourName",
+    "imgUser",
+    "codigoDoPersonal",
+  ]);
+}
+
+function isLegacyPersonalizedEvaluationAssignment(data) {
+  if (!data || typeof data !== "object") return false;
+  if (hasMeaningfulValue(data.status)) return false;
+  if (hasMeaningfulValue(data.createdAt) || hasMeaningfulValue(data.updatedAt)) {
+    return false;
+  }
+  if (
+    hasMeaningfulValue(data.prazoResposta) ||
+    hasMeaningfulValue(data.perguntas) ||
+    hasMeaningfulValue(data.respostas)
+  ) {
+    return false;
+  }
+  return hasAnyMeaningfulField(data, [
+    "nomeDaAvaliacao",
+    "categoriaDaAvaliacao",
+    "observacao",
+    "dataDaAvaliacao",
+  ]);
+}
+
+function isLegacyPosturalEvaluationAssignment(data) {
+  if (!data || typeof data !== "object") return false;
+  if (hasMeaningfulValue(data.status)) return false;
+  if (hasMeaningfulValue(data.createdAt) || hasMeaningfulValue(data.updatedAt)) {
+    return false;
+  }
+  return hasAnyMeaningfulField(data, [
+    "dateForAvaliacaoPostural",
+    "fotoFrontal",
+    "fotoLateral",
+    "fotoPosterior",
+    "obsFotoFrontal",
+    "obsFotoLateral",
+    "obsFotoPosterior",
+  ]);
+}
+
+function isLegacyPhysicalEvaluationAssignment(data) {
+  if (!data || typeof data !== "object") return false;
+  if (hasMeaningfulValue(data.status)) return false;
+  if (hasMeaningfulValue(data.createdAt) || hasMeaningfulValue(data.updatedAt)) {
+    return false;
+  }
+  return hasAnyMeaningfulField(data, [
+    "protocoloDeAvaliacao",
+    "dataDaAvaliacao",
+    "proxAvaliacao",
+    "feita",
+    "idade",
+    "peso",
+    "estatura",
+    "observacoes",
+  ]);
+}
+
+async function resolveExplicitPersonal(uid, data) {
+  const studentData = await getUserData(uid);
+  if (!studentData || !isStudentData(studentData)) {
+    return { studentData, personal: null };
+  }
+
+  const personalId = getExplicitPersonalId(data);
+  if (!personalId || personalId === uid) {
+    return { studentData, personal: null };
+  }
+
+  const personalData = await getUserData(personalId);
+  if (!personalData || !toBool(personalData.professorAccount) || toBool(personalData.admin)) {
+    return { studentData, personal: null };
+  }
+
+  return {
+    studentData,
+    personal: {
+      id: personalId,
+      name: getUserDisplayName(personalData, "Personal"),
+      codigoPersonal: normalizeCode(personalData.codigoPersonal),
+    },
+  };
+}
+
+async function resolveAssignedPersonal(uid, data, options = {}) {
+  const explicit = await resolveExplicitPersonal(uid, data);
+  if (explicit.personal) {
+    return explicit;
+  }
+
+  if (!options.allowLegacyFallback) {
+    return explicit;
+  }
+
+  if (typeof options.shouldFallback === "function" && !options.shouldFallback(data || {})) {
+    return explicit;
+  }
+
+  return resolveStudentPersonal(uid, getExplicitPersonalCode(data));
 }
 
 async function resolveStudentPersonal(uid, fallbackCode) {
@@ -361,6 +556,149 @@ exports.notifyPersonalOnPhysicalEvaluationCreated = createEvaluationTrigger(
   "users/{uid}/avaliacoesFisicas/{evaluationId}",
   "fisica",
   "student_evaluation_fisica",
+);
+
+function createStudentWorkoutAssignedTrigger(path, config = {}) {
+  return functions
+    .region(REGION)
+    .firestore.document(path)
+    .onCreate(async (snapshot, context) => {
+      const data = snapshot.data() || {};
+      const uid = context.params.uid;
+      const workoutId = context.params.workoutId;
+      const { personal } = await resolveAssignedPersonal(uid, data, {
+        allowLegacyFallback: config.allowLegacyFallback === true,
+        shouldFallback: config.shouldFallback,
+      });
+      if (!personal) return null;
+
+      const workoutLabel = truncateText(
+        data.nomeDoTreino || data.treino || config.fallbackName || "Treino",
+        70,
+      );
+
+      await notifyStudent({
+        studentId: uid,
+        title: config.title || "Novo treino do personal",
+        description:
+          config.descriptionBuilder?.(personal.name, workoutLabel) ||
+          `${personal.name} enviou o treino "${workoutLabel}" para voce.`,
+        tipo: "Treino",
+        publico: "treinos",
+        eventType: config.eventType || "personal_workout_assigned",
+        workoutId,
+        meta: {
+          studentId: uid,
+          personalId: personal.id,
+          personalName: personal.name,
+          workoutId,
+          workoutName: workoutLabel,
+          workoutKind: config.workoutKind || "musculacao",
+        },
+      });
+
+      return null;
+    });
+}
+
+function createStudentEvaluationAssignedTrigger(path, label, typeId, eventType) {
+  return functions
+    .region(REGION)
+    .firestore.document(path)
+    .onCreate(async (snapshot, context) => {
+      const data = snapshot.data() || {};
+      const uid = context.params.uid;
+      const evaluationId = context.params.evaluationId;
+      const legacyFallbackMatcher =
+        typeId === "personalizada"
+          ? isLegacyPersonalizedEvaluationAssignment
+          : typeId === "postural"
+            ? isLegacyPosturalEvaluationAssignment
+            : typeId === "fisica"
+              ? isLegacyPhysicalEvaluationAssignment
+              : null;
+      const { personal } = await resolveAssignedPersonal(uid, data, {
+        allowLegacyFallback: typeof legacyFallbackMatcher === "function",
+        shouldFallback: legacyFallbackMatcher,
+      });
+      if (!personal) return null;
+
+      const actionSuffix =
+        typeId === "personalizada" || String(data.status || "").toLowerCase() === "pendente"
+          ? " para voce responder."
+          : " para voce.";
+
+      await notifyStudent({
+        studentId: uid,
+        title: "Nova avaliacao do personal",
+        description: `${personal.name} enviou uma avaliacao ${label}${actionSuffix}`,
+        tipo: "Avaliacao",
+        publico: "avaliacoes",
+        eventType,
+        evaluationId,
+        evaluationType: typeId,
+        meta: {
+          studentId: uid,
+          personalId: personal.id,
+          personalName: personal.name,
+          evaluationId,
+          evaluationType: typeId,
+          evaluationLabel: label,
+        },
+      });
+
+      return null;
+    });
+}
+
+exports.notifyStudentOnWorkoutAssigned = createStudentWorkoutAssignedTrigger(
+  "users/{uid}/createTreinos/{workoutId}",
+  {
+    eventType: "personal_workout_assigned",
+    workoutKind: "musculacao",
+    allowLegacyFallback: true,
+    shouldFallback: isLegacyWorkoutAssignment,
+  },
+);
+
+exports.notifyStudentOnAerobicWorkoutAssigned = createStudentWorkoutAssignedTrigger(
+  "users/{uid}/treinoaerobico/{workoutId}",
+  {
+    title: "Novo treino aerobico do personal",
+    eventType: "personal_aerobic_workout_assigned",
+    workoutKind: "aerobico",
+    fallbackName: "Treino aerobico",
+    descriptionBuilder: (personalName, workoutLabel) =>
+      `${personalName} enviou o treino aerobico "${workoutLabel}" para voce.`,
+  },
+);
+
+exports.notifyStudentOnOnlineEvaluationAssigned = createStudentEvaluationAssignedTrigger(
+  "users/{uid}/avaliacaoOnline/{evaluationId}",
+  "online",
+  "online",
+  "personal_evaluation_online_assigned",
+);
+
+exports.notifyStudentOnPersonalizedEvaluationAssigned = createStudentEvaluationAssignedTrigger(
+  "users/{uid}/avaliacaoPersonalizada/{evaluationId}",
+  "personalizada",
+  "personalizada",
+  "personal_evaluation_personalizada_assigned",
+);
+
+exports.notifyStudentOnPosturalEvaluationAssigned = createStudentEvaluationAssignedTrigger(
+  "users/{uid}/avaliacaoPostural/{evaluationId}",
+  "postural",
+  "postural",
+  "personal_evaluation_postural_assigned",
+);
+
+exports.notifyStudentOnPhysicalEvaluationAssigned = createStudentEvaluationAssignedTrigger(
+  "users/{uid}/avaliacoesFisicas/{evaluationId}",
+  "fisica",
+  "fisica",
+  "personal_evaluation_fisica_assigned",
 );
 
 exports.notifyPersonalOnStudentMessage = functions

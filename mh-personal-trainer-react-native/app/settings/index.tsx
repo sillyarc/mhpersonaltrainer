@@ -12,6 +12,7 @@ import { useAuthStore } from '../../src/store/authStore';
 import { useAuth } from '../../src/hooks/useAuth';
 import { useAppStore } from '../../src/store/appStore';
 import { changeLanguage } from '../../src/i18n';
+import { firestoreService } from '../../src/services/firestoreService';
 
 interface SettingsItemProps {
   icon: keyof typeof Ionicons.glyphMap;
@@ -24,7 +25,7 @@ interface SettingsItemProps {
 
 export default function SettingsScreen() {
   const { colors, spacing, borderRadius, typography } = useTheme();
-  const { user, role } = useAuthStore();
+  const { user, role, updateUser } = useAuthStore();
   const { logout } = useAuth();
   const { language, setLanguage } = useAppStore();
 
@@ -47,6 +48,20 @@ export default function SettingsScreen() {
 
   const handleEditProfile = () => {
     router.push(isPersonal ? '/profile/personal-edit' : '/profile/edit-advanced');
+  };
+
+  const handleLanguageChange = async (lang: string) => {
+    setLanguage(lang);
+    changeLanguage(lang);
+    updateUser({ language: lang });
+
+    if (!user?.uid) return;
+
+    try {
+      await firestoreService.updateUserLanguage(user.uid, lang);
+    } catch (error: any) {
+      showAlert('Idioma', error?.message || 'Nao foi possivel salvar seu idioma agora.');
+    }
   };
 
   const SettingsItem = ({ icon, label, description, tintColor, danger, onPress }: SettingsItemProps) => (
@@ -195,8 +210,7 @@ export default function SettingsScreen() {
                       },
                     ]}
                     onPress={() => {
-                      setLanguage(lang);
-                      changeLanguage(lang);
+                      void handleLanguageChange(lang);
                     }}
                   >
                     <Text

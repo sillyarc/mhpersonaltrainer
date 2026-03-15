@@ -503,11 +503,11 @@ export default function ProgressScreen() {
   const piePoints = useMemo<PiePoint[]>(() => {
     const pending = Math.max(0, totalWorkouts - completedSessions);
     return [
-      { label: 'Concluidos', value: completedSessions, color: '#38B6FF' },
+      { label: 'Concluidos', value: completedSessions, color: colors.primary },
       { label: 'Pendentes', value: pending, color: '#23CBA7' },
       { label: 'Avaliacoes', value: evaluations.length, color: '#F7B55E' },
     ].filter((item) => item.value > 0);
-  }, [completedSessions, totalWorkouts, evaluations.length]);
+  }, [colors.primary, completedSessions, totalWorkouts, evaluations.length]);
 
   const aiContext = useMemo(() => {
     return JSON.stringify(
@@ -560,14 +560,14 @@ export default function ProgressScreen() {
   }, [aiCacheKey, aiContextHash]);
 
   const aiPie = useMemo<PiePoint[]>(() => {
-    const palette = ['#38B6FF', '#23CBA7', '#F7B55E', '#9B8CFF'];
+    const palette = [colors.primary, '#23CBA7', '#F7B55E', '#9B8CFF'];
     const fromAi = aiReport?.pizza || [];
     if (fromAi.length === 0) return piePoints;
     return fromAi
       .filter((item) => Number(item.value) > 0)
       .slice(0, 4)
       .map((item, index) => ({ label: item.label, value: Math.round(item.value), color: palette[index % palette.length] }));
-  }, [aiReport?.pizza, piePoints]);
+  }, [aiReport?.pizza, colors.primary, piePoints]);
 
   const suggestions = useMemo(() => {
     const items: string[] = [];

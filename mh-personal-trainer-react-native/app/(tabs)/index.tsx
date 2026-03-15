@@ -37,7 +37,8 @@ import { useAdminDashboardData } from '../../src/hooks/useAdminDashboardData';
 import { Card, Button, AvatarStack } from '../../src/components/common';
 import { firestoreService, PersonalAccount, PersonalProfile } from '../../src/services/firestoreService';
 import { getFirebaseDb } from '../../src/services/firebase';
-import { getBadgeCount } from '../../src/services/notifications';
+import { countPendingNotificationsForUser } from '../../src/services/notificationCenter';
+import { setBadgeCount } from '../../src/services/notifications';
 import { ensureConversation } from '../../src/services/chat';
 import {
   createPersonalizedEvaluation,
@@ -51,6 +52,8 @@ import { format } from 'date-fns';
 import { EvaluationQuestion, PersonalizedEvaluation } from '../../src/types/evaluation';
 import { PaymentRecord } from '../../src/types/finance';
 import { ptBR } from 'date-fns/locale';
+import { getWorkoutStatusPresentation } from '../../src/utils/workoutStatus';
+import { spacing as themeSpacing, borderRadius as themeBorderRadius } from '../../src/theme';
 
 const hasValidPersonalCode = (code?: string | number | null) => {
   if (code === null || code === undefined) return false;
@@ -74,6 +77,17 @@ const buildPersonalInviteLink = (base: string, code: string) => {
 };
 
 const ACTIVE_SUBSCRIPTION_STATUSES = new Set(['active', 'trialing', 'past_due']);
+
+const DARK_MODE_ACCENT = '#194784';
+const DARK_MODE_ACCENT_ALT = '#133864';
+const DARK_MODE_ACCENT_DEEP = '#0A2A52';
+const DARK_MODE_ACCENT_TEXT = '#E6EEF8';
+const DARK_MODE_ACCENT_TEXT_MUTED = 'rgba(230,238,248,0.84)';
+const DARK_MODE_ACCENT_TEXT_SOFT = 'rgba(230,238,248,0.74)';
+const DARK_MODE_ACCENT_SURFACE = 'rgba(25,71,132,0.16)';
+const DARK_MODE_ACCENT_SURFACE_STRONG = 'rgba(25,71,132,0.24)';
+const DARK_MODE_ACCENT_BORDER = 'rgba(25,71,132,0.42)';
+const DARK_MODE_ACCENT_BORDER_SOFT = 'rgba(25,71,132,0.28)';
 
 const formatSubscriptionDateLabel = (value?: any) => {
   if (!value) return '-';
@@ -1006,8 +1020,17 @@ function AlunoHomeScreen({ padding, refreshing, onRefresh, treinos, avaliacoes, 
       completed.getDate() === today.getDate()
     );
   };
+  const getTreinoStatus = (treino?: any) =>
+    getWorkoutStatusPresentation({
+      lastCompletedAt: treino?.lastCompletedAt,
+      lastSessionAt: treino?.lastSessionAt,
+      lastSessionStatus: treino?.lastSessionStatus,
+      lastSessionRemainingExercises: treino?.lastSessionRemainingExercises,
+    });
   const treinosDoDia = treinos.filter(isTreinoDoDia);
   const treinoPrincipal = treinosDoDia[0] || treinos[0] || null;
+  const treinoPrincipalStatus = treinoPrincipal ? getTreinoStatus(treinoPrincipal) : null;
+  const treinoPrincipalHasWarning = treinoPrincipalStatus?.status === 'partial';
   const treinoConcluidoHoje = treinoPrincipal ? isTreinoConcluidoHoje(treinoPrincipal) : false;
   const hasPersonal = hasValidPersonalCode(user?.codigoPersonal);
   const hasIndividualPlan = Boolean(user?.planoChatGPT || aiAccess.premium);
@@ -1016,23 +1039,29 @@ function AlunoHomeScreen({ padding, refreshing, onRefresh, treinos, avaliacoes, 
   const [personalProfile, setPersonalProfile] = useState<PersonalProfile | null>(null);
   const [notificationBadge, setNotificationBadge] = useState(0);
 
-  useEffect(() => {
-    let active = true;
-    getBadgeCount()
-      .then((count) => {
-        if (active) {
-          setNotificationBadge(count);
-        }
-      })
-      .catch(() => {
-        if (active) {
-          setNotificationBadge(0);
-        }
-      });
-    return () => {
-      active = false;
-    };
-  }, []);
+  const refreshNotificationBadge = useCallback(async () => {
+    if (!user?.uid) {
+      setNotificationBadge(0);
+      await setBadgeCount(0);
+      return;
+    }
+
+    try {
+      const result = await countPendingNotificationsForUser(user.uid);
+      const total = Math.max(0, Number(result.data || 0));
+      setNotificationBadge(total);
+      await setBadgeCount(total);
+    } catch (_) {
+      setNotificationBadge(0);
+      await setBadgeCount(0);
+    }
+  }, [user?.uid]);
+
+  useFocusEffect(
+    useCallback(() => {
+      void refreshNotificationBadge();
+    }, [refreshNotificationBadge])
+  );
 
   useEffect(() => {
     let mounted = true;
@@ -1096,7 +1125,11 @@ function AlunoHomeScreen({ padding, refreshing, onRefresh, treinos, avaliacoes, 
   ];
   const ultimaAvaliacaoDate = toDateSafe(ultimaAvaliacao?.createdAt || ultimaAvaliacao?.data);
   const ultimaAvaliacaoLabel = ultimaAvaliacaoDate ? format(ultimaAvaliacaoDate, 'dd/MM', { locale: ptBR }) : 'Sem registro';
-  const treinoStatusLabel = treinoConcluidoHoje ? 'Concluido hoje' : treinoPrincipal ? 'Pendente' : 'Sem treino';
+  const treinoStatusLabel = treinoPrincipal
+    ? treinoPrincipalStatus?.status === 'completed' || treinoPrincipalStatus?.status === 'partial'
+      ? 'Concluido'
+      : 'Pendente'
+    : 'Sem treino';
 
   return (
     <ScrollView
@@ -1139,6 +1172,21 @@ function AlunoHomeScreen({ padding, refreshing, onRefresh, treinos, avaliacoes, 
                   onPress={() => router.push('/notifications' as any)}
                 >
                   <Ionicons name="notifications-outline" size={22} color={colors.primaryText} />
+                  {notificationBadge > 0 ? (
+                    <View
+                      style={[
+                        styles.badgeDot,
+                        {
+                          backgroundColor: colors.error || colors.primary,
+                          borderRadius: borderRadius.full,
+                        },
+                      ]}
+                    >
+                      <Text style={[styles.badgeText, { color: '#fff' }]}>
+                        {notificationBadge > 99 ? '99+' : notificationBadge}
+                      </Text>
+                    </View>
+                  ) : null}
                 </TouchableOpacity>
                 <TouchableOpacity
                   style={[styles.iconButton, { backgroundColor: colors.secondaryBackground, borderRadius: borderRadius.full, marginLeft: spacing.sm }]}
@@ -1167,9 +1215,17 @@ function AlunoHomeScreen({ padding, refreshing, onRefresh, treinos, avaliacoes, 
               <View style={styles.alunoFocusHeader}>
                 <View style={styles.alunoFocusCopy}>
                   <Text style={[{ color: colors.secondaryText }, typography.labelSmall]}>Plano do dia</Text>
-                  <Text style={[{ color: colors.primaryText, marginTop: spacing.xs }, typography.titleLarge]} numberOfLines={2}>
-                    {treinoPrincipal?.nome || 'Sem treino liberado'}
-                  </Text>
+                  <View style={styles.alunoFocusTitleRow}>
+                    <Text
+                      style={[{ color: colors.primaryText, marginTop: spacing.xs, flexShrink: 1 }, typography.titleLarge]}
+                      numberOfLines={2}
+                    >
+                      {treinoPrincipal?.nome || 'Sem treino liberado'}
+                      {treinoPrincipalHasWarning ? (
+                        <Text style={{ color: colors.warning }}> !</Text>
+                      ) : null}
+                    </Text>
+                  </View>
                   <Text style={[{ color: colors.secondaryText, marginTop: spacing.xs }, typography.bodySmall]}>
                     {treinoPrincipal ? 'Toque para abrir o treino e registrar progresso.' : 'Seu personal ainda nao enviou o treino de hoje.'}
                   </Text>
@@ -1185,7 +1241,7 @@ function AlunoHomeScreen({ padding, refreshing, onRefresh, treinos, avaliacoes, 
               <View style={styles.alunoFocusStatsRow}>
                 <View style={[styles.alunoFocusStatCard, { borderColor: colors.border, borderRadius: borderRadius.md }]}>
                   <Text style={[{ color: colors.secondaryText }, typography.labelSmall]}>Treino</Text>
-                  <Text style={[{ color: colors.primaryText, marginTop: 3 }, typography.labelMedium]} numberOfLines={1}>
+                  <Text style={[{ color: colors.primaryText, marginTop: 3 }, typography.labelMedium]} numberOfLines={2}>
                     {treinoStatusLabel}
                   </Text>
                 </View>
@@ -1309,10 +1365,10 @@ function AlunoHomeScreen({ padding, refreshing, onRefresh, treinos, avaliacoes, 
           >
             <View style={styles.alunoPromoHeader}>
               <View style={[styles.alunoPromoTag, { backgroundColor: 'rgba(255,255,255,0.18)' }]}>
-                <Ionicons name="sparkles" size={12} color="#EAF4FF" />
-                <Text style={[styles.alunoPromoTagText, { color: '#EAF4FF' }]}>Plano individual</Text>
+                <Ionicons name="sparkles" size={12} color={DARK_MODE_ACCENT_TEXT} />
+                <Text style={[styles.alunoPromoTagText, { color: DARK_MODE_ACCENT_TEXT }]}>Plano individual</Text>
               </View>
-              <Ionicons name="rocket-outline" size={20} color="#EAF4FF" />
+              <Ionicons name="rocket-outline" size={20} color={DARK_MODE_ACCENT_TEXT} />
             </View>
 
             <Text style={[{ color: '#F8FCFF', marginTop: spacing.sm }, typography.titleLarge]}>
@@ -1333,7 +1389,7 @@ function AlunoHomeScreen({ padding, refreshing, onRefresh, treinos, avaliacoes, 
                 style={[styles.alunoPromoButtonGhost, { borderRadius: borderRadius.md }]}
                 onPress={() => router.push('/chat/ai' as any)}
               >
-                <Text style={[{ color: '#EAF4FF' }, typography.labelMedium]}>Testar MH Assistente</Text>
+                <Text style={[{ color: DARK_MODE_ACCENT_TEXT }, typography.labelMedium]}>Testar MH Assistente</Text>
               </TouchableOpacity>
             </View>
           </LinearGradient>
@@ -1402,7 +1458,9 @@ function AlunoHomeScreen({ padding, refreshing, onRefresh, treinos, avaliacoes, 
           </View>
         ) : (
           treinos.slice(0, 4).map((treino) => {
+            const treinoStatus = getTreinoStatus(treino);
             const concluidoHoje = isTreinoConcluidoHoje(treino);
+            const hasMissingExercises = treinoStatus.status === 'partial';
             return (
               <TouchableOpacity
                 key={treino.id}
@@ -1415,25 +1473,33 @@ function AlunoHomeScreen({ padding, refreshing, onRefresh, treinos, avaliacoes, 
                     padding: spacing.md,
                   },
                 ]}
-                onPress={() => router.push(`/workout/${treino.id}` as any)}
+                onPress={() =>
+                  router.push({
+                    pathname: '/workout/[id]',
+                    params: { id: treino.id },
+                  })
+                }
               >
                 <View style={styles.treinoCardContent}>
                   <View style={[styles.treinoIcon, { backgroundColor: colors.secondary + '20', borderRadius: borderRadius.full }]}>
                     <Ionicons name="barbell-outline" size={22} color={colors.secondary} />
                   </View>
                   <View style={styles.treinoInfo}>
-                    <Text style={[{ color: colors.primaryText }, typography.titleMedium]}>
-                      {treino.nome}
-                    </Text>
+                    <View style={styles.treinoTitleRow}>
+                      <Text
+                        style={[{ color: colors.primaryText, flexShrink: 1 }, typography.titleMedium]}
+                        numberOfLines={1}
+                      >
+                        {treino.nome}
+                        {hasMissingExercises ? (
+                          <Text style={{ color: colors.warning }}> !</Text>
+                        ) : null}
+                      </Text>
+                    </View>
                     <View style={styles.treinoMeta}>
                       <View style={[styles.badge, { backgroundColor: colors.primary + '20', borderRadius: borderRadius.sm, paddingHorizontal: spacing.sm, paddingVertical: 2 }]}>
                         <Text style={[{ color: colors.primary }, typography.labelSmall]}>{treino.tipo}</Text>
                       </View>
-                      {concluidoHoje && (
-                        <View style={[styles.badge, { backgroundColor: colors.success + '20', borderRadius: borderRadius.sm, paddingHorizontal: spacing.sm, paddingVertical: 2, marginLeft: spacing.sm }]}>
-                          <Text style={[{ color: colors.success }, typography.labelSmall]}>Concluído hoje</Text>
-                        </View>
-                      )}
                       {treino.exercicios !== undefined && (
                         <Text style={[{ color: colors.secondaryText, marginLeft: spacing.sm }, typography.bodySmall]}>
                           {treino.exercicios} exercícios
@@ -1454,7 +1520,12 @@ function AlunoHomeScreen({ padding, refreshing, onRefresh, treinos, avaliacoes, 
                     ) : (
                       <TouchableOpacity
                         style={[styles.startButton, { backgroundColor: colors.primary, borderRadius: borderRadius.md, paddingHorizontal: spacing.md, paddingVertical: spacing.sm }]}
-                        onPress={() => router.push(`/start-workout?id=${treino.id}` as any)}
+                        onPress={() =>
+                          router.push({
+                            pathname: '/start-workout',
+                            params: { workoutId: treino.id },
+                          })
+                        }
                       >
                         <Text style={[{ color: colors.info }, typography.labelMedium]}>Iniciar</Text>
                       </TouchableOpacity>
@@ -3458,7 +3529,7 @@ function SoloAlunoHomeScreen({ padding, refreshing, onRefresh, noPersonalFlow, t
       subtitle: 'Historico e progresso',
       icon: 'analytics-outline',
       ctaIcon: 'arrow-forward',
-      accent: ['#7DD3FC', '#1D4ED8'],
+      accent: [DARK_MODE_ACCENT_ALT, DARK_MODE_ACCENT_DEEP],
       onPress: () => router.push('/evaluations' as any),
     },
     {
@@ -3476,7 +3547,7 @@ function SoloAlunoHomeScreen({ padding, refreshing, onRefresh, noPersonalFlow, t
       subtitle: `Hidratacao ${waterCups}/${waterGoal}`,
       icon: 'water-outline',
       ctaIcon: 'add',
-      accent: ['#67E8F9', '#0EA5E9'],
+      accent: [DARK_MODE_ACCENT, DARK_MODE_ACCENT_DEEP],
       onPress: () => setWaterCups((prev) => Math.min(24, prev + 1)),
     },
   ] as const;
@@ -3980,7 +4051,7 @@ function SoloAlunoHomeScreen({ padding, refreshing, onRefresh, noPersonalFlow, t
             </View>
 
             <View style={[styles.soloHeroSubscriptionSummary, { marginTop: spacing.sm }]}>
-              <Ionicons name="sparkles-outline" size={13} color="#BCE9FF" />
+              <Ionicons name="sparkles-outline" size={13} color={DARK_MODE_ACCENT_TEXT} />
               <Text style={[styles.soloHeroSubscriptionHint, typography.bodySmall]}>
                 {hasIndividualPlan
                   ? hasSubscriptionMeta
@@ -3992,14 +4063,14 @@ function SoloAlunoHomeScreen({ padding, refreshing, onRefresh, noPersonalFlow, t
 
             <View style={[styles.soloMetricsRow, { marginTop: spacing.md }]}>
               <LinearGradient
-                colors={['rgba(95,181,255,0.22)', 'rgba(8,23,41,0.62)']}
+                colors={[DARK_MODE_ACCENT_SURFACE_STRONG, 'rgba(8,23,41,0.62)']}
                 start={{ x: 0, y: 0 }}
                 end={{ x: 1, y: 1 }}
                 style={[styles.soloMetricCard, { borderRadius: borderRadius.md }]}
               >
                 <View style={styles.soloMetricHeaderRow}>
                   <View style={styles.soloMetricIconWrap}>
-                    <Ionicons name="sparkles-outline" size={14} color="#9ED8FF" />
+                    <Ionicons name="sparkles-outline" size={14} color={DARK_MODE_ACCENT} />
                   </View>
                   <Text style={[styles.soloMetricTitle, typography.labelSmall]}>Creditos</Text>
                 </View>
@@ -4087,12 +4158,12 @@ function SoloAlunoHomeScreen({ padding, refreshing, onRefresh, noPersonalFlow, t
                   >
                     <Ionicons name={item.icon as any} size={18} color={item.accent[0]} />
                   </View>
-                  <Ionicons name={item.ctaIcon as any} size={14} color="rgba(225,242,255,0.74)" />
+                  <Ionicons name={item.ctaIcon as any} size={14} color={DARK_MODE_ACCENT_TEXT_SOFT} />
                 </View>
-                <Text style={[styles.soloQuickLabel, { color: '#EAF6FF' }, typography.labelMedium]}>
+                <Text style={[styles.soloQuickLabel, { color: DARK_MODE_ACCENT_TEXT }, typography.labelMedium]}>
                   {item.title}
                 </Text>
-                <Text style={[styles.soloQuickHint, { color: 'rgba(225,242,255,0.78)' }, typography.bodySmall]}>
+                <Text style={[styles.soloQuickHint, { color: DARK_MODE_ACCENT_TEXT_MUTED }, typography.bodySmall]}>
                   {item.subtitle}
                 </Text>
               </View>
@@ -4121,7 +4192,7 @@ function SoloAlunoHomeScreen({ padding, refreshing, onRefresh, noPersonalFlow, t
               style={[styles.soloCalendarOpenButton, { borderRadius: borderRadius.full }]}
               onPress={handleOpenAgenda}
             >
-              <Ionicons name="calendar-outline" size={13} color="#AEE4FF" />
+              <Ionicons name="calendar-outline" size={13} color={DARK_MODE_ACCENT_TEXT} />
               <Text style={[styles.soloCalendarOpenButtonText, typography.labelSmall]}>Agenda</Text>
             </TouchableOpacity>
           </View>
@@ -4142,10 +4213,10 @@ function SoloAlunoHomeScreen({ padding, refreshing, onRefresh, noPersonalFlow, t
                 style={[
                   styles.soloDayChip,
                   {
-                    backgroundColor: selectedDateKey === item.key ? 'rgba(129,223,255,0.24)' : 'rgba(6,15,28,0.45)',
+                    backgroundColor: selectedDateKey === item.key ? DARK_MODE_ACCENT_SURFACE_STRONG : 'rgba(6,15,28,0.45)',
                     borderRadius: borderRadius.md,
                     borderWidth: 1,
-                    borderColor: selectedDateKey === item.key ? 'rgba(129,223,255,0.7)' : 'rgba(193,228,255,0.16)',
+                    borderColor: selectedDateKey === item.key ? DARK_MODE_ACCENT_BORDER : colors.border,
                   },
                 ]}
                 onPress={() => setSelectedDateKey(item.key)}
@@ -4153,7 +4224,7 @@ function SoloAlunoHomeScreen({ padding, refreshing, onRefresh, noPersonalFlow, t
                 <Text
                   style={[
                     styles.soloDayLabel,
-                    { color: selectedDateKey === item.key ? '#E8F7FF' : 'rgba(207,231,248,0.78)' },
+                    { color: selectedDateKey === item.key ? DARK_MODE_ACCENT_TEXT : DARK_MODE_ACCENT_TEXT_SOFT },
                   ]}
                 >
                   {item.label}
@@ -4174,14 +4245,14 @@ function SoloAlunoHomeScreen({ padding, refreshing, onRefresh, noPersonalFlow, t
                         backgroundColor:
                           selectedDateKey === item.key
                             ? 'rgba(255,255,255,0.24)'
-                            : 'rgba(124,218,255,0.2)',
+                            : DARK_MODE_ACCENT_SURFACE,
                       },
                     ]}
                   >
                     <Text
                       style={[
                         styles.soloDayCountText,
-                        { color: selectedDateKey === item.key ? '#FFFFFF' : '#8FE6FF' },
+                        { color: selectedDateKey === item.key ? '#FFFFFF' : DARK_MODE_ACCENT_TEXT },
                       ]}
                     >
                       {eventsByDay[item.key]?.length || 0}
@@ -4206,19 +4277,19 @@ function SoloAlunoHomeScreen({ padding, refreshing, onRefresh, noPersonalFlow, t
               Agenda de {selectedDayLabel}
             </Text>
             {aiPlannerLoading ? (
-              <Text style={[{ color: 'rgba(206,229,245,0.76)', marginTop: spacing.xs }, typography.labelSmall]}>
+              <Text style={[{ color: DARK_MODE_ACCENT_TEXT_SOFT, marginTop: spacing.xs }, typography.labelSmall]}>
                 Atualizando sugestoes da IA...
               </Text>
             ) : null}
             {selectedDayEvents.length === 0 ? (
-              <Text style={[{ color: 'rgba(206,229,245,0.76)', marginTop: spacing.sm }, typography.bodySmall]}>
+              <Text style={[{ color: DARK_MODE_ACCENT_TEXT_SOFT, marginTop: spacing.sm }, typography.bodySmall]}>
                 Nenhum item para este dia.
               </Text>
             ) : (
               selectedDayEvents.slice(0, 7).map((event) => (
                 <TouchableOpacity
                   key={event.id}
-                  style={[styles.soloDayAgendaItem, { borderBottomColor: 'rgba(193,228,255,0.16)' }]}
+                  style={[styles.soloDayAgendaItem, { borderBottomColor: colors.border }]}
                   onPress={() => handleCalendarEventPress(event)}
                   activeOpacity={0.82}
                 >
@@ -4246,7 +4317,7 @@ function SoloAlunoHomeScreen({ padding, refreshing, onRefresh, noPersonalFlow, t
                       size={14}
                       color={
                         event.type === 'treino'
-                          ? '#7DDAFF'
+                          ? DARK_MODE_ACCENT
                           : event.type === 'fatura'
                             ? '#FF9898'
                             : '#A8B3FF'
@@ -4257,20 +4328,20 @@ function SoloAlunoHomeScreen({ padding, refreshing, onRefresh, noPersonalFlow, t
                     <Text style={[{ color: '#F0FAFF' }, typography.bodySmall]} numberOfLines={1}>
                       {event.title}
                     </Text>
-                    <Text style={[{ color: 'rgba(208,231,247,0.8)' }, typography.labelSmall]} numberOfLines={2}>
+                    <Text style={[{ color: DARK_MODE_ACCENT_TEXT_SOFT }, typography.labelSmall]} numberOfLines={2}>
                       {event.subtitle}
                     </Text>
                   </View>
                   {event.source === 'ai' ? (
-                    <View style={[styles.soloAiTag, { backgroundColor: 'rgba(124,218,255,0.16)' }]}>
-                      <Text style={[styles.soloAiTagText, { color: '#8FE6FF' }]}>IA</Text>
+                    <View style={[styles.soloAiTag, { backgroundColor: DARK_MODE_ACCENT_SURFACE }]}>
+                      <Text style={[styles.soloAiTagText, { color: DARK_MODE_ACCENT_TEXT }]}>IA</Text>
                     </View>
                   ) : event.type === 'fatura' ? (
                     <View style={[styles.soloAiTag, { backgroundColor: 'rgba(255,154,154,0.18)' }]}>
                       <Text style={[styles.soloAiTagText, { color: '#FFB7B7' }]}>Fatura</Text>
                     </View>
                   ) : null}
-                  <Ionicons name="chevron-forward" size={14} color="rgba(219,238,252,0.68)" />
+                  <Ionicons name="chevron-forward" size={14} color={DARK_MODE_ACCENT_TEXT_SOFT} />
                 </TouchableOpacity>
               ))
             )}
@@ -4305,20 +4376,20 @@ function SoloAlunoHomeScreen({ padding, refreshing, onRefresh, noPersonalFlow, t
             style={[styles.soloStepsCard, { borderRadius: borderRadius.lg, marginTop: spacing.md }]}
           >
             <LinearGradient
-              colors={['#7DD3FC', '#0EA5E9']}
+              colors={[DARK_MODE_ACCENT_ALT, DARK_MODE_ACCENT]}
               start={{ x: 0, y: 0 }}
               end={{ x: 1, y: 0 }}
               style={styles.soloPanelAccentBar}
             />
             <View style={styles.soloStepsHeader}>
               <View>
-                <Text style={[{ color: '#EAF6FF' }, typography.labelMedium]}>Corrida e caminhada</Text>
+                <Text style={[{ color: DARK_MODE_ACCENT_TEXT }, typography.labelMedium]}>Corrida e caminhada</Text>
                 <Text style={[{ color: '#FFFFFF', marginTop: spacing.xs }, typography.titleMedium]}>
                   {stepsToday.toLocaleString('pt-BR')} passos
                 </Text>
               </View>
               <View style={styles.soloStepsStatusWrap}>
-                <Ionicons name={pedometerAvailable ? 'walk-outline' : 'alert-circle-outline'} size={14} color="#9FD7FF" />
+                <Ionicons name={pedometerAvailable ? 'walk-outline' : 'alert-circle-outline'} size={14} color={DARK_MODE_ACCENT_TEXT} />
                 <Text style={styles.soloStepsStatusText}>
                   {pedometerAvailable ? 'Tempo real' : 'Sensor indisponivel'}
                 </Text>
@@ -4326,7 +4397,7 @@ function SoloAlunoHomeScreen({ padding, refreshing, onRefresh, noPersonalFlow, t
             </View>
 
             <View style={[styles.soloProgressTrack, { marginTop: spacing.sm, backgroundColor: 'rgba(255,255,255,0.2)' }]}>
-              <View style={[styles.soloProgressFill, { width: `${stepsProgress}%`, backgroundColor: '#67D6FF' }]} />
+              <View style={[styles.soloProgressFill, { width: `${stepsProgress}%`, backgroundColor: DARK_MODE_ACCENT }]} />
             </View>
 
             <View style={styles.soloStepsMetaRow}>
@@ -4352,13 +4423,13 @@ function SoloAlunoHomeScreen({ padding, refreshing, onRefresh, noPersonalFlow, t
             style={[styles.soloHydrationCard, { borderRadius: borderRadius.lg, marginTop: spacing.md }]}
           >
             <LinearGradient
-              colors={['#7DD3FC', '#38BDF8']}
+              colors={[DARK_MODE_ACCENT_ALT, DARK_MODE_ACCENT]}
               start={{ x: 0, y: 0 }}
               end={{ x: 1, y: 0 }}
               style={styles.soloPanelAccentBar}
             />
             <View style={styles.soloHydrationHeader}>
-              <Text style={[{ color: '#E2F3FF' }, typography.labelMedium]}>Meta de hidratacao</Text>
+              <Text style={[{ color: DARK_MODE_ACCENT_TEXT }, typography.labelMedium]}>Meta de hidratacao</Text>
               <Text style={[{ color: '#FFFFFF' }, typography.titleMedium]}>
                 {waterCups}/{waterGoal} copos
               </Text>
@@ -4379,16 +4450,16 @@ function SoloAlunoHomeScreen({ padding, refreshing, onRefresh, noPersonalFlow, t
                     ]}
                   />
                   <View style={styles.soloBottleIconWrap}>
-                    <Ionicons name="water" size={18} color="#E0F2FE" />
+                    <Ionicons name="water" size={18} color={DARK_MODE_ACCENT_TEXT} />
                   </View>
                 </View>
               </View>
               <View style={styles.soloHydrationContent}>
-                <Text style={[{ color: '#E2F3FF' }, typography.bodySmall]}>
+                <Text style={[{ color: DARK_MODE_ACCENT_TEXT }, typography.bodySmall]}>
                   {waterProgress}% da meta diaria
                 </Text>
                 <View style={[styles.soloProgressTrack, { marginTop: spacing.sm, backgroundColor: 'rgba(255,255,255,0.2)' }]}>
-                  <View style={[styles.soloProgressFill, { width: `${waterProgress}%`, backgroundColor: '#67D6FF' }]} />
+                  <View style={[styles.soloProgressFill, { width: `${waterProgress}%`, backgroundColor: DARK_MODE_ACCENT }]} />
                 </View>
                 <View style={[styles.soloHydrationButtons, { marginTop: spacing.md }]}>
                   <TouchableOpacity
@@ -4414,10 +4485,10 @@ function SoloAlunoHomeScreen({ padding, refreshing, onRefresh, noPersonalFlow, t
                     key={`water-dot-${index}`}
                     style={[
                       styles.soloHydrationDot,
-                      { backgroundColor: active ? 'rgba(103,214,255,0.24)' : 'rgba(255,255,255,0.12)' },
+                      { backgroundColor: active ? DARK_MODE_ACCENT_SURFACE_STRONG : 'rgba(255,255,255,0.12)' },
                     ]}
                   >
-                    <Ionicons name="water" size={12} color={active ? '#67D6FF' : 'rgba(255,255,255,0.6)'} />
+                    <Ionicons name="water" size={12} color={active ? DARK_MODE_ACCENT : 'rgba(255,255,255,0.6)'} />
                   </View>
                 );
               })}
@@ -4510,18 +4581,18 @@ function SoloAlunoHomeScreen({ padding, refreshing, onRefresh, noPersonalFlow, t
             style={[styles.soloBodyCheckinSummaryCard, { borderRadius: borderRadius.lg, marginTop: spacing.md }]}
           >
             <LinearGradient
-              colors={['#7DD3FC', '#60A5FA']}
+              colors={[DARK_MODE_ACCENT_ALT, DARK_MODE_ACCENT]}
               start={{ x: 0, y: 0 }}
               end={{ x: 1, y: 0 }}
               style={styles.soloPanelAccentBar}
             />
             <View style={styles.soloBodyCheckinSummaryHeader}>
               <View style={styles.soloBodyCheckinIconWrap}>
-                <Ionicons name="pulse-outline" size={16} color="#AEE2FF" />
+                <Ionicons name="pulse-outline" size={16} color={DARK_MODE_ACCENT_TEXT} />
               </View>
               <View style={{ flex: 1 }}>
                 <Text style={[{ color: '#F2FAFF' }, typography.titleMedium]}>Check-in corporal IA</Text>
-                <Text style={[{ color: 'rgba(222,240,255,0.86)', marginTop: spacing.xs }, typography.bodySmall]}>
+                <Text style={[{ color: DARK_MODE_ACCENT_TEXT_MUTED, marginTop: spacing.xs }, typography.bodySmall]}>
                   Atualize peso, altura e objetivo principal para a IA recalibrar treino e avaliacao.
                 </Text>
               </View>
@@ -4595,14 +4666,14 @@ function SoloAlunoHomeScreen({ padding, refreshing, onRefresh, noPersonalFlow, t
 
           <View style={[styles.soloAiStatusCard, { marginTop: spacing.md }]}>
             <View style={styles.soloAiStatusRow}>
-              <Ionicons name="time-outline" size={15} color="#7DD3FC" />
-              <Text style={[styles.soloAiStatusText, { color: '#DFF2FF' }]}>
+              <Ionicons name="time-outline" size={15} color={DARK_MODE_ACCENT} />
+              <Text style={[styles.soloAiStatusText, { color: DARK_MODE_ACCENT_TEXT }]}>
                 Ultima analise: {lastAiReviewDate ? format(lastAiReviewDate, 'dd/MM HH:mm', { locale: ptBR }) : 'pendente'}
               </Text>
             </View>
             <View style={[styles.soloAiStatusRow, { marginTop: 6 }]}>
               <Ionicons name="flash-outline" size={15} color="#FDE68A" />
-              <Text style={[styles.soloAiStatusText, { color: '#DFF2FF' }]} numberOfLines={2}>
+              <Text style={[styles.soloAiStatusText, { color: DARK_MODE_ACCENT_TEXT }]} numberOfLines={2}>
                 {nextAiSuggestion
                   ? `Proximo ajuste: ${nextAiSuggestion.title}`
                   : 'Sem ajustes pendentes no momento.'}
@@ -4617,11 +4688,11 @@ function SoloAlunoHomeScreen({ padding, refreshing, onRefresh, noPersonalFlow, t
               disabled={aiEvaluationGenerating}
             >
               {aiEvaluationGenerating ? (
-                <ActivityIndicator size="small" color="#EAF6FF" />
+                <ActivityIndicator size="small" color={DARK_MODE_ACCENT_TEXT} />
               ) : (
                 <>
-                  <Ionicons name="sparkles-outline" size={17} color="#EAF6FF" />
-                  <Text style={[styles.soloPremiumActionText, { color: '#EAF6FF' }]}>Gerar avaliacao IA</Text>
+                  <Ionicons name="sparkles-outline" size={17} color={DARK_MODE_ACCENT_TEXT} />
+                  <Text style={[styles.soloPremiumActionText, { color: DARK_MODE_ACCENT_TEXT }]}>Gerar avaliacao IA</Text>
                 </>
               )}
             </TouchableOpacity>
@@ -4820,18 +4891,18 @@ function SoloAlunoHomeScreen({ padding, refreshing, onRefresh, noPersonalFlow, t
                 onPress={() => setGoalPickerOpen((prev) => !prev)}
               >
                 <View style={styles.soloBodyGoalDropdownValueWrap}>
-                  <Ionicons name="sparkles-outline" size={15} color="#7FD7FF" />
+                  <Ionicons name="sparkles-outline" size={15} color={DARK_MODE_ACCENT} />
                   <Text
                     style={[
                       styles.soloBodyGoalDropdownValue,
-                      { color: goalInput ? '#F3FAFF' : 'rgba(213,233,247,0.75)' },
+                      { color: goalInput ? DARK_MODE_ACCENT_TEXT : DARK_MODE_ACCENT_TEXT_SOFT },
                     ]}
                     numberOfLines={1}
                   >
                     {goalInput || 'Selecionar objetivo'}
                   </Text>
                 </View>
-                <Ionicons name={goalPickerOpen ? 'chevron-up' : 'chevron-down'} size={18} color="#B8E7FF" />
+                <Ionicons name={goalPickerOpen ? 'chevron-up' : 'chevron-down'} size={18} color={DARK_MODE_ACCENT_TEXT} />
               </TouchableOpacity>
 
               {goalPickerOpen ? (
@@ -5166,16 +5237,16 @@ function SoloAlunoHomeScreen({ padding, refreshing, onRefresh, noPersonalFlow, t
                       styles.soloAiNoticeDateChip,
                       {
                         borderRadius: borderRadius.md,
-                        borderColor: selected ? 'rgba(143,230,255,0.8)' : 'rgba(196,220,239,0.26)',
-                        backgroundColor: selected ? 'rgba(124,218,255,0.22)' : 'rgba(7,16,27,0.42)',
+                        borderColor: selected ? DARK_MODE_ACCENT_BORDER : 'rgba(196,220,239,0.26)',
+                        backgroundColor: selected ? DARK_MODE_ACCENT_SURFACE_STRONG : 'rgba(7,16,27,0.42)',
                       },
                     ]}
                     onPress={() => setAiNoticeSelectedDateKey(day.key)}
                   >
-                    <Text style={[styles.soloAiNoticeDateLabel, { color: selected ? '#DFF5FF' : '#BBD3E8' }]}>
+                    <Text style={[styles.soloAiNoticeDateLabel, { color: selected ? DARK_MODE_ACCENT_TEXT : '#BBD3E8' }]}>
                       {day.label}
                     </Text>
-                    <Text style={[styles.soloAiNoticeDateNumber, { color: selected ? '#FFFFFF' : '#DCEFFF' }]}>
+                    <Text style={[styles.soloAiNoticeDateNumber, { color: selected ? '#FFFFFF' : DARK_MODE_ACCENT_TEXT }]}>
                       {day.day}
                     </Text>
                   </TouchableOpacity>
@@ -5264,6 +5335,11 @@ const styles = StyleSheet.create({
   alunoFocusCopy: {
     flex: 1,
     paddingRight: 10,
+  },
+  alunoFocusTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: themeSpacing.sm,
   },
   alunoFocusIconWrap: {
     width: 46,
@@ -5684,10 +5760,28 @@ const styles = StyleSheet.create({
   treinoInfo: {
     flex: 1,
   },
+  treinoTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: themeSpacing.sm,
+  },
   treinoMeta: {
     flexDirection: 'row',
     alignItems: 'center',
+    flexWrap: 'wrap',
     marginTop: 4,
+  },
+  warningInlineBadge: {
+    minWidth: 22,
+    height: 22,
+    borderRadius: themeBorderRadius.full,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: themeSpacing.xs,
+  },
+  warningInlineBadgeText: {
+    fontSize: 13,
+    fontWeight: '800',
   },
   badge: {},
   treinoAction: {},
@@ -6422,7 +6516,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 6,
     borderWidth: 1,
-    borderColor: 'rgba(203,234,255,0.28)',
+    borderColor: DARK_MODE_ACCENT_BORDER_SOFT,
     backgroundColor: 'rgba(10,33,54,0.55)',
     borderRadius: 999,
     paddingHorizontal: 10,
@@ -6435,13 +6529,13 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   soloHeroPlanPillText: {
-    color: '#DAEEFF',
+    color: DARK_MODE_ACCENT_TEXT,
     fontWeight: '700',
   },
   soloHeroSubscriptionCard: {
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: 'rgba(203,234,255,0.24)',
+    borderColor: DARK_MODE_ACCENT_BORDER_SOFT,
     backgroundColor: 'rgba(7,27,47,0.55)',
     padding: 10,
   },
@@ -6454,13 +6548,13 @@ const styles = StyleSheet.create({
   soloHeroSubscriptionCta: {
     borderRadius: 999,
     borderWidth: 1,
-    borderColor: 'rgba(191,233,255,0.34)',
+    borderColor: DARK_MODE_ACCENT_BORDER,
     backgroundColor: 'rgba(10,35,58,0.72)',
     paddingHorizontal: 10,
     paddingVertical: 6,
   },
   soloHeroSubscriptionCtaText: {
-    color: '#DFF4FF',
+    color: DARK_MODE_ACCENT_TEXT,
     fontWeight: '700',
   },
   soloHeroSubscriptionMetaRow: {
@@ -6471,13 +6565,13 @@ const styles = StyleSheet.create({
     flex: 1,
     borderRadius: 10,
     borderWidth: 1,
-    borderColor: 'rgba(192,230,255,0.2)',
+    borderColor: DARK_MODE_ACCENT_BORDER_SOFT,
     backgroundColor: 'rgba(6,21,39,0.5)',
     paddingHorizontal: 8,
     paddingVertical: 7,
   },
   soloHeroSubscriptionMetaLabel: {
-    color: 'rgba(200,232,255,0.74)',
+    color: DARK_MODE_ACCENT_TEXT_SOFT,
     fontSize: 10,
     fontWeight: '600',
     textTransform: 'uppercase',
@@ -6490,7 +6584,7 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
   soloHeroSubscriptionHint: {
-    color: 'rgba(219,239,255,0.88)',
+    color: DARK_MODE_ACCENT_TEXT_MUTED,
     fontSize: 12,
     lineHeight: 16,
   },
@@ -6499,7 +6593,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 6,
     borderWidth: 1,
-    borderColor: 'rgba(190,230,255,0.22)',
+    borderColor: DARK_MODE_ACCENT_BORDER_SOFT,
     backgroundColor: 'rgba(6,22,39,0.45)',
     borderRadius: 10,
     paddingHorizontal: 10,
@@ -6523,7 +6617,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 11,
     paddingVertical: 10,
     borderWidth: 1,
-    borderColor: 'rgba(213,236,255,0.24)',
+    borderColor: DARK_MODE_ACCENT_BORDER_SOFT,
   },
   soloMetricHeaderRow: {
     flexDirection: 'row',
@@ -6539,19 +6633,19 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(255,255,255,0.14)',
   },
   soloMetricTitle: {
-    color: 'rgba(228,243,255,0.88)',
+    color: DARK_MODE_ACCENT_TEXT_MUTED,
   },
   soloMetricValue: {
     color: '#FFFFFF',
   },
   soloCalendarPremiumCard: {
     borderWidth: 1,
-    borderColor: 'rgba(193,228,255,0.2)',
+    borderColor: DARK_MODE_ACCENT_BORDER_SOFT,
     overflow: 'hidden',
   },
   soloCalendarSubtitle: {
     marginTop: 4,
-    color: 'rgba(208,231,247,0.78)',
+    color: DARK_MODE_ACCENT_TEXT_SOFT,
   },
   soloCalendarOpenButton: {
     flexDirection: 'row',
@@ -6560,11 +6654,11 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
     paddingVertical: 6,
     borderWidth: 1,
-    borderColor: 'rgba(174,228,255,0.36)',
+    borderColor: DARK_MODE_ACCENT_BORDER,
     backgroundColor: 'rgba(12,30,49,0.52)',
   },
   soloCalendarOpenButtonText: {
-    color: '#AEE4FF',
+    color: DARK_MODE_ACCENT_TEXT,
     fontWeight: '700',
   },
   soloCalendarMetaRow: {
@@ -6575,13 +6669,13 @@ const styles = StyleSheet.create({
     flex: 1,
     borderRadius: 10,
     borderWidth: 1,
-    borderColor: 'rgba(191,227,247,0.22)',
+    borderColor: DARK_MODE_ACCENT_BORDER_SOFT,
     backgroundColor: 'rgba(5,14,24,0.48)',
     paddingHorizontal: 10,
     paddingVertical: 8,
   },
   soloCalendarMetaLabel: {
-    color: 'rgba(208,231,247,0.76)',
+    color: DARK_MODE_ACCENT_TEXT_SOFT,
     fontSize: 11,
     fontWeight: '600',
   },
@@ -6689,10 +6783,10 @@ const styles = StyleSheet.create({
   soloDarkActionButton: {
     backgroundColor: 'rgba(12,22,36,0.55)',
     borderWidth: 1,
-    borderColor: 'rgba(111,214,255,0.34)',
+    borderColor: DARK_MODE_ACCENT_BORDER,
   },
   soloLightActionButton: {
-    backgroundColor: '#8ED4FF',
+    backgroundColor: DARK_MODE_ACCENT,
   },
   soloMealsPreviewCard: {
     borderWidth: 1,
@@ -6774,12 +6868,12 @@ const styles = StyleSheet.create({
     borderRadius: 999,
     paddingHorizontal: 10,
     paddingVertical: 6,
-    backgroundColor: 'rgba(111,214,255,0.14)',
+    backgroundColor: DARK_MODE_ACCENT_SURFACE,
     borderWidth: 1,
-    borderColor: 'rgba(111,214,255,0.44)',
+    borderColor: DARK_MODE_ACCENT_BORDER,
   },
   soloAiPulseText: {
-    color: '#B8E8FF',
+    color: DARK_MODE_ACCENT_TEXT,
     fontSize: 11,
     fontWeight: '700',
   },
@@ -6811,7 +6905,7 @@ const styles = StyleSheet.create({
   soloAiStatusCard: {
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: 'rgba(111,214,255,0.26)',
+    borderColor: DARK_MODE_ACCENT_BORDER_SOFT,
     backgroundColor: 'rgba(7,20,40,0.5)',
     paddingHorizontal: 10,
     paddingVertical: 9,
@@ -6867,7 +6961,7 @@ const styles = StyleSheet.create({
   },
   soloPlanFeatureText: {
     flex: 1,
-    color: 'rgba(236,245,255,0.9)',
+    color: DARK_MODE_ACCENT_TEXT_MUTED,
     fontSize: 12,
     lineHeight: 16,
   },
@@ -6879,10 +6973,10 @@ const styles = StyleSheet.create({
     gap: 8,
     paddingHorizontal: 14,
     paddingVertical: 10,
-    backgroundColor: '#8ED4FF',
+    backgroundColor: DARK_MODE_ACCENT,
   },
   soloPlanCtaText: {
-    color: '#072037',
+    color: '#F8FAFC',
     fontWeight: '800',
   },
   soloCoachBanner: {
@@ -6963,13 +7057,13 @@ const styles = StyleSheet.create({
     gap: 5,
     borderRadius: 999,
     borderWidth: 1,
-    borderColor: 'rgba(143,211,255,0.4)',
+    borderColor: DARK_MODE_ACCENT_BORDER,
     backgroundColor: 'rgba(6,18,32,0.48)',
     paddingHorizontal: 10,
     paddingVertical: 6,
   },
   soloNutritionHeaderBadgeText: {
-    color: '#BFE8FF',
+    color: DARK_MODE_ACCENT_TEXT,
     fontSize: 11,
     fontWeight: '700',
   },
@@ -7089,11 +7183,11 @@ const styles = StyleSheet.create({
     paddingVertical: 5,
     borderRadius: 999,
     borderWidth: 1,
-    borderColor: 'rgba(159,215,255,0.35)',
-    backgroundColor: 'rgba(159,215,255,0.16)',
+    borderColor: DARK_MODE_ACCENT_BORDER_SOFT,
+    backgroundColor: DARK_MODE_ACCENT_SURFACE,
   },
   soloStepsStatusText: {
-    color: '#CFEAFF',
+    color: DARK_MODE_ACCENT_TEXT,
     fontSize: 11,
     fontWeight: '700',
   },
@@ -7256,7 +7350,7 @@ const styles = StyleSheet.create({
     paddingVertical: 7,
   },
   soloTodayFoodName: {
-    color: '#EAF6FF',
+    color: DARK_MODE_ACCENT_TEXT,
     fontSize: 12,
     fontWeight: '700',
   },
@@ -7306,8 +7400,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 1,
-    borderColor: 'rgba(174,226,255,0.35)',
-    backgroundColor: 'rgba(174,226,255,0.16)',
+    borderColor: DARK_MODE_ACCENT_BORDER,
+    backgroundColor: DARK_MODE_ACCENT_SURFACE,
   },
   soloBodyCheckinMetaRow: {
     flexDirection: 'row',
@@ -7324,12 +7418,12 @@ const styles = StyleSheet.create({
     minHeight: 56,
   },
   soloBodyCheckinMetaLabel: {
-    color: 'rgba(204,232,255,0.82)',
+    color: DARK_MODE_ACCENT_TEXT_SOFT,
     fontSize: 11,
     fontWeight: '600',
   },
   soloBodyCheckinMetaValue: {
-    color: '#ECF7FF',
+    color: DARK_MODE_ACCENT_TEXT,
     fontSize: 12,
     fontWeight: '700',
     marginTop: 4,
@@ -7341,7 +7435,7 @@ const styles = StyleSheet.create({
     gap: 8,
     paddingHorizontal: 13,
     paddingVertical: 10,
-    backgroundColor: '#8ED4FF',
+    backgroundColor: DARK_MODE_ACCENT,
   },
   soloBodyCheckinOpenButtonText: {
     color: '#06213B',
@@ -7628,13 +7722,13 @@ const styles = StyleSheet.create({
     gap: 5,
     borderRadius: 999,
     borderWidth: 1,
-    borderColor: 'rgba(146,212,255,0.34)',
-    backgroundColor: 'rgba(146,212,255,0.12)',
+    borderColor: DARK_MODE_ACCENT_BORDER_SOFT,
+    backgroundColor: DARK_MODE_ACCENT_SURFACE,
     paddingHorizontal: 9,
     paddingVertical: 4,
   },
   soloNutritionSheetBadgeText: {
-    color: '#BFE8FF',
+    color: DARK_MODE_ACCENT_TEXT,
     fontSize: 11,
     fontWeight: '700',
   },
@@ -7668,13 +7762,13 @@ const styles = StyleSheet.create({
     gap: 5,
     borderRadius: 999,
     borderWidth: 1,
-    borderColor: 'rgba(142,212,255,0.42)',
+    borderColor: DARK_MODE_ACCENT_BORDER,
     backgroundColor: 'rgba(10,26,44,0.82)',
     paddingHorizontal: 12,
     paddingVertical: 6,
   },
   soloNutritionAiButtonText: {
-    color: '#8ED4FF',
+    color: DARK_MODE_ACCENT_TEXT,
     fontSize: 11,
     fontWeight: '700',
   },

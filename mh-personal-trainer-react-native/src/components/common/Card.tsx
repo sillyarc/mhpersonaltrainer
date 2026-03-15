@@ -1,12 +1,12 @@
 import React from 'react';
-import { View, StyleSheet, TouchableOpacity, ViewStyle } from 'react-native';
+import { View, StyleSheet, TouchableOpacity, StyleProp, ViewStyle } from 'react-native';
 import { useTheme } from '../../hooks/useTheme';
 import { spacing, borderRadius, shadows } from '../../theme';
 
 interface CardProps {
   children: React.ReactNode;
   onPress?: () => void;
-  style?: ViewStyle;
+  style?: StyleProp<ViewStyle>;
   padding?: 'none' | 'small' | 'medium' | 'large';
   shadow?: boolean;
 }

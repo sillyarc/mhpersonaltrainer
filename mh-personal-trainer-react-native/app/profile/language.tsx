@@ -3,18 +3,33 @@ import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
+import { useTranslation } from 'react-i18next';
+import { showAlert } from '@utils/alert';
 import { useTheme } from '../../src/hooks/useTheme';
 import { useAppStore } from '../../src/store/appStore';
+import { useAuthStore } from '../../src/store/authStore';
 import { changeLanguage, supportedLanguages } from '../../src/i18n';
+import { firestoreService } from '../../src/services/firestoreService';
 import { spacing, borderRadius } from '../../src/theme';
 
 export default function LanguageScreen() {
+  const { t } = useTranslation();
   const { colors } = useTheme();
   const { language, setLanguage } = useAppStore();
+  const { user, updateUser } = useAuthStore();
 
-  const handleSelect = (code: string) => {
+  const handleSelect = async (code: string) => {
     setLanguage(code);
     changeLanguage(code);
+    updateUser({ language: code });
+
+    if (!user?.uid) return;
+
+    try {
+      await firestoreService.updateUserLanguage(user.uid, code);
+    } catch (error: any) {
+      showAlert('Idioma', error?.message || 'Nao foi possivel salvar seu idioma agora.');
+    }
   };
 
   return (
@@ -23,7 +38,7 @@ export default function LanguageScreen() {
         <TouchableOpacity onPress={() => router.back()}>
           <Ionicons name="arrow-back" size={24} color={colors.text} />
         </TouchableOpacity>
-        <Text style={[styles.title, { color: colors.text }]}>Idioma</Text>
+        <Text style={[styles.title, { color: colors.text }]}>{t('language.title')}</Text>
         <View style={{ width: 24 }} />
       </View>
 
@@ -40,7 +55,9 @@ export default function LanguageScreen() {
                   backgroundColor: isSelected ? colors.primary + '15' : colors.surface,
                 },
               ]}
-              onPress={() => handleSelect(lang.code)}
+              onPress={() => {
+                void handleSelect(lang.code);
+              }}
             >
               <Text style={[styles.languageLabel, { color: colors.text }]}>{lang.name}</Text>
               {isSelected && (

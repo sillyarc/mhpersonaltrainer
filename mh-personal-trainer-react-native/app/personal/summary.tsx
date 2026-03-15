@@ -10,6 +10,7 @@ import { spacing, borderRadius } from '../../src/theme';
 
 type StatusFilter = 'todos' | 'ativo' | 'inativo' | 'pendente';
 type ActivityFilter = 'todos' | 'ok' | 'atencao' | 'critico';
+type StudentFocusFilter = 'contact_today' | 'churn_risk';
 
 const normalize = (value?: string) => (value || '').toLowerCase().trim();
 
@@ -68,10 +69,23 @@ export default function PersonalSummaryScreen() {
   }, []);
 
   const novosNoMes = alunos.filter((aluno) => aluno.alunoDesde && aluno.alunoDesde >= startOfMonth).length;
-  const alunosSemTreino7 = alunos.filter((aluno) => {
-    const inactivityDays = daysSince(aluno.ultimoTreino);
-    return inactivityDays === null || inactivityDays > 7;
-  }).length;
+  const alunosPrecisaContatoHoje = useMemo(
+    () =>
+      alunos.filter((aluno) => {
+        const inactivityDays = daysSince(aluno.ultimoTreino);
+        return inactivityDays === null || inactivityDays > 7;
+      }),
+    [alunos]
+  );
+  const alunosEmRiscoEvasao = useMemo(
+    () =>
+      alunos.filter((aluno) => {
+        const inactivityDays = daysSince(aluno.ultimoTreino);
+        return aluno.status === 'inativo' || inactivityDays === null || inactivityDays > 30;
+      }),
+    [alunos]
+  );
+  const alunosSemTreino7 = alunosPrecisaContatoHoje.length;
   const alunosSemTreino30 = alunos.filter((aluno) => {
     const inactivityDays = daysSince(aluno.ultimoTreino);
     return inactivityDays === null || inactivityDays > 30;
@@ -124,6 +138,10 @@ export default function PersonalSummaryScreen() {
       </SafeAreaView>
     );
   }
+
+  const handleOpenStudentFocus = (focus: StudentFocusFilter) => {
+    router.push(`/students?focus=${focus}`);
+  };
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
@@ -194,16 +212,28 @@ export default function PersonalSummaryScreen() {
         </View>
 
         <View style={styles.questionGrid}>
-          <Card style={{ ...styles.questionCard, backgroundColor: colors.secondaryBackground }}>
-            <Text style={[styles.questionTitle, { color: colors.textSecondary }]}>Quem precisa de contato hoje?</Text>
-            <Text style={[styles.questionValue, { color: colors.text }]}>{alunosSemTreino7} alunos</Text>
-            <Text style={[styles.questionHint, { color: colors.textMuted }]}>Sem treino recente (7+ dias).</Text>
-          </Card>
-          <Card style={{ ...styles.questionCard, backgroundColor: colors.secondaryBackground }}>
-            <Text style={[styles.questionTitle, { color: colors.textSecondary }]}>Onde esta o risco de evasao?</Text>
-            <Text style={[styles.questionValue, { color: colors.text }]}>{alunosSemTreino30 + alunosInativos} alunos</Text>
-            <Text style={[styles.questionHint, { color: colors.textMuted }]}>Sem treino 30+ dias ou inativo.</Text>
-          </Card>
+          <TouchableOpacity activeOpacity={0.85} onPress={() => handleOpenStudentFocus('contact_today')}>
+            <Card style={{ ...styles.questionCard, backgroundColor: colors.secondaryBackground }}>
+              <View style={styles.questionHeader}>
+                <Text style={[styles.questionTitle, { color: colors.textSecondary }]}>Quem precisa de contato hoje?</Text>
+                <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
+              </View>
+              <Text style={[styles.questionValue, { color: colors.text }]}>{alunosSemTreino7} alunos</Text>
+              <Text style={[styles.questionHint, { color: colors.textMuted }]}>Sem treino recente (7+ dias).</Text>
+              <Text style={[styles.questionAction, { color: colors.primary }]}>Toque para ver a lista</Text>
+            </Card>
+          </TouchableOpacity>
+          <TouchableOpacity activeOpacity={0.85} onPress={() => handleOpenStudentFocus('churn_risk')}>
+            <Card style={{ ...styles.questionCard, backgroundColor: colors.secondaryBackground }}>
+              <View style={styles.questionHeader}>
+                <Text style={[styles.questionTitle, { color: colors.textSecondary }]}>Onde esta o risco de evasao?</Text>
+                <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
+              </View>
+              <Text style={[styles.questionValue, { color: colors.text }]}>{alunosEmRiscoEvasao.length} alunos</Text>
+              <Text style={[styles.questionHint, { color: colors.textMuted }]}>Sem treino 30+ dias ou inativo.</Text>
+              <Text style={[styles.questionAction, { color: colors.primary }]}>Toque para ver a lista</Text>
+            </Card>
+          </TouchableOpacity>
           <Card style={{ ...styles.questionCard, backgroundColor: colors.secondaryBackground }}>
             <Text style={[styles.questionTitle, { color: colors.textSecondary }]}>Como esta o ritmo da base?</Text>
             <Text style={[styles.questionValue, { color: colors.text }]}>{taxaAtividadeRecente}% em ritmo</Text>
@@ -521,6 +551,12 @@ const styles = StyleSheet.create({
     padding: spacing.md,
     gap: spacing.xs,
   },
+  questionHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    gap: spacing.sm,
+  },
   questionTitle: {
     fontSize: 12,
     fontWeight: '600',
@@ -531,6 +567,11 @@ const styles = StyleSheet.create({
   },
   questionHint: {
     fontSize: 12,
+  },
+  questionAction: {
+    fontSize: 12,
+    fontWeight: '700',
+    marginTop: spacing.xs,
   },
   panelCard: {
     borderRadius: borderRadius.xl,

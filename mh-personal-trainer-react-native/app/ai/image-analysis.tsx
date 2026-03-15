@@ -122,7 +122,12 @@ export default function ImageAnalysisScreen() {
             {imageUri ? (
               <Image source={{ uri: imageUri }} style={[styles.imagePreview, { borderRadius: borderRadius.lg }]} />
             ) : (
-              <View style={[styles.placeholder, { borderRadius: borderRadius.lg }]}>
+              <View
+                style={[
+                  styles.placeholder,
+                  { borderRadius: borderRadius.lg, backgroundColor: colors.surface },
+                ]}
+              >
                 <Ionicons name="image-outline" size={36} color={colors.secondaryText} />
                 <Text style={[{ color: colors.secondaryText }, typography.bodySmall]}>
                   Selecione uma imagem para analisar
@@ -212,7 +217,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     gap: 8,
-    backgroundColor: '#F1F4F8',
   },
   actionRow: {
     flexDirection: 'row',

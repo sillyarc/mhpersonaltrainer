@@ -12,6 +12,11 @@ import { Button, Card, Loading } from '../../src/components/common';
 import { useAuth } from '../../src/hooks/useAuth';
 import { useTheme } from '../../src/hooks/useTheme';
 import {
+  API_BASE_URL,
+  STRIPE_PAYMENT_LINK_ALUNO_MENSAL,
+  STRIPE_PRICE_ID_ALUNO_MENSAL,
+  STRIPE_PUBLISHABLE_KEY,
+  STRIPE_RETURN_URL,
   subscriptionPlans,
   formatCurrency,
   createSubscription,
@@ -19,6 +24,7 @@ import {
   createSetupIntent,
   extractSubscriptionDetails,
   getSubscriptionStatus,
+  isStripeReady,
 } from '../../src/services/payments';
 import { AiAccessStatusCard } from '../../src/components/ai/AiAccessStatusCard';
 import { useAiAccessStatus } from '../../src/hooks/useAiAccessStatus';
@@ -78,15 +84,10 @@ export default function SubscriptionScreen() {
   const [selectedPlan, setSelectedPlan] = useState<string | null>(null);
   const [subscriptionStatus, setSubscriptionStatus] = useState<any | null>(null);
   const [subscriptionLoading, setSubscriptionLoading] = useState(false);
-  const apiBaseUrl = process.env.EXPO_PUBLIC_API_URL || '';
-  const stripeKey = process.env.EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY || '';
-  const stripeFunctionsUrl = process.env.EXPO_PUBLIC_STRIPE_FUNCTIONS_URL || '';
-  const stripeReturnUrl =
-    process.env.EXPO_PUBLIC_STRIPE_RETURN_URL || 'mhpersonaltrainer://stripe-redirect';
   const isExpoGo =
     Constants.appOwnership === 'expo' ||
     (Constants as { executionEnvironment?: string }).executionEnvironment === 'storeClient';
-  const hasStripeEndpoint = !!stripeFunctionsUrl || !!apiBaseUrl;
+  const stripeReady = isStripeReady();
   const isPersonal = role === 'personal' || role === 'professor';
   const defaultPlan = subscriptionPlans[0];
   const alunoPremiumPlan: (typeof subscriptionPlans)[number] = {
@@ -94,14 +95,8 @@ export default function SubscriptionScreen() {
     name: 'Assistente Premium',
     price: 24.99,
     interval: '/mes',
-    priceId:
-      process.env.EXPO_PUBLIC_STRIPE_PRICE_ID_ALUNO_MENSAL ||
-      defaultPlan?.priceId ||
-      '',
-    paymentLink:
-      process.env.EXPO_PUBLIC_STRIPE_PAYMENT_LINK_ALUNO_MENSAL ||
-      defaultPlan?.paymentLink ||
-      '',
+    priceId: STRIPE_PRICE_ID_ALUNO_MENSAL || defaultPlan?.priceId || '',
+    paymentLink: STRIPE_PAYMENT_LINK_ALUNO_MENSAL || defaultPlan?.paymentLink || '',
     highlight: true,
     features: [
       'Assistente IA premium sem personal',
@@ -113,6 +108,17 @@ export default function SubscriptionScreen() {
   const availablePlans = isPersonal ? subscriptionPlans : [alunoPremiumPlan];
   const highlightPlan = availablePlans.find((plan) => plan.highlight) || availablePlans[0];
   const freeCreditsPerDay = isPersonal ? aiAccess.dailyLimit || 8 : 8;
+  const trustItems = isPersonal
+    ? [
+        { icon: 'shield-checkmark', label: 'Pagamento seguro' },
+        { icon: 'repeat', label: 'Cancele quando quiser' },
+        { icon: 'sparkles', label: 'Suporte prioritario' },
+      ]
+    : [
+        { icon: 'shield-checkmark', label: 'Pagamento seguro' },
+        { icon: 'repeat', label: 'Cancele quando quiser' },
+        { icon: 'sparkles', label: 'Plano focado no aluno' },
+      ];
   const subscriptionStatusValue =
     subscriptionStatus?.status || subscriptionStatus?.subscriptionStatus || '';
   const hasSubscriptionData = Boolean(subscriptionStatus?.subscriptionId);
@@ -175,9 +181,9 @@ export default function SubscriptionScreen() {
   const getExpoGoPaymentHint = (planId?: string) => {
     const envKey = (planId && PAYMENT_LINK_ENV_BY_PLAN_ID[planId]) || '';
     if (envKey) {
-      return `Configure ${envKey} no arquivo .env para abrir o checkout no navegador pelo Expo Go.`;
+      return `Configure ${envKey} no .env ou em expo.extra para abrir o checkout no navegador pelo Expo Go.`;
     }
-    return 'Configure EXPO_PUBLIC_STRIPE_PAYMENT_LINK_* no arquivo .env para abrir o checkout no navegador pelo Expo Go.';
+    return 'Configure EXPO_PUBLIC_STRIPE_PAYMENT_LINK_* no .env ou em expo.extra para abrir o checkout no navegador pelo Expo Go.';
   };
 
   const handleSelectPlan = async (plan: (typeof subscriptionPlans)[number]) => {
@@ -199,10 +205,10 @@ export default function SubscriptionScreen() {
       );
       return;
     }
-    if (!hasStripeEndpoint || !stripeKey) {
+    if (!stripeReady || !STRIPE_PUBLISHABLE_KEY) {
       showAlert(
         'Stripe não configurado',
-        'Defina EXPO_PUBLIC_STRIPE_FUNCTIONS_URL (ou EXPO_PUBLIC_API_URL com /api/payments) e EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY no arquivo .env para ativar as assinaturas.'
+        `Defina EXPO_PUBLIC_STRIPE_FUNCTIONS_URL (ou EXPO_PUBLIC_API_URL com /api/payments) e EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY no .env ou em expo.extra para ativar as assinaturas. API atual: ${API_BASE_URL || 'nao definida'}.`
       );
       return;
     }
@@ -246,7 +252,7 @@ export default function SubscriptionScreen() {
           const setupParams: any = {
             setupIntentClientSecret: setupIntentResult.data.setupIntentClientSecret,
             merchantDisplayName: 'MH Personal Trainer',
-            returnURL: stripeReturnUrl,
+            returnURL: STRIPE_RETURN_URL,
             googlePay: { merchantCountryCode: 'BR', testEnv: true },
             applePay: { merchantCountryCode: 'BR' },
           };
@@ -279,7 +285,7 @@ export default function SubscriptionScreen() {
         paymentIntentClientSecret: details.clientSecret,
         merchantDisplayName: 'MH Personal Trainer',
         allowsDelayedPaymentMethods: true,
-        returnURL: stripeReturnUrl,
+        returnURL: STRIPE_RETURN_URL,
         googlePay: { merchantCountryCode: 'BR', testEnv: true },
         applePay: { merchantCountryCode: 'BR' },
       };
@@ -409,6 +415,12 @@ export default function SubscriptionScreen() {
                 <View key={feature} style={styles.heroFeatureItem}>
                   <Ionicons name="checkmark" size={14} color="#fff" />
                   <Text style={styles.heroFeatureText}>{feature}</Text>
+                </View>
+              ))}
+              {trustItems.map((item) => (
+                <View key={item.label} style={styles.heroTrustItem}>
+                  <Ionicons name={item.icon as any} size={14} color="#fff" />
+                  <Text style={styles.heroTrustText}>{item.label}</Text>
                 </View>
               ))}
             </View>
@@ -704,6 +716,22 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '500',
   },
+  heroTrustItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+    backgroundColor: 'rgba(255,255,255,0.10)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.16)',
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 4,
+    borderRadius: borderRadius.full,
+  },
+  heroTrustText: {
+    color: '#fff',
+    fontSize: 12,
+    fontWeight: '500',
+  },
   heroButton: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -719,6 +747,7 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   trustRow: {
+    display: 'none',
     flexDirection: 'row',
     justifyContent: 'space-between',
     paddingVertical: spacing.md,

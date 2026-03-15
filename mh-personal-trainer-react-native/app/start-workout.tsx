@@ -3,7 +3,8 @@ import { AppState, View, Text, StyleSheet, ScrollView, TouchableOpacity, Modal, 
 import { showAlert } from '@utils/alert';
 import {
   buildExerciseNameLookup,
-  resolveExerciseVideoUrlByName,
+  isGifMediaUrl,
+  resolveExerciseMediaByName,
 } from '@utils/exerciseLookup';
 import {
   coerceMetricValue,
@@ -19,7 +20,7 @@ import { Button } from '../src/components/common';
 import { ExerciseCard } from '../src/components/workout/ExerciseCard';
 import { WorkoutTimer } from '../src/components/workout/WorkoutTimer';
 import { spacing, borderRadius } from '../src/theme';
-import { WorkoutExercise, SetProgress, ExerciseProgress } from '../src/types/workout';
+import { WorkoutExercise, WorkoutSessionStatus, SetProgress, ExerciseProgress } from '../src/types/workout';
 import { fetchAvailableExercises, fetchUserWorkoutById, updateUserWorkout } from '../src/services/workouts';
 import { useAuthStore } from '../src/store/authStore';
 import { submitWorkoutFeedback } from '../src/services/feedback';
@@ -110,6 +111,40 @@ const getPartyFloatingDefault = () => {
   };
 };
 
+const buildRemainingExercisesLabel = (remainingCount: number) => {
+  if (remainingCount <= 0) return '';
+  return remainingCount === 1 ? '1 Exercicio Faltando!' : `${remainingCount} Exercicios Faltando!`;
+};
+
+const buildWorkoutFinishSummary = (
+  status: WorkoutSessionStatus,
+  completedCount: number,
+  totalCount: number,
+  durationLabel: string
+) => {
+  const remainingCount = Math.max(0, totalCount - completedCount);
+  const remainingLabel = buildRemainingExercisesLabel(remainingCount);
+
+  if (status === 'not_completed') {
+    return {
+      title: 'Treino nao concluido',
+      message: 'Voce encerrou o treino sem realizar exercicios nesta sessao.',
+    };
+  }
+
+  if (status === 'partial') {
+    return {
+      title: 'Treino concluido',
+      message: `Voce completou ${completedCount} de ${totalCount} exercicios em ${durationLabel}. ${remainingLabel}.`,
+    };
+  }
+
+  return {
+    title: 'Treino concluido',
+    message: `Parabens! Voce completou ${completedCount} de ${totalCount} exercicios em ${durationLabel}.`,
+  };
+};
+
 export default function StartWorkoutScreen() {
   const { colors } = useTheme();
   const { user, role } = useAuthStore();
@@ -136,6 +171,7 @@ export default function StartWorkoutScreen() {
   const [showPartyRankingModal, setShowPartyRankingModal] = useState(false);
   const [locationPermissionDenied, setLocationPermissionDenied] = useState(false);
   const [partyFloatingCoords, setPartyFloatingCoords] = useState(getPartyFloatingDefault());
+  const [showSkipToast, setShowSkipToast] = useState(false);
   const workoutStartTimeRef = useRef<number | null>(null);
   const pausedAtRef = useRef<number | null>(null);
   const pausedTotalMsRef = useRef(0);
@@ -147,6 +183,9 @@ export default function StartWorkoutScreen() {
   const totalCargaKgRef = useRef(0);
   const completedSetCountRef = useRef(0);
   const currentLocationRef = useRef<WorkoutPartyLocation | undefined>(undefined);
+  const skipToastOpacity = useRef(new Animated.Value(0)).current;
+  const skipToastTranslateY = useRef(new Animated.Value(-12)).current;
+  const skipToastTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const partyFloatingPosition = useRef(
     new Animated.ValueXY(getPartyFloatingDefault())
   ).current;
@@ -172,6 +211,15 @@ export default function StartWorkoutScreen() {
       partyFloatingPosition.removeListener(listenerId);
     };
   }, [partyFloatingPosition]);
+
+  useEffect(() => {
+    return () => {
+      if (skipToastTimeoutRef.current) {
+        clearTimeout(skipToastTimeoutRef.current);
+        skipToastTimeoutRef.current = null;
+      }
+    };
+  }, []);
 
   const partyPanResponder = useMemo(
     () =>
@@ -265,17 +313,19 @@ export default function StartWorkoutScreen() {
             exerciseLookup = buildExerciseNameLookup(exercisesResult.data);
           }
         }
-        const resolvedVideoUrls: string[] = [];
+        const resolvedMediaUrls: string[] = [];
         const exercises: WorkoutExercise[] = workoutEntries.map((rawName, index) => {
           const name = normalizeWorkoutText(rawName);
-          const resolvedVideoUrl = resolveExerciseVideoUrlByName(
+          const resolvedMedia = resolveExerciseMediaByName(
             name,
             normalizedStoredVideoUrls[index] || '',
             exerciseLookup
           );
-          resolvedVideoUrls[index] = resolvedVideoUrl || '';
+          resolvedMediaUrls[index] = resolvedMedia.url || '';
           return {
-            videoUrl: resolvedVideoUrl,
+            videoUrl: resolvedMedia.url,
+            gifUrl: resolvedMedia.gifUrl,
+            mediaType: resolvedMedia.kind === 'gif' ? 'gif' : resolvedMedia.kind === 'video' ? 'video' : undefined,
             exerciseId: `${loadedWorkout.id}-${index}`,
             nome: name,
             series: coerceMetricValue(loadedWorkout.seriesRep?.[index], 3),
@@ -285,11 +335,11 @@ export default function StartWorkoutScreen() {
           };
         });
         const shouldSyncVideoUrls =
-          resolvedVideoUrls.length > 0 &&
-          resolvedVideoUrls.some((url, index) => url !== (normalizedStoredVideoUrls[index] || ''));
+          resolvedMediaUrls.length > 0 &&
+          resolvedMediaUrls.some((url, index) => url !== (normalizedStoredVideoUrls[index] || ''));
         if (shouldSyncVideoUrls) {
           void updateUserWorkout(targetUserId, loadedWorkout.id, {
-            videoUrls: resolvedVideoUrls,
+            videoUrls: resolvedMediaUrls,
           });
         }
         const initialOverrides = exercises.reduce<Record<string, number>>((acc, exercise) => {
@@ -403,6 +453,13 @@ export default function StartWorkoutScreen() {
   const currentExercise = workout?.exercises[currentExerciseIndex];
   const totalExercises = workout?.exercises.length || 0;
   const completedExercises = Array.from(exerciseProgress.values()).filter((p) => p.completed).length;
+  const remainingExercisesCount = Math.max(0, totalExercises - completedExercises);
+  const currentSessionStatus: WorkoutSessionStatus =
+    completedExercises <= 0
+      ? 'not_completed'
+      : remainingExercisesCount > 0
+      ? 'partial'
+      : 'completed';
   const progress = totalExercises > 0 ? (completedExercises / totalExercises) * 100 : 0;
   const currentSeriesCount = toNumericMetric(currentExercise?.series, 1);
   const currentRepsLabel = formatMetricText(currentExercise?.repeticoes);
@@ -721,11 +778,58 @@ export default function StartWorkoutScreen() {
     handleSelectExercise(currentExerciseIndex - 1);
   };
 
+  const triggerSkipToast = useCallback(() => {
+    if (skipToastTimeoutRef.current) {
+      clearTimeout(skipToastTimeoutRef.current);
+      skipToastTimeoutRef.current = null;
+    }
+
+    setShowSkipToast(true);
+    skipToastOpacity.stopAnimation();
+    skipToastTranslateY.stopAnimation();
+    skipToastOpacity.setValue(0);
+    skipToastTranslateY.setValue(-12);
+
+    Animated.parallel([
+      Animated.timing(skipToastOpacity, {
+        toValue: 1,
+        duration: 180,
+        useNativeDriver: true,
+      }),
+      Animated.timing(skipToastTranslateY, {
+        toValue: 0,
+        duration: 180,
+        useNativeDriver: true,
+      }),
+    ]).start();
+
+    skipToastTimeoutRef.current = setTimeout(() => {
+      Animated.parallel([
+        Animated.timing(skipToastOpacity, {
+          toValue: 0,
+          duration: 180,
+          useNativeDriver: true,
+        }),
+        Animated.timing(skipToastTranslateY, {
+          toValue: -12,
+          duration: 180,
+          useNativeDriver: true,
+        }),
+      ]).start(({ finished }) => {
+        if (finished) {
+          setShowSkipToast(false);
+        }
+      });
+      skipToastTimeoutRef.current = null;
+    }, 1400);
+  }, [skipToastOpacity, skipToastTranslateY]);
+
   const handleSkipExercise = () => {
+    triggerSkipToast();
     if (currentExerciseIndex < totalExercises - 1) {
       handleSelectExercise(currentExerciseIndex + 1);
     } else {
-      handleFinishWorkout();
+      void handleFinishWorkout();
     }
   };
 
@@ -748,20 +852,64 @@ export default function StartWorkoutScreen() {
     void syncPartyPresenceNow();
   };
 
-  const markWorkoutCompleted = useCallback(async () => {
-    if (!workout || !targetUserId) return;
-    await updateUserWorkout(targetUserId, workout.id, {
-      lastCompletedAt: new Date(),
+  const persistWorkoutSession = useCallback(async () => {
+    if (!workout || !targetUserId) return null;
+    const finishedAt = new Date();
+    const skippedExerciseIds = workout.exercises
+      .filter((exercise) => !exerciseProgress.get(exercise.exerciseId)?.completed)
+      .map((exercise) => exercise.exerciseId);
+    const result = await updateUserWorkout(targetUserId, workout.id, {
+      lastSessionAt: finishedAt,
+      lastSessionStatus: currentSessionStatus,
+      lastSessionRemainingExercises: remainingExercisesCount,
+      lastSessionSkippedExerciseIds: skippedExerciseIds,
+      ...(currentSessionStatus === 'completed' ? { lastCompletedAt: finishedAt } : {}),
     });
-  }, [targetUserId, workout]);
+    if (result.error) {
+      showAlert('Erro', result.error);
+      return null;
+    }
+    return finishedAt;
+  }, [currentSessionStatus, exerciseProgress, remainingExercisesCount, targetUserId, workout]);
 
-  const handleFinishWorkout = () => {
-    calculateElapsedSeconds();
-    const shouldCollectFeedback = role === 'aluno' && hasValidPersonalCode(user?.codigoPersonal);
+  const finalizeWorkoutSession = useCallback(
+    async (closeLabel: string) => {
+      const durationSeconds = calculateElapsedSeconds();
+      const summary = buildWorkoutFinishSummary(
+        currentSessionStatus,
+        completedExercises,
+        totalExercises,
+        formatDuration(durationSeconds)
+      );
+      const finishedAt = await persistWorkoutSession();
+      if (!finishedAt) return;
+
+      clearPartyPresence();
+      showAlert(summary.title, summary.message, [
+        {
+          text: closeLabel,
+          onPress: () => router.back(),
+        },
+      ]);
+    },
+    [calculateElapsedSeconds, clearPartyPresence, completedExercises, currentSessionStatus, persistWorkoutSession, totalExercises]
+  );
+
+  const markWorkoutCompleted = useCallback(async () => {
+    await persistWorkoutSession();
+  }, [persistWorkoutSession]);
+
+  const handleFinishWorkout = async () => {
+    const shouldCollectFeedback =
+      role === 'aluno' &&
+      hasValidPersonalCode(user?.codigoPersonal) &&
+      currentSessionStatus !== 'not_completed';
     if (shouldCollectFeedback) {
       setShowFeedbackModal(true);
       return;
     }
+    await finalizeWorkoutSession('Ver resumo');
+    return;
     markWorkoutCompleted().finally(() => {
       clearPartyPresence();
       showAlert(
@@ -797,6 +945,9 @@ export default function StartWorkoutScreen() {
       showAlert('Erro', result.error);
       return;
     }
+    setShowFeedbackModal(false);
+    await finalizeWorkoutSession('Fechar');
+    return;
     await markWorkoutCompleted();
     clearPartyPresence();
     setShowFeedbackModal(false);
@@ -855,6 +1006,22 @@ export default function StartWorkoutScreen() {
           <Ionicons name={isPaused ? 'play' : 'pause'} size={24} color={colors.primaryText} />
         </TouchableOpacity>
       </View>
+
+      {showSkipToast ? (
+        <Animated.View
+          pointerEvents="none"
+          style={[
+            styles.skipToast,
+            {
+              backgroundColor: colors.warning,
+              opacity: skipToastOpacity,
+              transform: [{ translateY: skipToastTranslateY }],
+            },
+          ]}
+        >
+          <Text style={[styles.skipToastText, { color: colors.info }]}>Exercicio pulado</Text>
+        </Animated.View>
+      ) : null}
 
       {role === 'aluno' && partyParticipants.length > 1 && partyPosition ? (
         <Animated.View
@@ -973,10 +1140,17 @@ export default function StartWorkoutScreen() {
 
       {currentExercise?.videoUrl ? (
         <View style={[styles.videoCard, { backgroundColor: colors.card }]}>
-          <ExerciseVideo
-            key={`${currentExercise.exerciseId}:${currentExercise.videoUrl}`}
-            uri={currentExercise.videoUrl}
-          />
+          {currentExercise.mediaType === 'gif' || isGifMediaUrl(currentExercise.videoUrl) ? (
+            <ExerciseGif
+              key={`${currentExercise.exerciseId}:${currentExercise.videoUrl}`}
+              uri={currentExercise.videoUrl}
+            />
+          ) : (
+            <ExerciseVideo
+              key={`${currentExercise.exerciseId}:${currentExercise.videoUrl}`}
+              uri={currentExercise.videoUrl}
+            />
+          )}
         </View>
       ) : null}
 
@@ -1061,6 +1235,21 @@ export default function StartWorkoutScreen() {
                 <Text style={[styles.partyStatLabel, { color: colors.secondaryText }]}>Séries</Text>
                 <Text style={[styles.partyStatValue, { color: colors.primaryText }]}>{completedSetCount}</Text>
               </View>
+            </View>
+
+            <View
+              style={[
+                styles.completionNotice,
+                {
+                  backgroundColor: colors.warning + '14',
+                  borderColor: colors.warning + '42',
+                },
+              ]}
+            >
+              <Ionicons name="warning-outline" size={18} color={colors.warning} />
+              <Text style={[styles.completionNoticeText, { color: colors.primaryText }]}>
+                Se voce pular alguns exercicios, o treino conta como completo, mas os exercicios faltando ainda ficam pendentes para fazer. Se pular todos, o treino fica como nao concluido.
+              </Text>
             </View>
 
             <View style={styles.setsContainer}>
@@ -1322,6 +1511,24 @@ const styles = StyleSheet.create({
     flex: 1,
     alignItems: 'center',
   },
+  skipToast: {
+    position: 'absolute',
+    top: 78,
+    alignSelf: 'center',
+    zIndex: 40,
+    borderRadius: borderRadius.full,
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.sm,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.14,
+    shadowRadius: 10,
+    elevation: 6,
+  },
+  skipToastText: {
+    fontSize: 13,
+    fontWeight: '700',
+  },
   partyFloating: {
     position: 'absolute',
     left: 0,
@@ -1524,6 +1731,22 @@ const styles = StyleSheet.create({
     width: 1,
     height: 26,
     backgroundColor: 'rgba(255,255,255,0.12)',
+  },
+  completionNotice: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: spacing.sm,
+    borderWidth: 1,
+    borderRadius: borderRadius.lg,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    marginBottom: spacing.md,
+  },
+  completionNoticeText: {
+    flex: 1,
+    fontSize: 13,
+    lineHeight: 19,
+    fontWeight: '600',
   },
   setsContainer: {
     marginBottom: spacing.lg,
@@ -1798,6 +2021,14 @@ function ExerciseVideo({ uri }: { uri: string }) {
   return (
     <View style={styles.videoSurface}>
       <VideoView style={styles.video} player={player} contentFit="contain" />
+    </View>
+  );
+}
+
+function ExerciseGif({ uri }: { uri: string }) {
+  return (
+    <View style={styles.videoSurface}>
+      <Image source={{ uri }} style={styles.video} resizeMode="contain" />
     </View>
   );
 }

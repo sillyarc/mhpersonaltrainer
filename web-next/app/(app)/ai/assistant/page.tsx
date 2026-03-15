@@ -911,7 +911,10 @@ export default function AiAssistantPage() {
     setCreatingWorkoutId(answerId);
     try {
       const payload = await buildWorkoutPayload(workout);
-      const result = await createUserWorkout(targetUserId, payload);
+      const result = await createUserWorkout(targetUserId, {
+        ...payload,
+        personalId: isPersonal ? user.uid : undefined,
+      });
       if (result.error || !result.data?.id) {
         throw new Error(result.error || 'Falha ao criar o treino.');
       }

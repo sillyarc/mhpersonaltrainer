@@ -2,6 +2,7 @@
 
 import PageShell from '@/components/PageShell';
 import UserScopePicker from '@/components/data/UserScopePicker';
+import { useAuth } from '@/lib/auth';
 import { useUserScope } from '@/lib/firestoreHooks';
 import { addDoc, collection, Timestamp } from 'firebase/firestore';
 import { db } from '@/lib/firebaseClient';
@@ -14,7 +15,9 @@ const COLLECTIONS: Record<string, string> = {
 };
 
 export default function EvaluationCreatePage() {
+  const { user, role } = useAuth();
   const { userId } = useUserScope();
+  const isPersonal = role === 'personal' || role === 'professor';
   const [tipo, setTipo] = useState<'postural' | 'fisica' | 'personalizada'>('postural');
   const [aluno, setAluno] = useState('');
   const [observacoes, setObservacoes] = useState('');
@@ -29,6 +32,7 @@ export default function EvaluationCreatePage() {
         aluno,
         observacoes,
         status: 'pendente',
+        ...(isPersonal && user?.uid ? { personalId: user.uid } : {}),
         createdAt: Timestamp.now(),
         tipo,
       });

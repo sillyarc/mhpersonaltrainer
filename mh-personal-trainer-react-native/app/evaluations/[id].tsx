@@ -6,9 +6,9 @@ import { router, useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { useTheme } from '../../src/hooks/useTheme';
 import { Card, Loading, Button, Input, SearchableSelect } from '../../src/components/common';
 import { MeasurementForm } from '../../src/components/evaluation/MeasurementForm';
+import { useTheme } from '../../src/hooks/useTheme';
 import { spacing, borderRadius } from '../../src/theme';
 import { useAuthStore } from '../../src/store/authStore';
 import { 
@@ -28,6 +28,7 @@ import {
   isPremiumUserRecord,
 } from '../../src/services/ai';
 import { AnalysisResult, analyzePostureImage } from '../../src/services/aiAnalysis';
+import { sendEvaluationCompletionReminder } from '../../src/services/notificationCenter';
 import { 
   fetchEvaluationById, 
   deleteEvaluation,
@@ -83,7 +84,7 @@ const formatTestResultValue = (value: unknown, unit?: string) => {
 };
 
 export default function EvaluationDetailScreen() {
-  const { colors } = useTheme();
+  const { colors, isDark } = useTheme();
   const { role, user } = useAuthStore();
   const insets = useSafeAreaInsets();
   const { id, type, userId } = useLocalSearchParams<{ id: string; type: EvaluationType; userId?: string }>();
@@ -100,17 +101,26 @@ export default function EvaluationDetailScreen() {
   const [submittingAnswers, setSubmittingAnswers] = useState(false);
   const [confirmingEvaluation, setConfirmingEvaluation] = useState(false);
   const [sendingFeedback, setSendingFeedback] = useState(false);
+  const [sendingReminder, setSendingReminder] = useState(false);
   const [feedbackRating, setFeedbackRating] = useState(0);
   const [feedbackComment, setFeedbackComment] = useState('');
   const [expiringEvaluation, setExpiringEvaluation] = useState(false);
   const chargeableTypes: EvaluationType[] = ['fisica', 'personalizada', 'postural'];
   const isPersonal = role === 'personal' || role === 'professor';
   const hasPremiumAiAccess = isPremiumUserRecord((user || {}) as Record<string, any>);
-  const premiumPageTop = '#FFFFFF';
-  const premiumPageBottom = '#F5F9FD';
-  const premiumCard = '#FFFFFF';
-  const premiumSurface = '#F7FAFF';
-  const premiumBorder = '#E3EBF3';
+  const premiumPageTop = isDark ? colors.secondaryBackground : '#F4F9FF';
+  const premiumPageBottom = isDark ? colors.background : '#ECF3FA';
+  const premiumCard = colors.card;
+  const premiumSurface = colors.surface;
+  const premiumBorder = colors.border;
+  const overviewGradientColors: [string, string] = isDark
+    ? [colors.card, colors.surface]
+    : ['#F9FCFF', '#EEF6FF'];
+  const outlinedCardStyle = {
+    backgroundColor: premiumCard,
+    borderColor: premiumBorder,
+    borderWidth: 1,
+  } as const;
 
   useEffect(() => {
     loadEvaluation();
@@ -306,6 +316,40 @@ export default function EvaluationDetailScreen() {
     showAlert('Avaliacao confirmada', 'A avaliacao foi concluida.');
   };
 
+  const handleSendEvaluationReminder = async () => {
+    if (!evaluation || evaluation.type !== 'personalizada') return;
+    const personalized = evaluation as PersonalizedEvaluation;
+    const totalQuestions = personalized.perguntas?.length || 0;
+    const answeredCount = getAnsweredCount(personalized);
+    const pendingQuestions = Math.max(0, totalQuestions - answeredCount);
+
+    try {
+      setSendingReminder(true);
+      const result = await sendEvaluationCompletionReminder({
+        studentId: personalized.userId,
+        evaluationId: personalized.id,
+        evaluationType: personalized.type,
+        evaluationName: `a avaliacao ${getEvaluationTypeLabel(personalized.type).toLowerCase()}`,
+        pendingQuestions,
+        senderName: user?.displayName,
+      });
+
+      if (result.error) {
+        showAlert('Erro', result.error);
+        return;
+      }
+
+      showAlert(
+        'Aviso enviado',
+        'O aluno recebeu um lembrete para concluir a avaliacao.'
+      );
+    } catch (error: any) {
+      showAlert('Erro', error?.message || 'Nao foi possivel enviar o aviso agora.');
+    } finally {
+      setSendingReminder(false);
+    }
+  };
+
   const handleSendFeedback = async () => {
     if (!evaluation || evaluation.type !== 'personalizada') return;
     if (!user?.uid) return;
@@ -443,7 +487,7 @@ export default function EvaluationDetailScreen() {
     }>;
     if (!filtered.length) return null;
     return (
-      <Card style={styles.section}>
+      <Card style={[styles.section, outlinedCardStyle]}>
         <Text style={[styles.sectionTitle, { color: colors.text }]}>{title}</Text>
         <View style={styles.statsGrid}>
           {filtered.map((item) => (
@@ -478,7 +522,7 @@ export default function EvaluationDetailScreen() {
   ) => {
     if (!items.length) return null;
     return (
-      <Card style={styles.section}>
+      <Card style={[styles.section, outlinedCardStyle]}>
         <Text style={[styles.sectionTitle, { color: colors.text }]}>{title}</Text>
         {items.map((item) => (
           <View key={item.label} style={styles.detailRow}>
@@ -940,7 +984,7 @@ export default function EvaluationDetailScreen() {
         {renderDetailList('Circunferencias', circunferenciasList)}
 
       {(eval_.peso || eval_.altura) && (
-        <Card style={styles.section}>
+        <Card style={[styles.section, outlinedCardStyle]}>
           <Text style={[styles.sectionTitle, { color: colors.text }]}>
             Medidas Corporais
           </Text>
@@ -1047,7 +1091,7 @@ export default function EvaluationDetailScreen() {
 
         return (
           <>
-            <Card style={styles.chartCard}>
+            <Card style={[styles.chartCard, outlinedCardStyle]}>
               <Text style={[styles.chartTitle, { color: colors.text }]}>
                 Painel de indicadores
               </Text>
@@ -1084,7 +1128,7 @@ export default function EvaluationDetailScreen() {
             </Card>
 
             {circumferenceItems.length > 0 && (
-              <Card style={styles.chartCard}>
+              <Card style={[styles.chartCard, outlinedCardStyle]}>
                 <Text style={[styles.chartTitle, { color: colors.text }]}>
                   Circunferencias
                 </Text>
@@ -1122,7 +1166,7 @@ export default function EvaluationDetailScreen() {
             )}
 
             {(ratioCq || ratioCa) && (
-              <Card style={styles.chartCard}>
+              <Card style={[styles.chartCard, outlinedCardStyle]}>
                 <Text style={[styles.chartTitle, { color: colors.text }]}>
                   Analise de proporcoes
                 </Text>
@@ -1161,7 +1205,7 @@ export default function EvaluationDetailScreen() {
             )}
 
             {asymmetryItems.length > 0 && (
-              <Card style={styles.chartCard}>
+              <Card style={[styles.chartCard, outlinedCardStyle]}>
                 <Text style={[styles.chartTitle, { color: colors.text }]}>
                   Assimetria muscular
                 </Text>
@@ -1204,7 +1248,7 @@ export default function EvaluationDetailScreen() {
       })()}
 
       {!isPersonal && eval_.imc && (
-        <Card style={styles.section}>
+        <Card style={[styles.section, outlinedCardStyle]}>
           <Text style={[styles.sectionTitle, { color: colors.text }]}>
             Indice de Massa Corporal
           </Text>
@@ -1230,32 +1274,44 @@ export default function EvaluationDetailScreen() {
       )}
 
       {eval_.fotos && Object.keys(eval_.fotos).length > 0 && (
-        <Card style={styles.section}>
+        <Card style={[styles.section, outlinedCardStyle]}>
           <Text style={[styles.sectionTitle, { color: colors.text }]}>
             Fotos da Avaliacao
           </Text>
           <View style={styles.photosGrid}>
             {eval_.fotos.frente && (
               <View style={styles.photoContainer}>
-                <Image source={{ uri: eval_.fotos.frente }} style={styles.photo} />
+                <Image
+                  source={{ uri: eval_.fotos.frente }}
+                  style={[styles.photo, { borderColor: premiumBorder, backgroundColor: premiumSurface }]}
+                />
                 <Text style={[styles.photoLabel, { color: colors.textSecondary }]}>Frente</Text>
               </View>
             )}
             {eval_.fotos.costas && (
               <View style={styles.photoContainer}>
-                <Image source={{ uri: eval_.fotos.costas }} style={styles.photo} />
+                <Image
+                  source={{ uri: eval_.fotos.costas }}
+                  style={[styles.photo, { borderColor: premiumBorder, backgroundColor: premiumSurface }]}
+                />
                 <Text style={[styles.photoLabel, { color: colors.textSecondary }]}>Costas</Text>
               </View>
             )}
             {eval_.fotos.ladoDireito && (
               <View style={styles.photoContainer}>
-                <Image source={{ uri: eval_.fotos.ladoDireito }} style={styles.photo} />
+                <Image
+                  source={{ uri: eval_.fotos.ladoDireito }}
+                  style={[styles.photo, { borderColor: premiumBorder, backgroundColor: premiumSurface }]}
+                />
                 <Text style={[styles.photoLabel, { color: colors.textSecondary }]}>Lado Dir.</Text>
               </View>
             )}
             {eval_.fotos.ladoEsquerdo && (
               <View style={styles.photoContainer}>
-                <Image source={{ uri: eval_.fotos.ladoEsquerdo }} style={styles.photo} />
+                <Image
+                  source={{ uri: eval_.fotos.ladoEsquerdo }}
+                  style={[styles.photo, { borderColor: premiumBorder, backgroundColor: premiumSurface }]}
+                />
                 <Text style={[styles.photoLabel, { color: colors.textSecondary }]}>Lado Esq.</Text>
               </View>
             )}
@@ -1264,7 +1320,7 @@ export default function EvaluationDetailScreen() {
       )}
 
       {eval_.resultado && (
-        <Card style={styles.section}>
+        <Card style={[styles.section, outlinedCardStyle]}>
           <Text style={[styles.sectionTitle, { color: colors.text }]}>
             Resultado
           </Text>
@@ -1275,7 +1331,7 @@ export default function EvaluationDetailScreen() {
       )}
 
       {eval_.observacoes && (
-        <Card style={styles.section}>
+        <Card style={[styles.section, outlinedCardStyle]}>
           <Text style={[styles.sectionTitle, { color: colors.text }]}>
             Observacoes
           </Text>
@@ -1329,7 +1385,7 @@ export default function EvaluationDetailScreen() {
         {renderStatsCard('Resumo do questionario', stats)}
 
       {eval_.prazoResposta && (
-        <Card style={styles.section}>
+        <Card style={[styles.section, outlinedCardStyle]}>
           <Text style={[styles.sectionTitle, { color: colors.text }]}>
             Prazo para responder
           </Text>
@@ -1349,7 +1405,7 @@ export default function EvaluationDetailScreen() {
         </Card>
       )}
 
-      <Card style={styles.section}>
+      <Card style={[styles.section, outlinedCardStyle]}>
         <Text style={[styles.sectionTitle, { color: colors.text }]}>
           {isPersonal ? 'Respostas do aluno' : 'Responder avaliacao'}
         </Text>
@@ -1443,7 +1499,7 @@ export default function EvaluationDetailScreen() {
                             <Text
                               style={[
                                 styles.booleanText,
-                                { color: selected ? '#fff' : colors.textSecondary },
+                                { color: selected ? colors.info : colors.textSecondary },
                               ]}
                             >
                               {label}
@@ -1539,7 +1595,7 @@ export default function EvaluationDetailScreen() {
       </Card>
 
       {!isPersonal && hasAnswers && eval_.status !== 'concluida' && (
-        <Card style={styles.section}>
+        <Card style={[styles.section, outlinedCardStyle]}>
           <Text style={[styles.sectionTitle, { color: colors.text }]}>
             Avalie a avaliacao
           </Text>
@@ -1597,7 +1653,7 @@ export default function EvaluationDetailScreen() {
       )}
 
       {eval_.resultado && (
-        <Card style={styles.section}>
+        <Card style={[styles.section, outlinedCardStyle]}>
           <Text style={[styles.sectionTitle, { color: colors.text }]}>
             Resultado da Avaliacao
           </Text>
@@ -1608,12 +1664,12 @@ export default function EvaluationDetailScreen() {
       )}
 
       {eval_.recomendacoes && eval_.recomendacoes.length > 0 && (
-        <Card style={styles.section}>
+        <Card style={[styles.section, outlinedCardStyle]}>
           <Text style={[styles.sectionTitle, { color: colors.text }]}>
             Recomendacoes
           </Text>
           {eval_.recomendacoes.map((rec, index) => (
-            <View key={index} style={styles.recommendationItem}>
+            <View key={index} style={[styles.recommendationItem, { backgroundColor: premiumSurface }]}>
               <Ionicons name="checkmark-circle" size={20} color={colors.success} />
               <Text style={[styles.recommendationText, { color: colors.textSecondary }]}>
                 {rec}
@@ -1655,32 +1711,44 @@ export default function EvaluationDetailScreen() {
         {renderStatsCard('Resumo postural', stats)}
 
       {eval_.fotosPostura && Object.keys(eval_.fotosPostura).length > 0 && (
-        <Card style={styles.section}>
+        <Card style={[styles.section, outlinedCardStyle]}>
           <Text style={[styles.sectionTitle, { color: colors.text }]}>
             Fotos Posturais
           </Text>
           <View style={styles.photosGrid}>
             {eval_.fotosPostura.anterior && (
               <View style={styles.photoContainer}>
-                <Image source={{ uri: eval_.fotosPostura.anterior }} style={styles.photo} />
+                <Image
+                  source={{ uri: eval_.fotosPostura.anterior }}
+                  style={[styles.photo, { borderColor: premiumBorder, backgroundColor: premiumSurface }]}
+                />
                 <Text style={[styles.photoLabel, { color: colors.textSecondary }]}>Anterior</Text>
               </View>
             )}
             {eval_.fotosPostura.posterior && (
               <View style={styles.photoContainer}>
-                <Image source={{ uri: eval_.fotosPostura.posterior }} style={styles.photo} />
+                <Image
+                  source={{ uri: eval_.fotosPostura.posterior }}
+                  style={[styles.photo, { borderColor: premiumBorder, backgroundColor: premiumSurface }]}
+                />
                 <Text style={[styles.photoLabel, { color: colors.textSecondary }]}>Posterior</Text>
               </View>
             )}
             {eval_.fotosPostura.lateralDireita && (
               <View style={styles.photoContainer}>
-                <Image source={{ uri: eval_.fotosPostura.lateralDireita }} style={styles.photo} />
+                <Image
+                  source={{ uri: eval_.fotosPostura.lateralDireita }}
+                  style={[styles.photo, { borderColor: premiumBorder, backgroundColor: premiumSurface }]}
+                />
                 <Text style={[styles.photoLabel, { color: colors.textSecondary }]}>Lat. Dir.</Text>
               </View>
             )}
             {eval_.fotosPostura.lateralEsquerda && (
               <View style={styles.photoContainer}>
-                <Image source={{ uri: eval_.fotosPostura.lateralEsquerda }} style={styles.photo} />
+                <Image
+                  source={{ uri: eval_.fotosPostura.lateralEsquerda }}
+                  style={[styles.photo, { borderColor: premiumBorder, backgroundColor: premiumSurface }]}
+                />
                 <Text style={[styles.photoLabel, { color: colors.textSecondary }]}>Lat. Esq.</Text>
               </View>
             )}
@@ -1689,12 +1757,12 @@ export default function EvaluationDetailScreen() {
       )}
 
       {eval_.analise && (
-        <Card style={styles.section}>
+        <Card style={[styles.section, outlinedCardStyle]}>
           <Text style={[styles.sectionTitle, { color: colors.text }]}>
             Analise Postural
           </Text>
           {eval_.analise.cabeca && (
-            <View style={styles.analysisItem}>
+            <View style={[styles.analysisItem, { borderBottomColor: premiumBorder }]}>
               <Text style={[styles.analysisLabel, { color: colors.text }]}>Cabeca:</Text>
               <Text style={[styles.analysisValue, { color: colors.textSecondary }]}>
                 {eval_.analise.cabeca}
@@ -1702,7 +1770,7 @@ export default function EvaluationDetailScreen() {
             </View>
           )}
           {eval_.analise.ombros && (
-            <View style={styles.analysisItem}>
+            <View style={[styles.analysisItem, { borderBottomColor: premiumBorder }]}>
               <Text style={[styles.analysisLabel, { color: colors.text }]}>Ombros:</Text>
               <Text style={[styles.analysisValue, { color: colors.textSecondary }]}>
                 {eval_.analise.ombros}
@@ -1710,7 +1778,7 @@ export default function EvaluationDetailScreen() {
             </View>
           )}
           {eval_.analise.coluna && (
-            <View style={styles.analysisItem}>
+            <View style={[styles.analysisItem, { borderBottomColor: premiumBorder }]}>
               <Text style={[styles.analysisLabel, { color: colors.text }]}>Coluna:</Text>
               <Text style={[styles.analysisValue, { color: colors.textSecondary }]}>
                 {eval_.analise.coluna}
@@ -1718,7 +1786,7 @@ export default function EvaluationDetailScreen() {
             </View>
           )}
           {eval_.analise.quadril && (
-            <View style={styles.analysisItem}>
+            <View style={[styles.analysisItem, { borderBottomColor: premiumBorder }]}>
               <Text style={[styles.analysisLabel, { color: colors.text }]}>Quadril:</Text>
               <Text style={[styles.analysisValue, { color: colors.textSecondary }]}>
                 {eval_.analise.quadril}
@@ -1726,7 +1794,7 @@ export default function EvaluationDetailScreen() {
             </View>
           )}
           {eval_.analise.joelhos && (
-            <View style={styles.analysisItem}>
+            <View style={[styles.analysisItem, { borderBottomColor: premiumBorder }]}>
               <Text style={[styles.analysisLabel, { color: colors.text }]}>Joelhos:</Text>
               <Text style={[styles.analysisValue, { color: colors.textSecondary }]}>
                 {eval_.analise.joelhos}
@@ -1734,7 +1802,7 @@ export default function EvaluationDetailScreen() {
             </View>
           )}
           {eval_.analise.pes && (
-            <View style={styles.analysisItem}>
+            <View style={[styles.analysisItem, { borderBottomColor: premiumBorder }]}>
               <Text style={[styles.analysisLabel, { color: colors.text }]}>Pes:</Text>
               <Text style={[styles.analysisValue, { color: colors.textSecondary }]}>
                 {eval_.analise.pes}
@@ -1742,7 +1810,7 @@ export default function EvaluationDetailScreen() {
             </View>
           )}
           {eval_.analise.observacoes && (
-            <View style={styles.analysisItem}>
+            <View style={[styles.analysisItem, { borderBottomColor: premiumBorder }]}>
               <Text style={[styles.analysisLabel, { color: colors.text }]}>Observacoes:</Text>
               <Text style={[styles.analysisValue, { color: colors.textSecondary }]}>
                 {eval_.analise.observacoes}
@@ -1753,12 +1821,12 @@ export default function EvaluationDetailScreen() {
       )}
 
       {eval_.recomendacoes && eval_.recomendacoes.length > 0 && (
-        <Card style={styles.section}>
+        <Card style={[styles.section, outlinedCardStyle]}>
           <Text style={[styles.sectionTitle, { color: colors.text }]}>
             Recomendacoes
           </Text>
           {eval_.recomendacoes.map((rec, index) => (
-            <View key={index} style={styles.recommendationItem}>
+            <View key={index} style={[styles.recommendationItem, { backgroundColor: premiumSurface }]}>
               <Ionicons name="checkmark-circle" size={20} color={colors.success} />
               <Text style={[styles.recommendationText, { color: colors.textSecondary }]}>
                 {rec}
@@ -1914,7 +1982,7 @@ export default function EvaluationDetailScreen() {
         {renderStatsCard('Resumo fisico', stats)}
 
       {eval_.composicaoCorporal && (
-        <Card style={styles.section}>
+        <Card style={[styles.section, outlinedCardStyle]}>
           <Text style={[styles.sectionTitle, { color: colors.text }]}>
             Composicao Corporal
           </Text>
@@ -1976,7 +2044,7 @@ export default function EvaluationDetailScreen() {
       {skinfoldItems.length > 0 && renderDetailList('Dobras cutaneas', skinfoldItems)}
 
       {eval_.resultados && eval_.resultados.length > 0 && (
-        <Card style={styles.section}>
+        <Card style={[styles.section, outlinedCardStyle]}>
           <Text style={[styles.sectionTitle, { color: colors.text }]}>
             Resultados dos Testes
           </Text>
@@ -1992,7 +2060,7 @@ export default function EvaluationDetailScreen() {
               : colors.primary;
             const formattedValue = formatTestResultValue(resultado.valor, teste?.unidade);
             return (
-              <View key={resultado.testId} style={styles.testResultItem}>
+              <View key={resultado.testId} style={[styles.testResultItem, { borderBottomColor: premiumBorder }]}>
                 <View style={styles.testResultHeader}>
                   <Text style={[styles.testName, { color: colors.text }]}>
                     {teste?.nome || `Teste ${index + 1}`}
@@ -2062,7 +2130,7 @@ export default function EvaluationDetailScreen() {
     }
     if (!hasPremiumAiAccess) {
       return (
-        <Card style={styles.aiCard}>
+        <Card style={[styles.aiCard, outlinedCardStyle]}>
           <View style={styles.aiHeader}>
             <View style={styles.aiHeaderLeft}>
               <Ionicons name="lock-closed" size={18} color={colors.primary} />
@@ -2088,7 +2156,7 @@ export default function EvaluationDetailScreen() {
     }
 
     return (
-      <Card style={styles.aiCard}>
+      <Card style={[styles.aiCard, outlinedCardStyle]}>
         <View style={styles.aiHeader}>
           <View style={styles.aiHeaderLeft}>
             <Ionicons name="sparkles" size={18} color={colors.primary} />
@@ -2203,6 +2271,22 @@ export default function EvaluationDetailScreen() {
 
   const statusColor = getEvaluationStatusColor(evaluation.status);
   const canCharge = isPersonal && chargeableTypes.includes(evaluation.type);
+  const personalizedEvaluation =
+    evaluation.type === 'personalizada' ? (evaluation as PersonalizedEvaluation) : null;
+  const personalizedAnsweredCount = personalizedEvaluation ? getAnsweredCount(personalizedEvaluation) : 0;
+  const personalizedPendingQuestions = personalizedEvaluation
+    ? Math.max(0, (personalizedEvaluation.perguntas?.length || 0) - personalizedAnsweredCount)
+    : 0;
+  const canSendEvaluationReminder =
+    Boolean(
+      isPersonal &&
+      personalizedEvaluation &&
+      personalizedEvaluation.userId &&
+      personalizedAnsweredCount === 0 &&
+      !isPersonalizedOverdue(personalizedEvaluation) &&
+      personalizedEvaluation.status !== 'nao_realizada' &&
+      personalizedEvaluation.status !== 'concluida'
+    );
 
   return (
     <LinearGradient
@@ -2212,14 +2296,28 @@ export default function EvaluationDetailScreen() {
       style={styles.container}
     >
       <SafeAreaView style={styles.container}>
-        <View style={[styles.header, { borderBottomColor: premiumBorder, backgroundColor: '#FFFFFF' }]}>
-          <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
+        <View style={[styles.header, { borderBottomColor: premiumBorder, backgroundColor: premiumCard }]}>
+          <TouchableOpacity
+            onPress={() => router.back()}
+            style={[styles.iconButton, { backgroundColor: premiumSurface, borderColor: premiumBorder }]}
+          >
             <Ionicons name="arrow-back" size={24} color={colors.text} />
           </TouchableOpacity>
           <Text style={[styles.headerTitle, { color: colors.text }]} numberOfLines={1}>
             Avaliacao {getEvaluationTypeLabel(evaluation.type)}
           </Text>
-          <TouchableOpacity onPress={handleDelete} style={styles.deleteButton} disabled={isDeleting}>
+          <TouchableOpacity
+            onPress={handleDelete}
+            style={[
+              styles.iconButton,
+              styles.deleteIconButton,
+              {
+                backgroundColor: colors.error + (isDark ? '22' : '12'),
+                borderColor: colors.error + (isDark ? '45' : '25'),
+              },
+            ]}
+            disabled={isDeleting}
+          >
             <Ionicons name="trash-outline" size={24} color={colors.error} />
           </TouchableOpacity>
         </View>
@@ -2235,18 +2333,34 @@ export default function EvaluationDetailScreen() {
           keyboardDismissMode="on-drag"
           nestedScrollEnabled
         >
-          <Card style={[styles.overviewCard, { backgroundColor: premiumCard, borderColor: premiumBorder }]}>
-            <View style={styles.overviewHeader}>
-              <View>
-                <Text style={[styles.overviewTitle, { color: colors.text }]}>
-                  Avaliacao {getEvaluationTypeLabel(evaluation.type)}
-                </Text>
-                <Text style={[styles.overviewDate, { color: colors.textSecondary }]}>{formatDate(evaluation.date)}</Text>
+          <Card
+            style={[styles.overviewCard, { backgroundColor: premiumCard, borderColor: premiumBorder }]}
+            padding="none"
+            shadow={false}
+          >
+            <LinearGradient
+              colors={overviewGradientColors}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+              style={styles.overviewGradient}
+            >
+              <View style={styles.overviewHeader}>
+                <View style={styles.overviewTextWrap}>
+                  <Text style={[styles.overviewTitle, { color: colors.text }]}>
+                    Avaliacao {getEvaluationTypeLabel(evaluation.type)}
+                  </Text>
+                  <View style={styles.overviewDateRow}>
+                    <Ionicons name="calendar-outline" size={14} color={colors.primary} />
+                    <Text style={[styles.overviewDate, { color: colors.textSecondary }]}>
+                      {formatDate(evaluation.date)}
+                    </Text>
+                  </View>
+                </View>
+                <View style={[styles.statusBadge, { backgroundColor: statusColor + '20', borderColor: statusColor + '45' }]}>
+                  <Text style={[styles.statusText, { color: statusColor }]}>{getEvaluationStatusLabel(evaluation.status)}</Text>
+                </View>
               </View>
-              <View style={[styles.statusBadge, { backgroundColor: statusColor + '20' }]}>
-                <Text style={[styles.statusText, { color: statusColor }]}>{getEvaluationStatusLabel(evaluation.status)}</Text>
-              </View>
-            </View>
+            </LinearGradient>
           </Card>
 
           {canCharge && (
@@ -2257,6 +2371,28 @@ export default function EvaluationDetailScreen() {
                   <Text style={[styles.chargeSubtitle, { color: colors.textSecondary }]}>Gere uma cobranca para este aluno.</Text>
                 </View>
                 <Button title="Cobrar aluno" onPress={handleCharge} size="small" />
+              </View>
+            </Card>
+          )}
+
+          {canSendEvaluationReminder && (
+            <Card style={[styles.chargeCard, { backgroundColor: premiumCard, borderColor: premiumBorder }]}>
+              <View style={styles.chargeRow}>
+                <View style={styles.chargeInfo}>
+                  <Text style={[styles.chargeTitle, { color: colors.text }]}>Lembrete da avaliacao</Text>
+                  <Text style={[styles.chargeSubtitle, { color: colors.textSecondary }]}>
+                    {personalizedPendingQuestions > 0
+                      ? `Avise o aluno para responder as ${personalizedPendingQuestions} pergunta${personalizedPendingQuestions === 1 ? '' : 's'} pendente${personalizedPendingQuestions === 1 ? '' : 's'}.`
+                      : 'Avise o aluno para concluir esta avaliacao.'}
+                  </Text>
+                </View>
+                <Button
+                  title="Avisar aluno"
+                  onPress={handleSendEvaluationReminder}
+                  size="small"
+                  loading={sendingReminder}
+                  disabled={sendingReminder}
+                />
               </View>
             </Card>
           )}
@@ -2274,7 +2410,8 @@ export default function EvaluationDetailScreen() {
 }
 
 function InsightMetricBar({ label, value }: { label: string; value: number }) {
-  const { colors } = useTheme();
+  const { colors, isDark } = useTheme();
+  const metricTrackColor = isDark ? colors.alternate : '#E7EEF6';
   const safeValue = Math.max(0, Math.min(100, Number(value) || 0));
   return (
     <View style={styles.aiMetricRow}>
@@ -2286,7 +2423,7 @@ function InsightMetricBar({ label, value }: { label: string; value: number }) {
           {Math.round(safeValue)}%
         </Text>
       </View>
-      <View style={[styles.aiMetricTrack, { backgroundColor: '#E7EEF6' }]}>
+      <View style={[styles.aiMetricTrack, { backgroundColor: metricTrackColor }]}>
         <View
           style={[
             styles.aiMetricFill,
@@ -2307,46 +2444,57 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: spacing.base,
-    paddingVertical: spacing.md,
+    paddingVertical: spacing.sm + 2,
     borderBottomWidth: 1,
   },
-  backButton: {
-    padding: spacing.xs,
+  iconButton: {
+    width: 40,
+    height: 40,
+    borderRadius: borderRadius.full,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+  },
+  deleteIconButton: {
   },
   headerTitle: {
     flex: 1,
-    fontSize: 18,
+    fontSize: 17,
     fontWeight: '600',
     textAlign: 'center',
     marginHorizontal: spacing.sm,
-  },
-  deleteButton: {
-    padding: spacing.xs,
   },
   content: {
     flex: 1,
   },
   contentContainer: {
     padding: spacing.base,
+    gap: spacing.xs,
     paddingBottom: spacing['3xl'],
   },
   overviewCard: {
     marginBottom: spacing.lg,
-    backgroundColor: '#FFFFFF',
     borderWidth: 1,
-    borderColor: '#E3EBF3',
+  },
+  overviewGradient: {
+    padding: spacing.base,
+  },
+  overviewTextWrap: {
+    flex: 1,
+    gap: spacing.xs,
+  },
+  overviewDateRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
   },
   chargeCard: {
     marginBottom: spacing.lg,
-    backgroundColor: '#FFFFFF',
     borderWidth: 1,
-    borderColor: '#E3EBF3',
   },
   aiCard: {
     marginBottom: spacing.lg,
-    backgroundColor: '#FFFFFF',
     borderWidth: 1,
-    borderColor: '#E3EBF3',
   },
   aiHeader: {
     flexDirection: 'row',
@@ -2447,13 +2595,12 @@ const styles = StyleSheet.create({
   overviewHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'flex-start',
+    alignItems: 'center',
+    gap: spacing.md,
   },
   chartCard: {
     marginBottom: spacing.lg,
-    backgroundColor: '#FFFFFF',
     borderWidth: 1,
-    borderColor: '#E3EBF3',
   },
   chartTitle: {
     fontSize: 16,
@@ -2544,28 +2691,26 @@ const styles = StyleSheet.create({
     fontSize: 11,
   },
   overviewTitle: {
-    fontSize: 20,
-    fontWeight: 'bold',
+    fontSize: 19,
+    fontWeight: '700',
   },
   overviewDate: {
-    fontSize: 14,
-    marginTop: spacing.xs,
+    fontSize: 13,
   },
   statusBadge: {
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.md + 2,
+    paddingVertical: spacing.xs + 2,
     borderRadius: borderRadius.full,
+    borderWidth: 1,
   },
   statusText: {
-    fontSize: 12,
-    fontWeight: '600',
+    fontSize: 11,
+    fontWeight: '700',
     textTransform: 'uppercase',
   },
   section: {
     marginBottom: spacing.lg,
-    backgroundColor: '#FFFFFF',
     borderWidth: 1,
-    borderColor: '#E3EBF3',
   },
   sectionTitle: {
     fontSize: 16,
@@ -2583,15 +2728,16 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
   },
   statCard: {
-    width: '48%',
-    padding: spacing.sm,
+    width: '31%',
+    minHeight: 104,
+    padding: spacing.sm + 2,
     borderRadius: borderRadius.lg,
     gap: spacing.xs,
     borderWidth: 1,
   },
   statIconWrap: {
-    width: 28,
-    height: 28,
+    width: 30,
+    height: 30,
     borderRadius: borderRadius.full,
     alignItems: 'center',
     justifyContent: 'center',
@@ -2649,6 +2795,7 @@ const styles = StyleSheet.create({
     width: '100%',
     aspectRatio: 3 / 4,
     borderRadius: borderRadius.lg,
+    borderWidth: 1,
   },
   photoLabel: {
     fontSize: 12,
@@ -2767,6 +2914,8 @@ const styles = StyleSheet.create({
   recommendationItem: {
     flexDirection: 'row',
     alignItems: 'flex-start',
+    padding: spacing.sm,
+    borderRadius: borderRadius.md,
     marginBottom: spacing.sm,
     gap: spacing.sm,
   },
@@ -2776,7 +2925,9 @@ const styles = StyleSheet.create({
     lineHeight: 20,
   },
   analysisItem: {
-    marginBottom: spacing.md,
+    marginBottom: spacing.sm,
+    paddingBottom: spacing.sm,
+    borderBottomWidth: 1,
   },
   analysisLabel: {
     fontSize: 14,
@@ -2809,7 +2960,6 @@ const styles = StyleSheet.create({
   testResultItem: {
     paddingVertical: spacing.md,
     borderBottomWidth: 1,
-    borderBottomColor: '#E3EBF3',
   },
   testResultHeader: {
     flexDirection: 'row',

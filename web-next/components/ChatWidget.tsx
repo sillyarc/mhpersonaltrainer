@@ -691,7 +691,10 @@ export default function ChatWidget() {
     try {
       const payload = await buildWorkoutPayload(pendingWorkout, selectedWeekday || undefined);
       const targetUserId = isPersonal ? selectedStudentId! : user.uid;
-      const saveResult = await createUserWorkout(targetUserId, payload);
+      const saveResult = await createUserWorkout(targetUserId, {
+        ...payload,
+        personalId: isPersonal ? user.uid : undefined,
+      });
       if (saveResult.error || !saveResult.data?.id) {
         throw new Error(saveResult.error || 'Falha ao salvar o treino.');
       }

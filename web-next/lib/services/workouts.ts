@@ -494,6 +494,7 @@ export async function fetchUserWorkouts(
       id: doc.id,
       nomeDoTreino: doc.data().nomeDoTreino || 'Treino',
       obsInstrucao: doc.data().obsInstrucao,
+      personalId: typeof doc.data().personalId === 'string' ? doc.data().personalId : undefined,
       treino: doc.data().treino || [],
       seriesRep: doc.data().seriesRep || [],
       repeticoes: doc.data().repeticoes || [],
@@ -520,6 +521,7 @@ export async function fetchUserWorkouts(
         id: doc.id,
         nomeDoTreino: doc.data().nomeDoTreino || 'Treino',
         obsInstrucao: doc.data().obsInstrucao,
+        personalId: typeof doc.data().personalId === 'string' ? doc.data().personalId : undefined,
         treino: doc.data().treino || [],
         seriesRep: doc.data().seriesRep || [],
         repeticoes: doc.data().repeticoes || [],
@@ -563,6 +565,7 @@ export async function fetchUserWorkoutById(
       id: snapshot.id,
       nomeDoTreino: data.nomeDoTreino || 'Treino',
       obsInstrucao: data.obsInstrucao,
+      personalId: typeof data.personalId === 'string' ? data.personalId : undefined,
       treino: data.treino || [],
       seriesRep: data.seriesRep || [],
       repeticoes: data.repeticoes || [],
@@ -590,6 +593,7 @@ export async function createUserWorkout(
     const workoutsRef = collection(db, 'users', userId, 'createTreinos');
     const docRef = await addDoc(workoutsRef, {
       ...workout,
+      ...(workout.personalId ? { personalId: workout.personalId } : {}),
       createdAt: Timestamp.now(),
       updatedAt: Timestamp.now(),
     });
@@ -742,6 +746,7 @@ export async function fetchAerobicWorkouts(
       const items = normalizeAerobicItems(data);
       return {
         id: doc.id,
+        personalId: typeof data.personalId === 'string' ? data.personalId : undefined,
         items,
         treinos: items.map((item) => item.nome),
         treino: data.treino || items[0]?.nome || undefined,
@@ -769,6 +774,7 @@ export async function createAerobicWorkout(
     const treinos = items.map((item) => item.nome);
     const payload = stripUndefinedDeep({
       ...workout,
+      personalId: workout.personalId || undefined,
       items,
       treinos,
       treino: workout.treino || treinos[0] || '',
@@ -810,6 +816,7 @@ export async function fetchAerobicWorkoutById(
     return {
       data: {
         id: snapshot.id,
+        personalId: typeof data.personalId === 'string' ? data.personalId : undefined,
         items,
         treinos,
         treino: typeof data.treino === 'string' ? data.treino : treinos[0] || '',

@@ -5,6 +5,8 @@ import {
   StyleSheet,
   ScrollView,
   ActivityIndicator,
+  Image,
+  TouchableOpacity,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router, useLocalSearchParams } from 'expo-router';
@@ -18,10 +20,11 @@ import { Exercise } from '../../../src/types/workout';
 import { getExerciseInsights, saveExerciseInsights } from '../../../src/services/exerciseInsights';
 import { getCachedVideoUri } from '../../../src/services/videoCache';
 import { useAuthStore } from '../../../src/store/authStore';
+import { isGifMediaUrl, resolveExerciseMediaFromExercise } from '@utils/exerciseLookup';
 
 export default function ExerciseDetailScreen() {
   const { colors, spacing, borderRadius, typography } = useTheme();
-  const { id } = useLocalSearchParams<{ id: string }>();
+  const { id, media } = useLocalSearchParams<{ id: string; media?: 'video' | 'gif' }>();
   const { user } = useAuthStore();
   const [exercise, setExercise] = useState<Exercise | null>(null);
   const [loading, setLoading] = useState(true);
@@ -30,6 +33,9 @@ export default function ExerciseDetailScreen() {
   const [insightsError, setInsightsError] = useState<string | null>(null);
   const [cachedVideoUri, setCachedVideoUri] = useState<string | null>(null);
   const [isCachingVideo, setIsCachingVideo] = useState(false);
+  const [preferredMedia, setPreferredMedia] = useState<'video' | 'gif'>(
+    media === 'gif' ? 'gif' : 'video'
+  );
   const hasPremiumAiAccess = isPremiumUserRecord((user || {}) as Record<string, any>);
 
   useEffect(() => {
@@ -47,16 +53,47 @@ export default function ExerciseDetailScreen() {
     loadExercise();
   }, [id]);
 
-  const videoUrl = useMemo(() => {
-    if (!exercise) return null;
-    return exercise.videoUrl1080 || exercise.videoUrl720 || exercise.videoUrl || null;
-  }, [exercise]);
+  const selectedMedia = useMemo(
+    () => resolveExerciseMediaFromExercise(exercise, preferredMedia),
+    [exercise, preferredMedia]
+  );
+  const selectedMediaUrl = selectedMedia.url || null;
+  const isSelectedGif = selectedMedia.kind === 'gif' || isGifMediaUrl(selectedMediaUrl);
+  const hasVideoOption = Boolean(selectedMedia.videoUrl);
+  const hasGifOption = Boolean(selectedMedia.gifUrl);
+
+  useEffect(() => {
+    if (!exercise) return;
+    if (preferredMedia === 'video' && hasVideoOption) return;
+    if (preferredMedia === 'gif' && hasGifOption) return;
+    if (hasVideoOption) {
+      setPreferredMedia('video');
+      return;
+    }
+    if (hasGifOption) {
+      setPreferredMedia('gif');
+    }
+  }, [exercise, hasGifOption, hasVideoOption, preferredMedia]);
+
+  useEffect(() => {
+    if (media === 'gif') {
+      setPreferredMedia('gif');
+      return;
+    }
+    if (media === 'video') {
+      setPreferredMedia('video');
+    }
+  }, [media]);
 
   useEffect(() => {
     let isActive = true;
-    if (!videoUrl) return;
+    setCachedVideoUri(null);
+    if (!selectedMediaUrl || isSelectedGif) {
+      setIsCachingVideo(false);
+      return;
+    }
     setIsCachingVideo(true);
-    getCachedVideoUri(videoUrl)
+    getCachedVideoUri(selectedMediaUrl)
       .then((uri) => {
         if (isActive && uri) {
           setCachedVideoUri(uri);
@@ -69,7 +106,7 @@ export default function ExerciseDetailScreen() {
     return () => {
       isActive = false;
     };
-  }, [videoUrl]);
+  }, [isSelectedGif, selectedMediaUrl]);
 
   const loadInsights = useCallback(async () => {
     if (!exercise || insightsLoading) return;
@@ -134,12 +171,16 @@ export default function ExerciseDetailScreen() {
         showsVerticalScrollIndicator={false}
       >
         <View style={styles.header}>
-          {videoUrl ? (
-            <ExerciseVideo
-              key={cachedVideoUri || videoUrl}
-              uri={cachedVideoUri || videoUrl}
-              borderRadius={borderRadius.xl}
-            />
+          {selectedMediaUrl ? (
+            isSelectedGif ? (
+              <ExerciseGif uri={selectedMediaUrl} borderRadius={borderRadius.xl} />
+            ) : (
+              <ExerciseVideo
+                key={cachedVideoUri || selectedMediaUrl}
+                uri={cachedVideoUri || selectedMediaUrl}
+                borderRadius={borderRadius.xl}
+              />
+            )
           ) : (
             <View
               style={[
@@ -164,15 +205,52 @@ export default function ExerciseDetailScreen() {
               {exercise.colecao || 'geral'}
             </Text>
           </View>
-          {videoUrl ? (
+          {selectedMediaUrl ? (
             <View style={[styles.badge, { backgroundColor: colors.primary + '20' }]}>
-              <Ionicons name="play" size={14} color={colors.primary} />
+              <Ionicons
+                name={isSelectedGif ? 'images-outline' : 'play'}
+                size={14}
+                color={colors.primary}
+              />
               <Text style={[styles.badgeText, { color: colors.primary }]}>
-                {isCachingVideo ? 'Salvando video' : 'Video'}
+                {isSelectedGif ? 'GIF' : isCachingVideo ? 'Salvando video' : 'Video'}
               </Text>
             </View>
           ) : null}
         </View>
+
+        {hasVideoOption && hasGifOption ? (
+          <View style={styles.mediaSwitchRow}>
+            <TouchableOpacity
+              style={[
+                styles.mediaSwitchButton,
+                {
+                  borderColor: colors.border,
+                  backgroundColor:
+                    preferredMedia === 'video' ? colors.primary + '18' : colors.secondaryBackground,
+                },
+              ]}
+              onPress={() => setPreferredMedia('video')}
+            >
+              <Ionicons name="play-circle-outline" size={16} color={colors.primary} />
+              <Text style={[styles.mediaSwitchText, { color: colors.primaryText }]}>Video</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[
+                styles.mediaSwitchButton,
+                {
+                  borderColor: colors.border,
+                  backgroundColor:
+                    preferredMedia === 'gif' ? colors.success + '18' : colors.secondaryBackground,
+                },
+              ]}
+              onPress={() => setPreferredMedia('gif')}
+            >
+              <Ionicons name="images-outline" size={16} color={colors.success} />
+              <Text style={[styles.mediaSwitchText, { color: colors.primaryText }]}>GIF</Text>
+            </TouchableOpacity>
+          </View>
+        ) : null}
 
         <View
           style={[
@@ -313,6 +391,15 @@ function ExerciseVideo({ uri, borderRadius }: { uri: string; borderRadius: numbe
   );
 }
 
+function ExerciseGif({ uri, borderRadius }: { uri: string; borderRadius: number }) {
+  const { colors } = useTheme();
+  return (
+    <View style={[styles.heroVideo, { borderRadius, backgroundColor: colors.secondaryBackground }]}>
+      <Image source={{ uri }} style={styles.heroVideoInner} resizeMode="cover" />
+    </View>
+  );
+}
+
 type ExerciseInsights = {
   resumo: string;
   beneficios: string[];
@@ -418,6 +505,25 @@ const styles = StyleSheet.create({
     borderRadius: 999,
   },
   badgeText: {
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  mediaSwitchRow: {
+    flexDirection: 'row',
+    gap: 10,
+    marginBottom: 16,
+  },
+  mediaSwitchButton: {
+    flex: 1,
+    borderWidth: 1,
+    borderRadius: 999,
+    paddingVertical: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+  },
+  mediaSwitchText: {
     fontSize: 12,
     fontWeight: '600',
   },

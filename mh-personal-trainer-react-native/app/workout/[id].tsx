@@ -1,9 +1,9 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity } from 'react-native';
 import { showAlert } from '@utils/alert';
 import {
   buildExerciseNameLookup,
-  resolveExerciseVideoUrlByName,
+  resolveExerciseMediaByName,
 } from '@utils/exerciseLookup';
 import { coerceMetricValue } from '@utils/workoutMetrics';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -13,14 +13,16 @@ import { useTheme } from '../../src/hooks/useTheme';
 import { Button, Loading } from '../../src/components/common';
 import { ExerciseCard } from '../../src/components/workout/ExerciseCard';
 import { spacing, borderRadius } from '../../src/theme';
-import { WorkoutExercise } from '../../src/types/workout';
+import { WorkoutExercise, UserWorkout } from '../../src/types/workout';
 import {
   fetchAvailableExercises,
   fetchUserWorkoutById,
   archiveUserWorkout,
   updateUserWorkout,
 } from '../../src/services/workouts';
+import { sendWorkoutCompletionReminder } from '../../src/services/notificationCenter';
 import { useAuthStore } from '../../src/store/authStore';
+import { getWorkoutStatusPresentation } from '../../src/utils/workoutStatus';
 
 interface WorkoutDetail {
   id: string;
@@ -28,7 +30,11 @@ interface WorkoutDetail {
   description: string;
   exercises: WorkoutExercise[];
   isArchived: boolean;
-  completedToday: boolean;
+  lastCompletedAt?: Date;
+  lastSessionAt?: Date;
+  lastSessionStatus?: UserWorkout['lastSessionStatus'];
+  lastSessionRemainingExercises?: number;
+  lastSessionSkippedExerciseIds?: string[];
 }
 
 export default function WorkoutDetailScreen() {
@@ -38,9 +44,10 @@ export default function WorkoutDetailScreen() {
   const [workout, setWorkout] = useState<WorkoutDetail | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
+  const [isSendingReminder, setIsSendingReminder] = useState(false);
 
   const targetUserId = studentId || user?.uid;
-  const isPersonal = role === 'personal' || role === 'professor';
+  const isPersonal = role === 'personal' || role === 'professor' || role === 'admin';
 
   useEffect(() => {
     const loadWorkout = async () => {
@@ -63,17 +70,19 @@ export default function WorkoutDetailScreen() {
             exerciseLookup = buildExerciseNameLookup(exercisesResult.data);
           }
         }
-        const resolvedVideoUrls: string[] = [];
+        const resolvedMediaUrls: string[] = [];
         const exercises: WorkoutExercise[] = workoutEntries.map((rawName, index) => {
           const name = typeof rawName === 'string' ? rawName : String(rawName || '');
-          const resolvedVideoUrl = resolveExerciseVideoUrlByName(
+          const resolvedMedia = resolveExerciseMediaByName(
             name,
             normalizedStoredVideoUrls[index] || '',
             exerciseLookup
           );
-          resolvedVideoUrls[index] = resolvedVideoUrl || '';
+          resolvedMediaUrls[index] = resolvedMedia.url || '';
           return {
-            videoUrl: resolvedVideoUrl,
+            videoUrl: resolvedMedia.url,
+            gifUrl: resolvedMedia.gifUrl,
+            mediaType: resolvedMedia.kind === 'gif' ? 'gif' : resolvedMedia.kind === 'video' ? 'video' : undefined,
             exerciseId: `${loadedWorkout.id}-${index}`,
             nome: name,
             series: coerceMetricValue(loadedWorkout.seriesRep?.[index], 3),
@@ -83,26 +92,24 @@ export default function WorkoutDetailScreen() {
           };
         });
         const shouldSyncVideoUrls =
-          resolvedVideoUrls.length > 0 &&
-          resolvedVideoUrls.some((url, index) => url !== (normalizedStoredVideoUrls[index] || ''));
+          resolvedMediaUrls.length > 0 &&
+          resolvedMediaUrls.some((url, index) => url !== (normalizedStoredVideoUrls[index] || ''));
         if (shouldSyncVideoUrls) {
           void updateUserWorkout(targetUserId, loadedWorkout.id, {
-            videoUrls: resolvedVideoUrls,
+            videoUrls: resolvedMediaUrls,
           });
         }
-        const lastCompletedAt = loadedWorkout.lastCompletedAt ? new Date(loadedWorkout.lastCompletedAt) : null;
-        const today = new Date();
-        const completedToday = !!lastCompletedAt
-          && lastCompletedAt.getFullYear() === today.getFullYear()
-          && lastCompletedAt.getMonth() === today.getMonth()
-          && lastCompletedAt.getDate() === today.getDate();
         setWorkout({
           id: loadedWorkout.id,
           name: loadedWorkout.nomeDoTreino,
           description: loadedWorkout.obsInstrucao || 'Treino personalizado',
           exercises,
           isArchived: !!loadedWorkout.arquivos,
-          completedToday,
+          lastCompletedAt: loadedWorkout.lastCompletedAt,
+          lastSessionAt: loadedWorkout.lastSessionAt,
+          lastSessionStatus: loadedWorkout.lastSessionStatus,
+          lastSessionRemainingExercises: loadedWorkout.lastSessionRemainingExercises,
+          lastSessionSkippedExerciseIds: loadedWorkout.lastSessionSkippedExerciseIds || [],
         });
       }
       setIsLoading(false);
@@ -161,6 +168,35 @@ export default function WorkoutDetailScreen() {
     );
   };
 
+  const handleSendReminder = async () => {
+    if (!workout || !studentId) return;
+
+    try {
+      setIsSendingReminder(true);
+      const result = await sendWorkoutCompletionReminder({
+        studentId,
+        workoutId: workout.id,
+        workoutName: workout.name,
+        remainingExercises: workout.lastSessionRemainingExercises,
+        senderName: user?.displayName,
+      });
+
+      if (result.error) {
+        showAlert('Erro', result.error);
+        return;
+      }
+
+      showAlert(
+        'Aviso enviado',
+        'O aluno recebeu um lembrete para concluir o treino e os exercicios restantes.'
+      );
+    } catch (error: any) {
+      showAlert('Erro', error?.message || 'Nao foi possivel enviar o aviso agora.');
+    } finally {
+      setIsSendingReminder(false);
+    }
+  };
+
   if (isLoading) {
     return (
       <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
@@ -182,6 +218,14 @@ export default function WorkoutDetailScreen() {
       </SafeAreaView>
     );
   }
+
+  const workoutStatus = getWorkoutStatusPresentation(workout);
+  const statusColor = workoutStatus.badgeTone === 'warning' ? colors.warning : colors.success;
+  const skippedExerciseIds = new Set(workout.lastSessionSkippedExerciseIds || []);
+  const canSendReminder =
+    Boolean(studentId) &&
+    isPersonal &&
+    workoutStatus.status === 'partial';
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
@@ -217,6 +261,20 @@ export default function WorkoutDetailScreen() {
           <Text style={[styles.description, { color: colors.textSecondary }]}>
             {workout.description}
           </Text>
+          {workoutStatus.status !== 'pending' ? (
+            <View style={styles.statusWrap}>
+              <View style={[styles.statusBadge, { backgroundColor: statusColor + '20' }]}>
+                <Text style={[styles.statusBadgeText, { color: statusColor }]}>
+                  {workoutStatus.badgeLabel}
+                </Text>
+              </View>
+              {workoutStatus.helperText ? (
+                <Text style={[styles.statusHelperText, { color: colors.warning }]}>
+                  {workoutStatus.helperText}
+                </Text>
+              ) : null}
+            </View>
+          ) : null}
           <View style={styles.statsRow}>
             <View style={styles.statItem}>
               <View style={[styles.statIcon, { backgroundColor: colors.primary + '20' }]}>
@@ -252,21 +310,43 @@ export default function WorkoutDetailScreen() {
             Exercicios
           </Text>
           {workout.exercises.map((exercise, index) => (
-            <ExerciseCard key={exercise.exerciseId} exercise={exercise} index={index} showActions={false} />
+            <ExerciseCard
+              key={exercise.exerciseId}
+              exercise={exercise}
+              index={index}
+              showActions={false}
+              statusLabel={skippedExerciseIds.has(exercise.exerciseId) ? '!' : undefined}
+              statusTone="warning"
+            />
           ))}
         </View>
       </ScrollView>
 
       <View style={[styles.footer, { backgroundColor: colors.background, borderTopColor: colors.border }]}>
         <Button
-          title={workout.completedToday ? 'Treino concluido hoje' : 'Iniciar treino'}
-          onPress={handleStartWorkout}
+          title={
+            canSendReminder
+              ? 'Avisar aluno'
+              : workoutStatus.isLockedToday
+              ? 'Treino concluido hoje'
+              : workoutStatus.status === 'partial'
+              ? 'Continuar treino'
+              : 'Iniciar treino'
+          }
+          onPress={canSendReminder ? handleSendReminder : handleStartWorkout}
           fullWidth
           size="large"
-          disabled={workout.completedToday}
+          disabled={workoutStatus.isLockedToday || isSendingReminder}
+          loading={isSendingReminder}
           icon={
             <Ionicons
-              name={workout.completedToday ? 'checkmark' : 'play'}
+              name={
+                canSendReminder
+                  ? 'notifications-outline'
+                  : workoutStatus.isLockedToday
+                    ? 'checkmark'
+                    : 'play'
+              }
               size={20}
               color="#fff"
               style={{ marginRight: spacing.sm }}
@@ -321,6 +401,24 @@ const styles = StyleSheet.create({
     fontSize: 14,
     lineHeight: 20,
     marginBottom: spacing.lg,
+  },
+  statusWrap: {
+    alignItems: 'flex-start',
+    gap: spacing.xs,
+    marginBottom: spacing.lg,
+  },
+  statusBadge: {
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.xs,
+    borderRadius: borderRadius.full,
+  },
+  statusBadgeText: {
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  statusHelperText: {
+    fontSize: 12,
+    fontWeight: '600',
   },
   statsRow: {
     flexDirection: 'row',

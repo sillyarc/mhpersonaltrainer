@@ -949,6 +949,7 @@ const WEEKDAY_OPTIONS = [
       try {
         if (form.type === 'online') {
           const result = await createOnlineEvaluation({
+            type: 'online',
             userId: form.studentId,
             personalId: isPersonal ? user?.uid : undefined,
             date: new Date(),
@@ -975,6 +976,7 @@ const WEEKDAY_OPTIONS = [
             ? calculateBodyComposition(form.values.peso!, form.values.altura!, 30, 'masculino')
             : undefined;
           const result = await createPhysicalTestEvaluation({
+            type: 'fisica',
             userId: form.studentId,
             personalId: isPersonal ? user?.uid : undefined,
             date: new Date(),
@@ -1023,7 +1025,10 @@ const WEEKDAY_OPTIONS = [
       if (!workoutData) return;
       try {
         const payload = await buildWorkoutPayload(workoutData, weekday);
-        const result = await createUserWorkout(student.id, payload);
+        const result = await createUserWorkout(student.id, {
+          ...payload,
+          personalId: user?.uid,
+        });
         if (result.error || !result.data?.id) {
           throw new Error(result.error || 'Falha ao salvar o treino.');
         }

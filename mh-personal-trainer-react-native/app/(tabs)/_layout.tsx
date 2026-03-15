@@ -6,6 +6,7 @@ import { useTranslation } from 'react-i18next';
 import { useTheme } from '../../src/hooks/useTheme';
 import { useResponsive } from '../../src/hooks/useResponsive';
 import { useAuthStore } from '../../src/store/authStore';
+import { useAppStore } from '../../src/store/appStore';
 
 const hasValidPersonalCode = (code?: string | number | null) => {
   if (code === null || code === undefined) return false;
@@ -21,15 +22,17 @@ export default function TabsLayout() {
   const { t } = useTranslation();
   const { colors } = useTheme();
   const { isDesktop } = useResponsive();
+  const { language } = useAppStore();
   const { user, role } = useAuthStore();
   const isAluno = role === 'aluno' || (!!user && !user.admin && !user.professorAccount);
   const isAlunoWithoutPersonal = isAluno && !hasValidPersonalCode(user?.codigoPersonal);
 
   return (
     <Tabs
+      key={language}
       screenOptions={{
         headerShown: false,
-        sceneContainerStyle: { backgroundColor: colors.background },
+        sceneStyle: { backgroundColor: colors.background },
         tabBarActiveTintColor: colors.primary,
         tabBarInactiveTintColor: colors.secondaryText,
         tabBarStyle: {
@@ -70,7 +73,7 @@ export default function TabsLayout() {
       <Tabs.Screen
         name="nutrition"
         options={{
-          title: 'Nutri',
+          title: t('navigation.nutrition'),
           href: isAlunoWithoutPersonal ? undefined : null,
           tabBarIcon: ({ color, size, focused }) => (
             <IconBubble icon="restaurant-outline" color={color} size={size} focused={focused} />

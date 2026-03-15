@@ -1,6 +1,18 @@
-import { collection, getDocs, orderBy, query, where, addDoc, Timestamp, doc, updateDoc } from 'firebase/firestore';
+import {
+  addDoc,
+  arrayUnion,
+  collection,
+  doc,
+  getDocs,
+  orderBy,
+  query,
+  Timestamp,
+  updateDoc,
+  where,
+} from 'firebase/firestore';
 import { db } from './firebase';
 import { NotificationItem } from '../types/notification';
+import { EvaluationType } from '../types/evaluation';
 import { Platform } from 'react-native';
 import * as Device from 'expo-device';
 import { sendPushNotificationToUser } from './notifications';
@@ -20,6 +32,11 @@ const mapNotification = (id: string, data: any): NotificationItem => ({
   tipo: data.tipo,
   treinoId: data.treino?.id,
   avOnlineId: data.avOnline?.id,
+  evaluationId: data.avaliacao?.id,
+  evaluationType: data.avaliacao?.type,
+  evaluationUserId: data.avaliacao?.userId,
+  unread: data.unread !== false,
+  readBy: Array.isArray(data.readBy) ? data.readBy.filter((item: unknown) => typeof item === 'string') : [],
   securityEvent: Boolean(data.securityEvent),
   securityStatus: data.securityStatus,
   securityResolvedAt: data.securityResolvedAt?.toDate
@@ -41,6 +58,42 @@ const getMobileDeviceLabel = () => {
   const model = Device.modelName || 'Dispositivo movel';
   const osName = Device.osName || Platform.OS;
   return `${osName} - ${model}`;
+};
+
+const formatExerciseCountLabel = (count?: number) => {
+  const total = Math.max(0, Number(count || 0));
+  return `${total} exercicio${total === 1 ? '' : 's'}`;
+};
+
+export const isNotificationUnreadForUser = (
+  notification: Pick<NotificationItem, 'paraTodos' | 'readBy' | 'unread'>,
+  userId: string
+) => {
+  if (!userId) return false;
+  if (Array.isArray(notification.readBy) && notification.readBy.includes(userId)) {
+    return false;
+  }
+  if (notification.unread === false && !notification.paraTodos) {
+    return false;
+  }
+  return true;
+};
+
+export const isNotificationPendingForUser = (
+  notification: Pick<
+    NotificationItem,
+    'paraTodos' | 'readBy' | 'unread' | 'securityEvent' | 'securityStatus'
+  >,
+  userId: string
+) => {
+  const requiresSecurityResponse =
+    Boolean(notification.securityEvent) &&
+    (!notification.securityStatus || notification.securityStatus === 'pending');
+
+  return requiresSecurityResponse || (
+    isNotificationUnreadForUser(notification, userId) &&
+    !notification.securityEvent
+  );
 };
 
 const getPublicIpAddress = async (): Promise<string> => {
@@ -91,6 +144,8 @@ async function createAdminNotifications(
         para: adminId,
         paraTodos: false,
         data: Timestamp.now(),
+        unread: true,
+        readBy: [],
       })
     )
   );
@@ -151,14 +206,40 @@ export async function createNotification(
 ): Promise<QueryResult<NotificationItem>> {
   try {
     const ref = collection(db, 'notificacao');
-    const docRef = await addDoc(ref, {
+    const notificationData: Record<string, any> = {
       titulo: payload.titulo,
       descricao: payload.descricao,
       tipo: payload.tipo || 'Sistema',
       para: payload.para || null,
       paraTodos: payload.paraTodos || false,
       data: Timestamp.now(),
-    });
+      unread: payload.unread ?? true,
+      readBy: Array.isArray(payload.readBy) ? payload.readBy : [],
+    };
+    if (payload.treinoId) {
+      notificationData.treino = { id: payload.treinoId };
+    }
+    if (payload.avOnlineId) {
+      notificationData.avOnline = { id: payload.avOnlineId };
+    }
+    if (payload.evaluationId) {
+      notificationData.avaliacao = {
+        id: payload.evaluationId,
+        type: payload.evaluationType,
+        userId: payload.evaluationUserId || payload.para || null,
+      };
+    }
+    if (payload.securityEvent) {
+      notificationData.securityEvent = true;
+    }
+    if (payload.securityStatus) {
+      notificationData.securityStatus = payload.securityStatus;
+    }
+    if (payload.loginMeta) {
+      notificationData.loginMeta = payload.loginMeta;
+    }
+
+    const docRef = await addDoc(ref, notificationData);
     return {
       data: {
         id: docRef.id,
@@ -222,6 +303,8 @@ export async function notifyUserLoginSecurityAlert(payload: {
       para: payload.userId,
       paraTodos: false,
       data: Timestamp.now(),
+      unread: true,
+      readBy: [],
       securityEvent: true,
       securityStatus: 'pending',
       loginMeta: {
@@ -254,8 +337,154 @@ export async function respondToSecurityLoginAlert(payload: {
 }) {
   if (!payload.notificationId || !payload.userId) return;
   await updateDoc(doc(db, 'notificacao', payload.notificationId), {
+    unread: false,
+    readBy: arrayUnion(payload.userId),
     securityStatus: payload.decision,
     securityResolvedAt: Timestamp.now(),
     securityResolvedBy: payload.userId,
   });
+}
+
+export async function markNotificationsAsRead(
+  userId: string,
+  notifications: Array<Pick<NotificationItem, 'id' | 'paraTodos'>>
+): Promise<QueryResult<number>> {
+  if (!userId || notifications.length === 0) {
+    return { data: 0, error: null };
+  }
+
+  try {
+    await Promise.all(
+      notifications.map((notification) =>
+        updateDoc(doc(db, 'notificacao', notification.id), {
+          ...(notification.paraTodos ? {} : { unread: false }),
+          readBy: arrayUnion(userId),
+        })
+      )
+    );
+
+    return { data: notifications.length, error: null };
+  } catch (error: any) {
+    return { data: null, error: error.message || 'Nao foi possivel atualizar as notificacoes.' };
+  }
+}
+
+export async function countPendingNotificationsForUser(
+  userId: string
+): Promise<QueryResult<number>> {
+  if (!userId) {
+    return { data: 0, error: null };
+  }
+
+  const result = await fetchNotificationsForUser(userId);
+  if (result.error || !result.data) {
+    return { data: null, error: result.error || 'Nao foi possivel contar notificacoes.' };
+  }
+
+  const total = result.data.filter((item) => isNotificationPendingForUser(item, userId)).length;
+  return { data: total, error: null };
+}
+
+export async function sendWorkoutCompletionReminder(payload: {
+  studentId: string;
+  workoutId: string;
+  workoutName?: string;
+  remainingExercises?: number;
+  senderName?: string;
+}): Promise<QueryResult<NotificationItem>> {
+  if (!payload.studentId || !payload.workoutId) {
+    return { data: null, error: 'Aluno ou treino invalido.' };
+  }
+
+  const senderLabel = payload.senderName?.trim() || 'Seu personal';
+  const workoutLabel = payload.workoutName?.trim() || 'seu treino';
+  const remainingCount = Math.max(0, Number(payload.remainingExercises || 0));
+  const description =
+    remainingCount > 0
+      ? `${senderLabel} pediu para voce concluir "${workoutLabel}". Ainda faltam ${formatExerciseCountLabel(remainingCount)}.`
+      : `${senderLabel} pediu para voce concluir "${workoutLabel}".`;
+
+  const result = await createNotification({
+    titulo: 'Lembrete de treino',
+    descricao: description,
+    tipo: 'Treino',
+    para: payload.studentId,
+    paraTodos: false,
+    treinoId: payload.workoutId,
+    unread: true,
+    readBy: [],
+  });
+
+  if (result.error) {
+    return result;
+  }
+
+  await sendPushNotificationToUser(payload.studentId, {
+    title: 'Lembrete de treino',
+    body:
+      remainingCount > 0
+        ? `Faltam ${formatExerciseCountLabel(remainingCount)} para concluir "${workoutLabel}".`
+        : `Seu personal enviou um lembrete para concluir "${workoutLabel}".`,
+    data: {
+      type: 'workout_reminder',
+      workoutId: payload.workoutId,
+      remainingExercises: remainingCount,
+    },
+  });
+
+  return result;
+}
+
+export async function sendEvaluationCompletionReminder(payload: {
+  studentId: string;
+  evaluationId: string;
+  evaluationType: EvaluationType;
+  evaluationName?: string;
+  pendingQuestions?: number;
+  senderName?: string;
+}): Promise<QueryResult<NotificationItem>> {
+  if (!payload.studentId || !payload.evaluationId || !payload.evaluationType) {
+    return { data: null, error: 'Aluno ou avaliacao invalida.' };
+  }
+
+  const senderLabel = payload.senderName?.trim() || 'Seu personal';
+  const evaluationLabel = payload.evaluationName?.trim() || 'sua avaliacao';
+  const pendingQuestions = Math.max(0, Number(payload.pendingQuestions || 0));
+  const description =
+    pendingQuestions > 0
+      ? `${senderLabel} pediu para voce concluir ${evaluationLabel}. Ainda faltam ${pendingQuestions} pergunta${pendingQuestions === 1 ? '' : 's'}.`
+      : `${senderLabel} pediu para voce concluir ${evaluationLabel}.`;
+
+  const result = await createNotification({
+    titulo: 'Lembrete de avaliacao',
+    descricao: description,
+    tipo: 'Avaliacao',
+    para: payload.studentId,
+    paraTodos: false,
+    evaluationId: payload.evaluationId,
+    evaluationType: payload.evaluationType,
+    evaluationUserId: payload.studentId,
+    unread: true,
+    readBy: [],
+  });
+
+  if (result.error) {
+    return result;
+  }
+
+  await sendPushNotificationToUser(payload.studentId, {
+    title: 'Lembrete de avaliacao',
+    body:
+      pendingQuestions > 0
+        ? `Faltam ${pendingQuestions} pergunta${pendingQuestions === 1 ? '' : 's'} para concluir ${evaluationLabel}.`
+        : `Seu personal enviou um lembrete para concluir ${evaluationLabel}.`,
+    data: {
+      type: 'evaluation_reminder',
+      evaluationId: payload.evaluationId,
+      evaluationType: payload.evaluationType,
+      pendingQuestions,
+    },
+  });
+
+  return result;
 }

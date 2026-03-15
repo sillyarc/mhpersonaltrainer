@@ -30,6 +30,7 @@ export interface UserWorkout {
   id: string;
   nomeDoTreino: string;
   obsInstrucao?: string;
+  personalId?: string;
   treino: string[];
   seriesRep?: WorkoutMetricValue[];
   repeticoes?: WorkoutMetricValue[];
@@ -49,6 +50,7 @@ export interface AerobicWorkout {
   treino?: string;
   treinos?: string[];
   items?: AerobicWorkoutItem[];
+  personalId?: string;
   aquecimento?: string;
   voltaacalma?: string;
   observacoes?: string;

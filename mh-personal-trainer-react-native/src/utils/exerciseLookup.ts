@@ -30,6 +30,40 @@ const pushLookupValue = (
 const resolveVideoUrl = (exercise?: Exercise) =>
   exercise?.videoUrl1080 || exercise?.videoUrl720 || exercise?.videoUrl || '';
 
+const resolveGifUrl = (exercise?: Exercise) => {
+  if (!exercise) return '';
+  const candidates = [exercise.gifUrl, exercise.fotoDoTreino];
+  for (const candidate of candidates) {
+    const value = String(candidate || '').trim();
+    if (!value) continue;
+    if (isGifMediaUrl(value) || /hipertrofia\.org/i.test(value)) {
+      return value;
+    }
+  }
+  return '';
+};
+
+export const isGifMediaUrl = (url?: string | null) => {
+  const value = String(url || '').trim().toLowerCase();
+  if (!value) return false;
+  return (
+    value.includes('.gif') ||
+    value.includes('format=gif') ||
+    value.includes('/gif/') ||
+    value.includes('giphy.') ||
+    value.includes('tenor.')
+  );
+};
+
+export type ExerciseMediaKind = 'video' | 'gif' | 'none';
+
+export interface ResolvedExerciseMedia {
+  kind: ExerciseMediaKind;
+  url?: string;
+  videoUrl?: string;
+  gifUrl?: string;
+}
+
 const resolveVideoQuality = (exercise: Exercise) => {
   if (exercise.videoUrl1080) return 3;
   if (exercise.videoUrl720) return 2;
@@ -113,15 +147,65 @@ export const resolveExerciseByName = (
   return undefined;
 };
 
+export const resolveExerciseMediaFromExercise = (
+  exercise?: Exercise | null,
+  preferred: 'video' | 'gif' = 'video'
+): ResolvedExerciseMedia => {
+  const videoUrl = resolveVideoUrl(exercise || undefined) || undefined;
+  const gifUrl = resolveGifUrl(exercise || undefined) || undefined;
+
+  if (preferred === 'gif' && gifUrl) {
+    return { kind: 'gif', url: gifUrl, videoUrl, gifUrl };
+  }
+  if (preferred === 'video' && videoUrl) {
+    return { kind: 'video', url: videoUrl, videoUrl, gifUrl };
+  }
+  if (videoUrl) {
+    return { kind: 'video', url: videoUrl, videoUrl, gifUrl };
+  }
+  if (gifUrl) {
+    return { kind: 'gif', url: gifUrl, videoUrl, gifUrl };
+  }
+  return { kind: 'none', videoUrl, gifUrl };
+};
+
+export const resolveExerciseMediaByName = (
+  rawName: string,
+  storedUrl: string,
+  lookup: ExerciseNameLookup
+): ResolvedExerciseMedia => {
+  const selected = resolveExerciseByName(rawName, lookup);
+  const preferredFromStorage = isGifMediaUrl(storedUrl) ? 'gif' : 'video';
+  const selectedMedia = resolveExerciseMediaFromExercise(selected, preferredFromStorage);
+  const fallback = (storedUrl || '').trim();
+
+  if (fallback) {
+    if (isGifMediaUrl(fallback)) {
+      const nextGif = selectedMedia.gifUrl || fallback;
+      return {
+        kind: 'gif',
+        url: nextGif,
+        videoUrl: selectedMedia.videoUrl,
+        gifUrl: nextGif,
+      };
+    }
+
+    const nextVideo = selectedMedia.videoUrl || fallback;
+    return {
+      kind: 'video',
+      url: nextVideo,
+      videoUrl: nextVideo,
+      gifUrl: selectedMedia.gifUrl,
+    };
+  }
+
+  return selectedMedia;
+};
+
 export const resolveExerciseVideoUrlByName = (
   rawName: string,
   storedUrl: string,
   lookup: ExerciseNameLookup
 ): string | undefined => {
-  const selected = resolveExerciseByName(rawName, lookup);
-  const selectedUrl = resolveVideoUrl(selected);
-  if (selectedUrl) return selectedUrl;
-
-  const fallback = (storedUrl || '').trim();
-  return fallback || undefined;
+  return resolveExerciseMediaByName(rawName, storedUrl, lookup).url;
 };

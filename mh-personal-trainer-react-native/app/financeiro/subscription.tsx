@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+﻿import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Linking,
@@ -190,9 +190,9 @@ export default function SubscriptionDetailsScreen() {
                 onPress={() => void loadData('refresh')}
               >
                 {refreshing ? (
-                  <ActivityIndicator size="small" color="#9FD7FF" />
+                  <ActivityIndicator size="small" color="#194784" />
                 ) : (
-                  <Ionicons name="refresh-outline" size={17} color="#9FD7FF" />
+                  <Ionicons name="refresh-outline" size={17} color="#194784" />
                 )}
               </TouchableOpacity>
             </View>
@@ -283,7 +283,7 @@ export default function SubscriptionDetailsScreen() {
                   style={[styles.placeholderAction, { borderRadius: borderRadius.full, marginTop: spacing.md }]}
                   onPress={() => router.push('/financeiro/plans')}
                 >
-                  <Ionicons name="diamond-outline" size={15} color="#DDF2FF" />
+                  <Ionicons name="diamond-outline" size={15} color="#E6EEF8" />
                   <Text style={[styles.placeholderActionText, typography.labelSmall]}>Ver planos</Text>
                 </TouchableOpacity>
               </View>
@@ -307,7 +307,7 @@ export default function SubscriptionDetailsScreen() {
                     >
                       <View style={styles.invoiceTopRow}>
                         <View style={styles.invoiceTitleWrap}>
-                          <Ionicons name="receipt-outline" size={16} color="#9ED7FF" />
+                          <Ionicons name="receipt-outline" size={16} color="#194784" />
                           <Text style={[styles.invoiceTitle, typography.labelMedium]} numberOfLines={1}>
                             {item.id || 'Fatura Stripe'}
                           </Text>
@@ -346,7 +346,7 @@ export default function SubscriptionDetailsScreen() {
                       {item.hosted_invoice_url ? (
                         <View style={styles.invoiceFooter}>
                           <Text style={[styles.invoiceFooterText, typography.labelSmall]}>Abrir comprovante</Text>
-                          <Ionicons name="open-outline" size={14} color="#8BD2FF" />
+                          <Ionicons name="open-outline" size={14} color="#E6EEF8" />
                         </View>
                       ) : null}
                     </TouchableOpacity>
@@ -385,7 +385,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 1,
-    borderColor: 'rgba(159,215,255,0.35)',
+    borderColor: 'rgba(25,71,132,0.35)',
     backgroundColor: 'rgba(19,46,73,0.55)',
   },
   heroCard: {
@@ -504,7 +504,7 @@ const styles = StyleSheet.create({
   placeholderAction: {
     minHeight: 38,
     borderWidth: 1,
-    borderColor: 'rgba(166,221,255,0.4)',
+    borderColor: 'rgba(25,71,132,0.4)',
     backgroundColor: 'rgba(21,90,140,0.5)',
     flexDirection: 'row',
     alignItems: 'center',
@@ -513,7 +513,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
   },
   placeholderActionText: {
-    color: '#DDF2FF',
+    color: '#E6EEF8',
     fontWeight: '700',
   },
   invoiceCard: {
@@ -537,11 +537,11 @@ const styles = StyleSheet.create({
     paddingRight: 6,
   },
   invoiceTitle: {
-    color: '#EAF6FF',
+    color: '#E6EEF8',
     flex: 1,
   },
   invoiceAmount: {
-    color: '#9ED7FF',
+    color: '#194784',
     fontWeight: '800',
   },
   invoiceMetaRow: {
@@ -571,7 +571,9 @@ const styles = StyleSheet.create({
     alignSelf: 'flex-start',
   },
   invoiceFooterText: {
-    color: '#8BD2FF',
+    color: '#E6EEF8',
     fontWeight: '700',
   },
 });
+
+

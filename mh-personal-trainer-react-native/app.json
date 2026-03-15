@@ -68,6 +68,12 @@
           "enableGooglePay": true
         }
       ],
+      [
+        "@react-native-google-signin/google-signin",
+        {
+          "iosUrlScheme": "com.googleusercontent.apps.733790875876-bdhb055p2ng79osu3cgr9dr9cft01li8"
+        }
+      ],
       "@react-native-community/datetimepicker"
     ],
     "experiments": {
@@ -75,6 +81,7 @@
     },
     "extra": {
       "router": {},
+      "apiUrl": "https://api.stripe.com",
       "firebase": {
         "apiKey": "AIzaSyAOacFgUL2w9WYNOnuLPC0w2qFebdy2d64",
         "authDomain": "profissions-2746d.firebaseapp.com",
@@ -82,6 +89,19 @@
         "storageBucket": "profissions-2746d.appspot.com",
         "messagingSenderId": "733790875876",
         "appId": "1:733790875876:web:57d4a8a1271e8bfec53cf1"
+      },
+      "google": {
+        "expoClientId": "733790875876-2lq1n2oqs2l859s9ivh41okvk491ph38.apps.googleusercontent.com",
+        "iosClientId": "733790875876-bdhb055p2ng79osu3cgr9dr9cft01li8.apps.googleusercontent.com",
+        "androidClientId": "733790875876-2nd21bq3fr5h4h6grcf2uf1thvepnhhv.apps.googleusercontent.com",
+        "webClientId": "733790875876-2lq1n2oqs2l859s9ivh41okvk491ph38.apps.googleusercontent.com"
+      },
+      "stripe": {
+        "publishableKey": "pk_test_51R56vnP3w93hGHYvnyzlTzxRB9SLq3hIyBxLbZ642X7n4K0WTNQPNyS1Y1KPuq7MX3WSxz8MFeyjW6puFd0Ew9aX00XAFFYZMD",
+        "functionsUrl": "https://southamerica-east1-profissions-2746d.cloudfunctions.net",
+        "subscriptionEndpoint": "createSubscriptionAluno",
+        "setupIntentEndpoint": "createSetupIntent",
+        "returnUrl": "mhpersonaltrainer://stripe-redirect"
       },
       "eas": {
         "projectId": "4914019b-cf80-4d0c-a946-b33100a58322"

@@ -15,6 +15,7 @@ import { fetchPaymentsForUser } from '../../src/services/financeiro';
 import { UserWorkout } from '../../src/types/workout';
 import { PhysicalEvaluation } from '../../src/types/evaluation';
 import { PaymentRecord } from '../../src/types/finance';
+import { getWorkoutStatusPresentation } from '../../src/utils/workoutStatus';
 import { spacing, borderRadius } from '../../src/theme';
 
 export default function StudentDetailScreen() {
@@ -63,6 +64,14 @@ export default function StudentDetailScreen() {
       hour: '2-digit',
       minute: '2-digit',
     });
+  };
+
+  const formatBirthday = (birthday?: string) => {
+    if (!birthday) return null;
+    if (birthday.includes('/')) return birthday;
+    const parsed = new Date(birthday);
+    if (Number.isNaN(parsed.getTime())) return birthday;
+    return parsed.toLocaleDateString('pt-BR');
   };
 
   if (loading) {
@@ -204,6 +213,78 @@ export default function StudentDetailScreen() {
           </View>
         </Card>
 
+        <Card style={styles.profileDetailsCard}>
+          <Text style={[styles.profileDetailsTitle, { color: colors.text }]}>Perfil do aluno</Text>
+
+          {student?.birthday ? (
+            <View style={styles.profileInfoRow}>
+              <Ionicons name="calendar-outline" size={16} color={colors.textSecondary} />
+              <Text style={[styles.profileInfoLabel, { color: colors.textSecondary }]}>Aniversario:</Text>
+              <Text style={[styles.profileInfoValue, { color: colors.text }]}>
+                {formatBirthday(student.birthday)}
+              </Text>
+            </View>
+          ) : null}
+
+          {student?.phoneNumber ? (
+            <View style={styles.profileInfoRow}>
+              <Ionicons name="call-outline" size={16} color={colors.textSecondary} />
+              <Text style={[styles.profileInfoLabel, { color: colors.textSecondary }]}>Telefone:</Text>
+              <Text style={[styles.profileInfoValue, { color: colors.text }]}>{student.phoneNumber}</Text>
+            </View>
+          ) : null}
+
+          {student?.peso || student?.altura ? (
+            <View style={styles.metricsRow}>
+              {student?.peso ? (
+                <View style={[styles.metricPill, { backgroundColor: colors.secondaryBackground }]}>
+                  <Text style={[styles.metricValue, { color: colors.text }]}>{student.peso}</Text>
+                  <Text style={[styles.metricLabel, { color: colors.textSecondary }]}>Peso (kg)</Text>
+                </View>
+              ) : null}
+              {student?.altura ? (
+                <View style={[styles.metricPill, { backgroundColor: colors.secondaryBackground }]}>
+                  <Text style={[styles.metricValue, { color: colors.text }]}>{student.altura}</Text>
+                  <Text style={[styles.metricLabel, { color: colors.textSecondary }]}>Altura (cm)</Text>
+                </View>
+              ) : null}
+            </View>
+          ) : null}
+
+          {student?.objetivoNoApp ? (
+            <View style={styles.profileTextBlock}>
+              <Text style={[styles.profileTextLabel, { color: colors.textSecondary }]}>Objetivo</Text>
+              <Text style={[styles.profileTextValue, { color: colors.text }]}>{student.objetivoNoApp}</Text>
+            </View>
+          ) : null}
+
+          {student?.experiencia ? (
+            <View style={styles.profileTextBlock}>
+              <Text style={[styles.profileTextLabel, { color: colors.textSecondary }]}>Experiencia</Text>
+              <Text style={[styles.profileTextValue, { color: colors.text }]}>{student.experiencia}</Text>
+            </View>
+          ) : null}
+
+          {student?.limitacao ? (
+            <View style={styles.profileTextBlock}>
+              <Text style={[styles.profileTextLabel, { color: colors.textSecondary }]}>Limitacoes</Text>
+              <Text style={[styles.profileTextValue, { color: colors.text }]}>{student.limitacao}</Text>
+            </View>
+          ) : null}
+
+          {!student?.birthday &&
+          !student?.phoneNumber &&
+          !student?.peso &&
+          !student?.altura &&
+          !student?.objetivoNoApp &&
+          !student?.experiencia &&
+          !student?.limitacao ? (
+            <Text style={[styles.emptyProfileText, { color: colors.textSecondary }]}>
+              O aluno ainda nao preencheu dados de perfil.
+            </Text>
+          ) : null}
+        </Card>
+
         <Card style={styles.financeCard}>
           <View style={styles.financeRow}>
             <View>
@@ -278,42 +359,60 @@ export default function StudentDetailScreen() {
               Nenhum treino cadastrado.
             </Text>
           ) : (
-            workouts.slice(0, 3).map((workout) => (
-              <TouchableOpacity
-                key={workout.id}
-                style={styles.itemCardTouchable}
-                activeOpacity={0.85}
-                onPress={() => router.push(`/workout/${workout.id}?studentId=${id}` as any)}
-              >
-                <Card style={styles.itemCard}>
-                  <View style={styles.itemHeader}>
-                    <View style={styles.itemHeaderText}>
-                      <Text style={[styles.itemTitle, { color: colors.text }]} numberOfLines={1}>
-                        {workout.nomeDoTreino}
-                      </Text>
-                      <Text style={[styles.itemSubtitle, { color: colors.textSecondary }]} numberOfLines={2}>
-                        {workout.obsInstrucao || 'Treino personalizado'}
-                      </Text>
-                    </View>
-                    <Ionicons name="chevron-forward" size={18} color={colors.textSecondary} />
-                  </View>
-                  <View style={styles.exerciseList}>
-                    {(workout.treino || []).slice(0, 3).map((exercise, index) => {
-                      const seriesLabel =
-                        formatMetricWithSuffix(workout.seriesRep?.[index], ' series') || '0 series';
-                      return (
-                        <Text
-                          key={`${workout.id}-${index}`}
-                          style={[styles.exerciseLine, { color: colors.textSecondary }]}
-                        >
-                          {exercise} - {seriesLabel}
+            workouts.slice(0, 3).map((workout) => {
+              const workoutStatus = getWorkoutStatusPresentation(workout);
+              const hasMissingExercises = workoutStatus.status === 'partial';
+
+              return (
+                <TouchableOpacity
+                  key={workout.id}
+                  style={styles.itemCardTouchable}
+                  activeOpacity={0.85}
+                  onPress={() =>
+                    router.push({
+                      pathname: '/workout/[id]',
+                      params: { id: workout.id, studentId: id },
+                    })
+                  }
+                >
+                  <Card style={styles.itemCard}>
+                    <View style={styles.itemHeader}>
+                      <View style={styles.itemHeaderText}>
+                        <Text style={[styles.itemTitle, { color: colors.text }]} numberOfLines={1}>
+                          {workout.nomeDoTreino}
+                          {hasMissingExercises ? (
+                            <Text style={{ color: colors.warning }}> !</Text>
+                          ) : null}
                         </Text>
-                      );
-                    })}
-                  </View>
-                </Card>
-              </TouchableOpacity>
-            ))
+                        <Text style={[styles.itemSubtitle, { color: colors.textSecondary }]} numberOfLines={2}>
+                          {workout.obsInstrucao || 'Treino personalizado'}
+                        </Text>
+                        {workoutStatus.helperText ? (
+                          <Text style={[styles.itemHelperText, { color: colors.warning }]}>
+                            {workoutStatus.helperText}
+                          </Text>
+                        ) : null}
+                      </View>
+                      <Ionicons name="chevron-forward" size={18} color={colors.textSecondary} />
+                    </View>
+                    <View style={styles.exerciseList}>
+                      {(workout.treino || []).slice(0, 3).map((exercise, index) => {
+                        const seriesLabel =
+                          formatMetricWithSuffix(workout.seriesRep?.[index], ' series') || '0 series';
+                        return (
+                          <Text
+                            key={`${workout.id}-${index}`}
+                            style={[styles.exerciseLine, { color: colors.textSecondary }]}
+                          >
+                            {exercise} - {seriesLabel}
+                          </Text>
+                        );
+                      })}
+                    </View>
+                  </Card>
+                </TouchableOpacity>
+              );
+            })
           )}
         </View>
 
@@ -412,6 +511,61 @@ const styles = StyleSheet.create({
   },
   statusCard: {
     padding: spacing.md,
+  },
+  profileDetailsCard: {
+    padding: spacing.md,
+    gap: spacing.sm,
+  },
+  profileDetailsTitle: {
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  profileInfoRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+  },
+  profileInfoLabel: {
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  profileInfoValue: {
+    fontSize: 12,
+    flexShrink: 1,
+  },
+  metricsRow: {
+    flexDirection: 'row',
+    gap: spacing.sm,
+  },
+  metricPill: {
+    flex: 1,
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.sm,
+    borderRadius: borderRadius.md,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  metricValue: {
+    fontSize: 16,
+    fontWeight: '700',
+  },
+  metricLabel: {
+    fontSize: 11,
+    marginTop: 2,
+  },
+  profileTextBlock: {
+    gap: 2,
+  },
+  profileTextLabel: {
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  profileTextValue: {
+    fontSize: 13,
+    lineHeight: 18,
+  },
+  emptyProfileText: {
+    fontSize: 12,
   },
   statusRow: {
     flexDirection: 'row',
@@ -531,6 +685,11 @@ const styles = StyleSheet.create({
   itemSubtitle: {
     fontSize: 12,
     marginTop: spacing.xs,
+  },
+  itemHelperText: {
+    fontSize: 12,
+    fontWeight: '600',
+    marginTop: 4,
   },
   exerciseList: {
     marginTop: spacing.sm,

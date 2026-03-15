@@ -116,6 +116,7 @@ export default function ArchivedWorkoutsScreen() {
           const payload = {
             nomeDoTreino: `${workout.nomeDoTreino} (copia)`,
             obsInstrucao: workout.obsInstrucao,
+            personalId: isPersonal ? user?.uid : undefined,
             treino: workout.treino || [],
             seriesRep: workout.seriesRep || [],
             repeticoes: workout.repeticoes || [],

@@ -15,7 +15,14 @@ import { useTheme } from '../../src/hooks/useTheme';
 import { useResponsive } from '../../src/hooks/useResponsive';
 import { useAuthStore } from '../../src/store/authStore';
 import { useAuth } from '../../src/hooks/useAuth';
-import { fetchNotificationsForUser, respondToSecurityLoginAlert } from '../../src/services/notificationCenter';
+import {
+  countPendingNotificationsForUser,
+  fetchNotificationsForUser,
+  isNotificationUnreadForUser,
+  markNotificationsAsRead,
+  respondToSecurityLoginAlert,
+} from '../../src/services/notificationCenter';
+import { setBadgeCount } from '../../src/services/notifications';
 import { NotificationItem } from '../../src/types/notification';
 
 function getIconByType(type?: string): keyof typeof Ionicons.glyphMap {
@@ -50,10 +57,21 @@ export default function NotificationsScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [actionLoadingId, setActionLoadingId] = useState<string | null>(null);
 
+  const syncNotificationBadge = useCallback(async (targetUserId?: string) => {
+    if (!targetUserId) {
+      await setBadgeCount(0);
+      return;
+    }
+
+    const result = await countPendingNotificationsForUser(targetUserId);
+    await setBadgeCount(Math.max(0, Number(result.data || 0)));
+  }, []);
+
   const loadNotifications = useCallback(
     async (mode: 'initial' | 'refresh' | 'silent' = 'silent') => {
       if (!user?.uid) {
         setNotifications([]);
+        await setBadgeCount(0);
         setLoading(false);
         setRefreshing(false);
         return;
@@ -65,7 +83,34 @@ export default function NotificationsScreen() {
       }
       try {
         const result = await fetchNotificationsForUser(user.uid);
-        setNotifications(result.data || []);
+        const loadedNotifications = result.data || [];
+        setNotifications(loadedNotifications);
+
+        const unreadNotifications = loadedNotifications.filter((item) =>
+          isNotificationUnreadForUser(item, user.uid)
+        );
+
+        if (unreadNotifications.length > 0) {
+          await markNotificationsAsRead(
+            user.uid,
+            unreadNotifications.map((item) => ({ id: item.id, paraTodos: item.paraTodos }))
+          );
+
+          const readIds = new Set(unreadNotifications.map((item) => item.id));
+          setNotifications((prev) =>
+            prev.map((item) =>
+              readIds.has(item.id)
+                ? {
+                    ...item,
+                    unread: false,
+                    readBy: Array.from(new Set([...(item.readBy || []), user.uid])),
+                  }
+                : item
+            )
+          );
+        }
+
+        await syncNotificationBadge(user.uid);
       } finally {
         if (mode === 'initial') {
           setLoading(false);
@@ -74,23 +119,35 @@ export default function NotificationsScreen() {
         }
       }
     },
-    [user?.uid]
+    [syncNotificationBadge, user?.uid]
   );
 
   useEffect(() => {
-    loadNotifications('initial');
+    void loadNotifications('initial');
   }, [loadNotifications]);
 
   const isAdmin = role === 'admin';
 
   const emptyText = useMemo(() => {
-    if (loading) return 'Carregando notificações...';
+    if (loading) return 'Carregando notificacoes...';
     return 'Nenhuma notificacao encontrada';
   }, [loading]);
 
   const handleNotificationPress = (item: NotificationItem) => {
     if (item.tipo && item.tipo.toLowerCase().includes('treino') && item.treinoId) {
       router.push(`/start-workout?workoutId=${item.treinoId}`);
+      return;
+    }
+
+    if (item.tipo && item.tipo.toLowerCase().includes('avali') && item.evaluationId && item.evaluationType) {
+      router.push({
+        pathname: '/evaluations/[id]',
+        params: {
+          id: item.evaluationId,
+          type: item.evaluationType,
+          ...(item.evaluationUserId ? { userId: item.evaluationUserId } : {}),
+        },
+      });
       return;
     }
   };
@@ -111,12 +168,16 @@ export default function NotificationsScreen() {
             row.id === item.id
               ? {
                   ...row,
+                  unread: false,
+                  readBy: Array.from(new Set([...(row.readBy || []), user.uid])),
                   securityStatus: decision,
                   securityResolvedAt: new Date(),
                 }
               : row
           )
         );
+
+        await syncNotificationBadge(user.uid);
 
         if (decision === 'denied') {
           if (user.email) {
@@ -136,7 +197,7 @@ export default function NotificationsScreen() {
         setActionLoadingId(null);
       }
     },
-    [logout, resetPassword, user?.email, user?.uid]
+    [logout, resetPassword, syncNotificationBadge, user?.email, user?.uid]
   );
 
   const handleSecurityDecision = useCallback(
@@ -176,7 +237,7 @@ export default function NotificationsScreen() {
         },
       ]}
       onPress={() => handleNotificationPress(item)}
-      activeOpacity={item.treinoId ? 0.7 : 1}
+      activeOpacity={item.treinoId || item.evaluationId ? 0.7 : 1}
     >
       <View style={styles.cardHeader}>
         <View
@@ -254,6 +315,9 @@ export default function NotificationsScreen() {
         {item.treinoId ? (
           <Text style={[{ color: colors.primary }, typography.labelSmall]}>Abrir treino</Text>
         ) : null}
+        {!item.treinoId && item.evaluationId ? (
+          <Text style={[{ color: colors.primary }, typography.labelSmall]}>Abrir avaliacao</Text>
+        ) : null}
       </View>
     </TouchableOpacity>
   );
@@ -267,17 +331,33 @@ export default function NotificationsScreen() {
     >
       <SafeAreaView style={styles.safeArea}>
         <View style={[styles.header, { paddingHorizontal: padding, paddingVertical: spacing.md }]}>
-          <Text style={[{ color: colors.primaryText }, typography.headlineLarge]}>
-            Notificações
-          </Text>
-          {isAdmin && (
+          <View style={styles.headerLeft}>
             <TouchableOpacity
-              style={[styles.adminButton, { backgroundColor: colors.primary, borderRadius: borderRadius.full }]}
-              onPress={() => router.push('/notifications/admin')}
+              style={[
+                styles.backButton,
+                {
+                  backgroundColor: colors.secondaryBackground,
+                  borderRadius: borderRadius.full,
+                },
+              ]}
+              onPress={() => router.push('/(tabs)/profile')}
             >
-              <Ionicons name="megaphone-outline" size={18} color={colors.info} />
+              <Ionicons name="arrow-back" size={20} color={colors.primaryText} />
             </TouchableOpacity>
-          )}
+            <Text style={[{ color: colors.primaryText, flexShrink: 1 }, typography.headlineLarge]}>
+              Notificacoes
+            </Text>
+          </View>
+          <View style={styles.headerRight}>
+            {isAdmin && (
+              <TouchableOpacity
+                style={[styles.adminButton, { backgroundColor: colors.primary, borderRadius: borderRadius.full }]}
+                onPress={() => router.push('/notifications/admin')}
+              >
+                <Ionicons name="megaphone-outline" size={18} color={colors.info} />
+              </TouchableOpacity>
+            )}
+          </View>
         </View>
 
         <FlatList
@@ -314,6 +394,22 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
+  },
+  headerLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    flex: 1,
+  },
+  headerRight: {
+    minWidth: 40,
+    alignItems: 'flex-end',
+  },
+  backButton: {
+    width: 40,
+    height: 40,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   adminButton: {
     width: 40,

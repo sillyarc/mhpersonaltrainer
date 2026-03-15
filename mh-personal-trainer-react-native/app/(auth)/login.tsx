@@ -1,6 +1,15 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, StyleSheet, KeyboardAvoidingView, Platform, ScrollView, TouchableOpacity, Image, TextInput } from 'react-native';
-import { showAlert } from '@utils/alert';
+import {
+  View,
+  Text,
+  StyleSheet,
+  KeyboardAvoidingView,
+  Platform,
+  ScrollView,
+  TouchableOpacity,
+  Image,
+  TextInput,
+} from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as WebBrowser from 'expo-web-browser';
 import * as Google from 'expo-auth-session/providers/google';
@@ -8,8 +17,17 @@ import * as AppleAuthentication from 'expo-apple-authentication';
 import * as Crypto from 'expo-crypto';
 import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
+import { showAlert } from '@utils/alert';
 import { useAuth } from '../../src/hooks/useAuth';
 import { useTheme } from '../../src/hooks/useTheme';
+import {
+  getGoogleNativeSignInErrorMessage,
+  getGoogleNativeRuntimeUnavailableMessage,
+  googleAuthConfig,
+  isGoogleAuthConfigured,
+  isGoogleNativeRuntimeAvailable,
+  signInWithGoogleNative,
+} from '../../src/services/googleAuth';
 
 WebBrowser.maybeCompleteAuthSession();
 
@@ -24,29 +42,16 @@ export default function LoginScreen() {
   const [socialLoading, setSocialLoading] = useState(false);
   const [errors, setErrors] = useState<{ email?: string; password?: string }>({});
 
-  const googleEnvConfig = {
-    expo: process.env.EXPO_PUBLIC_GOOGLE_EXPO_CLIENT_ID,
-    ios: process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID,
-    android: process.env.EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID,
-    web: process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID,
-  };
-  const fallbackClientId =
-    googleEnvConfig.expo || googleEnvConfig.web || 'missing-google-client-id';
-  const googleConfig = {
-    expoClientId: googleEnvConfig.expo,
-    iosClientId: googleEnvConfig.ios || fallbackClientId,
-    androidClientId: googleEnvConfig.android || fallbackClientId,
-    webClientId: googleEnvConfig.web || googleEnvConfig.expo,
-  };
-  const hasGoogleConfig = Object.values(googleEnvConfig).some(Boolean);
+  const hasGoogleConfig = isGoogleAuthConfigured();
 
-  const [googleRequest, googleResponse, promptGoogleAsync] = Google.useAuthRequest(googleConfig);
+  const [googleRequest, googleResponse, promptGoogleAsync] =
+    Google.useAuthRequest(googleAuthConfig);
 
   const validate = () => {
     const newErrors: { email?: string; password?: string } = {};
-    if (!email) newErrors.email = 'Email é obrigatório';
-    else if (!/\S+@\S+\.\S+/.test(email)) newErrors.email = 'Email inválido';
-    if (!password) newErrors.password = 'Senha é obrigatória';
+    if (!email) newErrors.email = 'Email e obrigatorio';
+    else if (!/\S+@\S+\.\S+/.test(email)) newErrors.email = 'Email invalido';
+    if (!password) newErrors.password = 'Senha e obrigatoria';
     else if (password.length < 6) newErrors.password = 'Senha deve ter pelo menos 6 caracteres';
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
@@ -54,7 +59,7 @@ export default function LoginScreen() {
 
   const handleLogin = async () => {
     if (!validate()) return;
-    
+
     setLoading(true);
     const result = await login(email, password);
     setLoading(false);
@@ -73,15 +78,47 @@ export default function LoginScreen() {
   const handleGoogleLogin = async () => {
     if (!hasGoogleConfig) {
       showAlert(
-        'Google não configurado',
+        'Google nao configurado',
         'Defina os client IDs do Google no .env para habilitar o login.'
       );
       return;
     }
-    if (!googleRequest) {
-      showAlert('Google', 'Login com Google não está pronto. Tente novamente.');
+
+    if (Platform.OS === 'android') {
+      if (!isGoogleNativeRuntimeAvailable()) {
+        showAlert('Google', getGoogleNativeRuntimeUnavailableMessage());
+        return;
+      }
+
+      setSocialLoading(true);
+      try {
+        const tokens = await signInWithGoogleNative();
+        if (!tokens) {
+          return;
+        }
+
+        const result = await loginWithGoogle(tokens.idToken, tokens.accessToken);
+        if (result.success) {
+          router.replace('/(tabs)');
+        } else {
+          showAlert('Erro', result.error || 'Erro ao fazer login com Google.');
+        }
+      } catch (error: unknown) {
+        const message = getGoogleNativeSignInErrorMessage(error);
+        if (message) {
+          showAlert('Erro', message);
+        }
+      } finally {
+        setSocialLoading(false);
+      }
       return;
     }
+
+    if (!googleRequest) {
+      showAlert('Google', 'Login com Google nao esta pronto. Tente novamente.');
+      return;
+    }
+
     setSocialLoading(true);
     try {
       await promptGoogleAsync();
@@ -95,9 +132,10 @@ export default function LoginScreen() {
     if (Platform.OS !== 'ios') return;
     const available = await AppleAuthentication.isAvailableAsync();
     if (!available) {
-      showAlert('Apple', 'Login com Apple não está disponível neste dispositivo.');
+      showAlert('Apple', 'Login com Apple nao esta disponivel neste dispositivo.');
       return;
     }
+
     setSocialLoading(true);
     try {
       const rawNonce = `${Math.random().toString(36).slice(2)}${Math.random()
@@ -115,8 +153,9 @@ export default function LoginScreen() {
         nonce: hashedNonce,
       });
       if (!credential.identityToken) {
-        throw new Error('Token da Apple não retornou.');
+        throw new Error('Token da Apple nao retornou.');
       }
+
       const fullName = [credential.fullName?.givenName, credential.fullName?.familyName]
         .filter(Boolean)
         .join(' ')
@@ -126,6 +165,7 @@ export default function LoginScreen() {
         email: credential.email || undefined,
       });
       setSocialLoading(false);
+
       if (result.success) {
         router.replace('/(tabs)');
       } else {
@@ -139,18 +179,20 @@ export default function LoginScreen() {
 
   useEffect(() => {
     const handleGoogleResponse = async () => {
-      if (!googleResponse) return;
+      if (Platform.OS === 'android' || !googleResponse) return;
       if (googleResponse.type !== 'success') {
         setSocialLoading(false);
         return;
       }
+
       const idToken = googleResponse.params?.id_token as string | undefined;
       const accessToken = googleResponse.params?.access_token as string | undefined;
       if (!idToken && !accessToken) {
         setSocialLoading(false);
-        showAlert('Google', 'Não foi possível obter o token de acesso.');
+        showAlert('Google', 'Nao foi possivel obter o token de acesso.');
         return;
       }
+
       const result = await loginWithGoogle(idToken, accessToken);
       setSocialLoading(false);
       if (result.success) {
@@ -159,6 +201,7 @@ export default function LoginScreen() {
         showAlert('Erro', result.error || 'Erro ao fazer login com Google.');
       }
     };
+
     handleGoogleResponse();
   }, [googleResponse, loginWithGoogle]);
 
@@ -191,21 +234,35 @@ export default function LoginScreen() {
           </View>
 
           <View style={[styles.card, { backgroundColor: colors.secondaryBackground }]}>
-            <Text style={[styles.title, { color: colors.primaryText, ...typography.displaySmall }]}>
+            <Text
+              style={[styles.title, { color: colors.primaryText, ...typography.displaySmall }]}
+            >
               Entrar
             </Text>
-            <Text style={[styles.subtitle, { color: colors.secondaryText, ...typography.bodyMedium }]}>
-              Entre com seu e-mail e senha que vocêê criou.
+            <Text
+              style={[styles.subtitle, { color: colors.secondaryText, ...typography.bodyMedium }]}
+            >
+              Entre com seu e-mail e senha que voce criou.
             </Text>
 
             <View style={styles.inputContainer}>
-              <Text style={[styles.inputLabel, { color: colors.secondaryText, ...typography.labelMedium }]}>
+              <Text
+                style={[
+                  styles.inputLabel,
+                  { color: colors.secondaryText, ...typography.labelMedium },
+                ]}
+              >
                 E-mail
               </Text>
-              <View style={[styles.inputWrapper, { 
-                backgroundColor: colors.primaryBackground,
-                borderColor: errors.email ? colors.error : colors.alternate,
-              }]}>
+              <View
+                style={[
+                  styles.inputWrapper,
+                  {
+                    backgroundColor: colors.primaryBackground,
+                    borderColor: errors.email ? colors.error : colors.alternate,
+                  },
+                ]}
+              >
                 <TextInput
                   placeholder="seu@email.com"
                   value={email}
@@ -222,15 +279,25 @@ export default function LoginScreen() {
             </View>
 
             <View style={styles.inputContainer}>
-              <Text style={[styles.inputLabel, { color: colors.secondaryText, ...typography.labelMedium }]}>
+              <Text
+                style={[
+                  styles.inputLabel,
+                  { color: colors.secondaryText, ...typography.labelMedium },
+                ]}
+              >
                 Senha
               </Text>
-              <View style={[styles.inputWrapper, { 
-                backgroundColor: colors.primaryBackground,
-                borderColor: errors.password ? colors.error : colors.alternate,
-              }]}>
+              <View
+                style={[
+                  styles.inputWrapper,
+                  {
+                    backgroundColor: colors.primaryBackground,
+                    borderColor: errors.password ? colors.error : colors.alternate,
+                  },
+                ]}
+              >
                 <TextInput
-                  placeholder="••••••••"
+                  placeholder="********"
                   value={password}
                   onChangeText={setPassword}
                   secureTextEntry={!showPassword}
@@ -268,10 +335,13 @@ export default function LoginScreen() {
             </Text>
 
             <TouchableOpacity
-              style={[styles.secondaryButton, { 
-                backgroundColor: colors.secondary,
-                borderColor: colors.secondary,
-              }]}
+              style={[
+                styles.secondaryButton,
+                {
+                  backgroundColor: colors.secondary,
+                  borderColor: colors.secondary,
+                },
+              ]}
               onPress={handleCreatePersonal}
               disabled={loading || socialLoading}
             >
@@ -282,10 +352,13 @@ export default function LoginScreen() {
             </TouchableOpacity>
 
             <TouchableOpacity
-              style={[styles.secondaryButton, { 
-                backgroundColor: colors.secondaryBackground,
-                borderColor: colors.alternate,
-              }]}
+              style={[
+                styles.secondaryButton,
+                {
+                  backgroundColor: colors.secondaryBackground,
+                  borderColor: colors.alternate,
+                },
+              ]}
               onPress={handleGoogleLogin}
               disabled={loading || socialLoading}
             >
@@ -297,10 +370,13 @@ export default function LoginScreen() {
 
             {Platform.OS === 'ios' && (
               <TouchableOpacity
-                style={[styles.secondaryButton, { 
-                  backgroundColor: colors.secondaryBackground,
-                  borderColor: colors.alternate,
-                }]}
+                style={[
+                  styles.secondaryButton,
+                  {
+                    backgroundColor: colors.secondaryBackground,
+                    borderColor: colors.alternate,
+                  },
+                ]}
                 onPress={handleAppleLogin}
                 disabled={loading || socialLoading}
               >
@@ -313,7 +389,7 @@ export default function LoginScreen() {
 
             <View style={styles.footer}>
               <Text style={[styles.footerText, { color: colors.secondaryText, ...typography.bodyMedium }]}>
-                Não tem uma conta?{' '}
+                Nao tem uma conta?{' '}
               </Text>
               <TouchableOpacity onPress={() => router.push('/(auth)/register')}>
                 <Text style={[styles.footerLink, { color: colors.primary, ...typography.titleSmall }]}>
@@ -326,7 +402,12 @@ export default function LoginScreen() {
               onPress={() => router.push('/(auth)/forgot-password')}
               style={styles.forgotPassword}
             >
-              <Text style={[styles.forgotPasswordText, { color: colors.primary, ...typography.labelMedium }]}>
+              <Text
+                style={[
+                  styles.forgotPasswordText,
+                  { color: colors.primary, ...typography.labelMedium },
+                ]}
+              >
                 Esqueci minha senha
               </Text>
             </TouchableOpacity>

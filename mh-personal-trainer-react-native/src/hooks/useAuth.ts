@@ -17,6 +17,7 @@ import { firestoreService } from '../services/firestoreService';
 import { notifyUserLoginSecurityAlert } from '../services/notificationCenter';
 import { useAuthStore } from '../store/authStore';
 import { User } from '../types/user';
+import { getCurrentLanguage, normalizeSupportedLanguage } from '../i18n';
 
 const toBool = (value: any) => value === true || value === 'true' || value === 1;
 
@@ -175,6 +176,7 @@ export function useAuth() {
           subscribeId: data.subscribeId,
           stripeAtivo: data.stripeAtivo,
           stripeAccountId: data.stripeAccountId,
+          language: normalizeSupportedLanguage(data.language || data.locale || data.idioma) || undefined,
           bio: data.bio,
           cref: data.cref,
           instagram: data.instagram,
@@ -221,6 +223,7 @@ export function useAuth() {
         email,
         display_name: displayName,
         photo_url: photoUrl,
+        language: normalizeSupportedLanguage(getCurrentLanguage()) || 'pt',
         created_time: serverTimestamp(),
         last_active_time: serverTimestamp(),
         professorAccount: false,
@@ -237,6 +240,9 @@ export function useAuth() {
     if (!data?.display_name && displayName) updates.display_name = displayName;
     if (!data?.photo_url && photoUrl) updates.photo_url = photoUrl;
     if (!data?.email && email) updates.email = email;
+    if (!normalizeSupportedLanguage(data?.language || data?.locale || data?.idioma)) {
+      updates.language = normalizeSupportedLanguage(getCurrentLanguage()) || 'pt';
+    }
     if (Object.keys(updates).length > 0) {
       await updateDoc(userRef, updates);
     }
@@ -390,6 +396,7 @@ export function useAuth() {
         email,
         display_name: displayName,
         uid: result.user.uid,
+        language: normalizeSupportedLanguage(getCurrentLanguage()) || 'pt',
         created_time: serverTimestamp(),
         last_active_time: serverTimestamp(),
         professorAccount: false,

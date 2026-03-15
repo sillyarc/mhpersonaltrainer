@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+﻿import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
@@ -193,16 +193,16 @@ export default function EvaluationsListScreen() {
           <View style={styles.heroText}>
             <Text style={styles.heroEyebrow}>MH IA</Text>
             <Text style={[styles.title, { color: '#F4FBFF' }]}>Avaliacoes</Text>
-            <Text style={[styles.heroSubtitle, { color: 'rgba(217,238,255,0.88)' }]}>
+            <Text style={[styles.heroSubtitle, { color: 'rgba(230,238,248,0.88)' }]}>
               Painel para evolucao fisica, postural e personalizada.
             </Text>
             <View style={styles.heroStatsRow}>
               <View style={styles.heroStatChip}>
-                <Ionicons name="document-text-outline" size={13} color="#8ED6FF" />
+                <Ionicons name="document-text-outline" size={13} color="#194784" />
                 <Text style={styles.heroStatText}>{filteredEvaluations.length} registros</Text>
               </View>
               <View style={styles.heroStatChip}>
-                <Ionicons name="funnel-outline" size={13} color="#8ED6FF" />
+                <Ionicons name="funnel-outline" size={13} color="#194784" />
                 <Text style={styles.heroStatText}>
                   {selectedFilter ? getEvaluationTypeLabel(selectedFilter) : 'Todos os tipos'}
                 </Text>
@@ -390,7 +390,7 @@ const styles = StyleSheet.create({
   heroCard: {
     borderRadius: borderRadius.xl,
     borderWidth: 1,
-    borderColor: 'rgba(174,226,255,0.34)',
+    borderColor: 'rgba(25,71,132,0.34)',
     overflow: 'hidden',
     padding: spacing.lg,
   },
@@ -453,7 +453,7 @@ const styles = StyleSheet.create({
     flex: 1,
     fontSize: 11,
     fontWeight: '600',
-    color: '#D8EEFF',
+    color: '#E6EEF8',
   },
   addButton: {
     width: 44,
@@ -587,3 +587,5 @@ const styles = StyleSheet.create({
     fontSize: 14,
   },
 });
+
+

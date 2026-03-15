@@ -137,6 +137,7 @@ export default function AerobicoCreateScreen() {
     }
     setSaving(true);
     const payload = {
+      personalId: isPersonal ? user?.uid : undefined,
       items: parsedItems,
       treinos: parsedItems.map((item) => item.nome),
       treino: parsedItems[0].nome,

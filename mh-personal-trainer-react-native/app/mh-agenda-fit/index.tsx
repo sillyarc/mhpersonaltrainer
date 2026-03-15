@@ -811,7 +811,7 @@ const styles = StyleSheet.create({
     flex: 1,
     fontSize: 11,
     fontWeight: '600',
-    color: '#D8EEFF',
+    color: '#E6EEF8',
   },
   filterShell: {
     marginTop: spacing.md,

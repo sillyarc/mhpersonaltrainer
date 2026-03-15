@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+﻿import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Linking,
@@ -19,7 +19,13 @@ import { useResponsive } from '../../src/hooks/useResponsive';
 import { useAuthStore } from '../../src/store/authStore';
 import { fetchPaymentsForUser, updatePaymentForUser } from '../../src/services/financeiro';
 import { firestoreService } from '../../src/services/firestoreService';
-import { createStripeCheckoutSession, fetchStripeConnectStatus, formatCurrency } from '../../src/services/payments';
+import {
+  API_BASE_URL,
+  createStripeCheckoutSession,
+  fetchStripeConnectStatus,
+  formatCurrency,
+  isStripeReady,
+} from '../../src/services/payments';
 import { PaymentRecord } from '../../src/types/finance';
 
 type ResolvedPersonalRoute = {
@@ -114,10 +120,7 @@ export default function FinanceiroAlunoScreen() {
   const [processingPaymentId, setProcessingPaymentId] = useState<string | null>(null);
   const resolvedPersonalCacheRef = useRef<Record<string, ResolvedPersonalRoute>>({});
 
-  const stripeFunctionsUrl = process.env.EXPO_PUBLIC_STRIPE_FUNCTIONS_URL || '';
-  const apiUrl = process.env.EXPO_PUBLIC_API_URL || '';
-  const stripeReady =
-    Boolean(stripeFunctionsUrl) || (Boolean(apiUrl) && !apiUrl.includes('api.stripe.com'));
+  const stripeReady = isStripeReady();
 
   const loadPayments = useCallback(
     async (mode: 'initial' | 'refresh' | 'silent' = 'silent') => {
@@ -329,7 +332,7 @@ export default function FinanceiroAlunoScreen() {
       if (!stripeReady) {
         showAlert(
           'Stripe',
-          'Stripe nao configurado no app. Defina EXPO_PUBLIC_STRIPE_FUNCTIONS_URL ou EXPO_PUBLIC_API_URL.'
+          `Stripe nao configurado no app. Defina EXPO_PUBLIC_STRIPE_FUNCTIONS_URL ou EXPO_PUBLIC_API_URL. API atual: ${API_BASE_URL || 'nao definida'}.`
         );
         return;
       }
@@ -452,7 +455,7 @@ export default function FinanceiroAlunoScreen() {
                 style={[styles.headerAction, { borderRadius: borderRadius.full }]}
                 onPress={() => router.push('/financeiro/plans')}
               >
-                <Ionicons name="diamond-outline" size={18} color="#9FD7FF" />
+                <Ionicons name="diamond-outline" size={18} color="#194784" />
               </TouchableOpacity>
             </View>
 
@@ -582,22 +585,22 @@ export default function FinanceiroAlunoScreen() {
                             styles.stripeButton,
                             {
                               borderRadius: borderRadius.full,
-                              borderColor: canDirectPay || canTryGenerate ? '#8FD3FF' : 'rgba(196,210,223,0.22)',
+                              borderColor: canDirectPay || canTryGenerate ? '#194784' : 'rgba(196,210,223,0.22)',
                               backgroundColor:
-                                canDirectPay || canTryGenerate ? 'rgba(53,132,187,0.14)' : 'rgba(10,17,28,0.24)',
+                                canDirectPay || canTryGenerate ? 'rgba(25,71,132,0.16)' : 'rgba(10,17,28,0.24)',
                             },
                           ]}
                           onPress={() => void handlePayWithStripe(item)}
                           disabled={isProcessing || (!canDirectPay && !canTryGenerate)}
                         >
                           {isProcessing ? (
-                            <ActivityIndicator size="small" color="#9FD7FF" />
+                            <ActivityIndicator size="small" color="#194784" />
                           ) : (
                             <>
                               <Ionicons
                                 name="card-outline"
                                 size={16}
-                                color={canDirectPay || canTryGenerate ? '#9FD7FF' : 'rgba(185,204,221,0.55)'}
+                                color={canDirectPay || canTryGenerate ? '#194784' : 'rgba(185,204,221,0.55)'}
                               />
                               <Text
                                 style={[
@@ -661,7 +664,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 1,
-    borderColor: 'rgba(159,215,255,0.32)',
+    borderColor: 'rgba(25,71,132,0.32)',
     backgroundColor: 'rgba(21,53,80,0.5)',
   },
   heroCard: {
@@ -725,7 +728,7 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   methodTitle: {
-    color: '#EAF6FF',
+    color: '#E6EEF8',
   },
   methodSubtitle: {
     marginTop: 2,
@@ -792,7 +795,7 @@ const styles = StyleSheet.create({
   },
   paymentPersonalText: {
     marginTop: 6,
-    color: '#BDE4FF',
+    color: '#E6EEF8',
   },
   paymentActionColumn: {
     gap: 8,
@@ -825,3 +828,5 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
 });
+
+

@@ -62,6 +62,18 @@ exports.notifyPersonalOnPhysicalEvaluationCreated =
   personalNotifications.notifyPersonalOnPhysicalEvaluationCreated;
 exports.notifyPersonalOnStudentMessage =
   personalNotifications.notifyPersonalOnStudentMessage;
+exports.notifyStudentOnWorkoutAssigned =
+  personalNotifications.notifyStudentOnWorkoutAssigned;
+exports.notifyStudentOnAerobicWorkoutAssigned =
+  personalNotifications.notifyStudentOnAerobicWorkoutAssigned;
+exports.notifyStudentOnOnlineEvaluationAssigned =
+  personalNotifications.notifyStudentOnOnlineEvaluationAssigned;
+exports.notifyStudentOnPersonalizedEvaluationAssigned =
+  personalNotifications.notifyStudentOnPersonalizedEvaluationAssigned;
+exports.notifyStudentOnPosturalEvaluationAssigned =
+  personalNotifications.notifyStudentOnPosturalEvaluationAssigned;
+exports.notifyStudentOnPhysicalEvaluationAssigned =
+  personalNotifications.notifyStudentOnPhysicalEvaluationAssigned;
 
 const notificationAiDispatcher = require("./notification_ai_dispatcher.js");
 exports.runNotificationAssistantAutoDispatch =

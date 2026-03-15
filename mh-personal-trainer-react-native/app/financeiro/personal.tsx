@@ -13,9 +13,11 @@ import { createPaymentForUser, fetchPaymentsForUser, updatePaymentForUser } from
 import { PaymentRecord } from '../../src/types/finance';
 import { Button, Card, Input, SearchableSelect } from '../../src/components/common';
 import {
+  API_BASE_URL,
   formatCurrency,
   fetchStripeConnectStatus,
   createStripeCheckoutSession,
+  isStripeReady,
   StripeConnectStatus,
 } from '../../src/services/payments';
 
@@ -44,10 +46,7 @@ export default function FinanceiroPersonalScreen() {
   const [stripeStatusLoading, setStripeStatusLoading] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
 
-  const apiUrl = process.env.EXPO_PUBLIC_API_URL || '';
-  const stripeReady =
-    Boolean(process.env.EXPO_PUBLIC_STRIPE_FUNCTIONS_URL) ||
-    (Boolean(apiUrl) && !apiUrl.includes('api.stripe.com'));
+  const stripeReady = isStripeReady();
 
   const isPersonal = role === 'personal' || role === 'professor';
   const targetUserId = isPersonal ? selectedStudentId : user?.uid;
@@ -340,7 +339,7 @@ export default function FinanceiroPersonalScreen() {
     if (!stripeReady) {
       showAlert(
         'Stripe',
-        'Configure EXPO_PUBLIC_STRIPE_FUNCTIONS_URL (ou API URL valido) e EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY para ativar o Stripe.'
+        `Configure EXPO_PUBLIC_STRIPE_FUNCTIONS_URL (ou API URL valido) e EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY para ativar o Stripe. API atual: ${API_BASE_URL || 'nao definida'}.`
       );
       return;
     }

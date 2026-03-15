@@ -18,7 +18,8 @@ import { showAlert } from '@utils/alert';
 import {
   buildExerciseNameLookup,
   resolveExerciseByName,
-  resolveExerciseVideoUrlByName,
+  resolveExerciseMediaByName,
+  resolveExerciseMediaFromExercise,
 } from '@utils/exerciseLookup';
 import {
   coerceMetricValue,
@@ -72,6 +73,9 @@ const CATEGORIES: { id: ExerciseCategory | null; label: string }[] = [
 const resolveCatalogVideoUrl = (exercise?: Exercise | null) =>
   exercise?.videoUrl1080 || exercise?.videoUrl720 || exercise?.videoUrl || '';
 
+const resolveCatalogGifUrl = (exercise?: Exercise | null) =>
+  exercise?.gifUrl || '';
+
 export default function CreateWorkoutScreen() {
   const { colors } = useTheme();
   const { user, role } = useAuthStore();
@@ -79,6 +83,7 @@ export default function CreateWorkoutScreen() {
   const insets = useSafeAreaInsets();
   const isEditing = !!editId;
   const isPersonal = role === 'personal' || role === 'professor';
+  const canManageStudentWorkout = isPersonal || role === 'admin';
 
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
@@ -116,7 +121,9 @@ export default function CreateWorkoutScreen() {
       .trim()
       .toLowerCase();
 
-  const targetUserId = isPersonal ? selectedStudentId : user?.uid;
+  const routeStudentId =
+    typeof studentId === 'string' && studentId.trim().length > 0 ? studentId : null;
+  const targetUserId = canManageStudentWorkout ? selectedStudentId || routeStudentId : user?.uid;
   const studentOptions = students.map((student) => ({
     id: student.id,
     label: student.nome,
@@ -155,6 +162,29 @@ export default function CreateWorkoutScreen() {
     objetivoDaRotina: description.trim(),
     treino: exercises.map(formatExercisePreview),
   });
+
+  const findCatalogExercise = (
+    workoutExercise: WorkoutExercise,
+    catalog: Exercise[]
+  ) => {
+    const byId = catalog.find((item) => item.id === workoutExercise.exerciseId);
+    if (byId) return byId;
+
+    const byName = resolveExerciseByName(
+      workoutExercise.nome,
+      buildExerciseNameLookup(catalog)
+    );
+    if (byName) return byName;
+
+    const currentMediaUrl = (workoutExercise.videoUrl || '').trim();
+    if (!currentMediaUrl) return undefined;
+
+    return catalog.find((item) => {
+      const catalogVideo = resolveCatalogVideoUrl(item);
+      const catalogGif = resolveCatalogGifUrl(item);
+      return catalogVideo === currentMediaUrl || catalogGif === currentMediaUrl;
+    });
+  };
 
   const handleAddAerobicItem = () => {
     setAerobicItems((prev) => [...prev, createEmptyAerobicItem()]);
@@ -226,6 +256,7 @@ export default function CreateWorkoutScreen() {
         const mappedExercises = result.workout.treino.map((item, index) => {
           const parsed = parseExerciseLine(item);
           const catalogExercise = resolveExerciseByName(parsed.name, availableExerciseLookup);
+          const media = resolveExerciseMediaFromExercise(catalogExercise, 'video');
           return {
             exerciseId: `ai-${baseId}-${index}`,
             nome: catalogExercise?.nomeDoTreino || parsed.name,
@@ -233,7 +264,9 @@ export default function CreateWorkoutScreen() {
             repeticoes: parsed.reps,
             carga: 0,
             intervalo: parsed.rest,
-            videoUrl: resolveCatalogVideoUrl(catalogExercise) || undefined,
+            videoUrl: media.url,
+            gifUrl: media.gifUrl,
+            mediaType: media.kind === 'gif' ? 'gif' : media.kind === 'video' ? 'video' : undefined,
           } as WorkoutExercise;
         });
         setName(result.workout.nomeDaRotina || 'Treino sugerido');
@@ -326,17 +359,19 @@ export default function CreateWorkoutScreen() {
         setName(loadedWorkout.nomeDoTreino || '');
         setDescription(loadedWorkout.obsInstrucao || '');
         setWorkoutDate(loadedWorkout.data || loadedWorkout.createdAt || new Date());
-        const resolvedVideoUrls: string[] = [];
+        const resolvedMediaUrls: string[] = [];
         const mappedExercises: WorkoutExercise[] = workoutEntries.map((rawName, index) => {
           const treino = typeof rawName === 'string' ? rawName : String(rawName || '');
-          const resolvedVideoUrl = resolveExerciseVideoUrlByName(
+          const resolvedMedia = resolveExerciseMediaByName(
             treino,
             normalizedStoredVideoUrls[index] || '',
             exerciseLookup
           );
-          resolvedVideoUrls[index] = resolvedVideoUrl || '';
+          resolvedMediaUrls[index] = resolvedMedia.url || '';
           return {
-            videoUrl: resolvedVideoUrl,
+            videoUrl: resolvedMedia.url,
+            gifUrl: resolvedMedia.gifUrl,
+            mediaType: resolvedMedia.kind === 'gif' ? 'gif' : resolvedMedia.kind === 'video' ? 'video' : undefined,
             exerciseId: `${loadedWorkout.id}-${index}`,
             nome: treino,
             series: coerceMetricValue(loadedWorkout.seriesRep?.[index], 3),
@@ -346,11 +381,11 @@ export default function CreateWorkoutScreen() {
           };
         });
         const shouldSyncVideoUrls =
-          resolvedVideoUrls.length > 0 &&
-          resolvedVideoUrls.some((url, index) => url !== (normalizedStoredVideoUrls[index] || ''));
+          resolvedMediaUrls.length > 0 &&
+          resolvedMediaUrls.some((url, index) => url !== (normalizedStoredVideoUrls[index] || ''));
         if (shouldSyncVideoUrls) {
           void updateUserWorkout(targetUserId, loadedWorkout.id, {
-            videoUrls: resolvedVideoUrls,
+            videoUrls: resolvedMediaUrls,
           });
         }
         setExercises(mappedExercises);
@@ -391,6 +426,7 @@ export default function CreateWorkoutScreen() {
   }, [availableExercises, selectedCategory, exerciseSearch]);
 
   const handleAddExercise = (exercise: Exercise) => {
+    const media = resolveExerciseMediaFromExercise(exercise, 'video');
     const newExercise: WorkoutExercise = {
       exerciseId: exercise.id,
       nome: exercise.nomeDoTreino,
@@ -398,48 +434,97 @@ export default function CreateWorkoutScreen() {
       repeticoes: 12,
       carga: Number(exercise.carga || 0),
       intervalo: Number(exercise.intervalo || 60),
-      videoUrl: exercise.videoUrl1080 || exercise.videoUrl720 || exercise.videoUrl,
+      videoUrl: media.url,
+      gifUrl: media.gifUrl,
+      mediaType: media.kind === 'gif' ? 'gif' : media.kind === 'video' ? 'video' : undefined,
     };
     setExercises((prev) => [...prev, newExercise]);
     setShowExerciseModal(false);
   };
 
   const handleViewExerciseVideo = async (exercise: WorkoutExercise) => {
-    let lookup = availableExerciseLookup;
-    let catalogExercise = resolveExerciseByName(exercise.nome, lookup);
+    let catalogPool = availableExercises;
+    let catalogExercise = findCatalogExercise(exercise, availableExercises);
 
-    if (!catalogExercise && availableExercises.length === 0) {
+    if (!catalogExercise) {
       const result = await fetchAvailableExercises();
       if (result.data) {
+        catalogPool = result.data;
         setAvailableExercises(result.data);
-        lookup = buildExerciseNameLookup(result.data);
-        catalogExercise = resolveExerciseByName(exercise.nome, lookup);
+        catalogExercise = findCatalogExercise(exercise, result.data);
       }
     }
 
-    const videoUrl = resolveCatalogVideoUrl(catalogExercise) || exercise.videoUrl || '';
-    if (!videoUrl) {
-      showAlert('Video', 'Este exercicio ainda nao possui video.');
-      return;
-    }
-
-    if (!catalogExercise?.id) {
-      showAlert('Video', 'Nao foi possivel localizar o exercicio no Firebase.');
-      return;
-    }
-
-    setExercises((prev) =>
-      prev.map((item) =>
-        item.exerciseId === exercise.exerciseId
-          ? {
-              ...item,
-              videoUrl,
-            }
-          : item
-      )
+    const mediaLookup = buildExerciseNameLookup(catalogPool);
+    const fallbackMedia = resolveExerciseMediaByName(
+      exercise.nome,
+      exercise.videoUrl || '',
+      mediaLookup
     );
+    const videoUrl = resolveCatalogVideoUrl(catalogExercise) || fallbackMedia.videoUrl || '';
+    const gifUrl = resolveCatalogGifUrl(catalogExercise) || fallbackMedia.gifUrl || exercise.gifUrl || '';
 
-    router.push(`/workout/exercise/${catalogExercise.id}` as any);
+    if (!videoUrl && !gifUrl) {
+      showAlert('Midia', 'Este exercicio ainda nao possui video ou GIF.');
+      return;
+    }
+
+    const applyMedia = (kind: 'video' | 'gif') => {
+      const nextUrl = kind === 'video' ? videoUrl : gifUrl;
+      if (!nextUrl) return;
+      setExercises((prev) =>
+        prev.map((item) =>
+          item.exerciseId === exercise.exerciseId
+            ? {
+                ...item,
+                videoUrl: nextUrl,
+                gifUrl: gifUrl || item.gifUrl,
+                mediaType: kind,
+              }
+            : item
+        )
+      );
+    };
+
+    if (videoUrl && gifUrl) {
+      showAlert('Midia do exercicio', 'Escolha a midia padrao deste exercicio.', [
+        {
+          text: 'Video',
+          onPress: () => {
+            applyMedia('video');
+            if (catalogExercise?.id) {
+              router.push(`/workout/exercise/${catalogExercise.id}?media=video` as any);
+            }
+          },
+        },
+        {
+          text: 'GIF',
+          onPress: () => {
+            applyMedia('gif');
+            if (catalogExercise?.id) {
+              router.push(`/workout/exercise/${catalogExercise.id}?media=gif` as any);
+            }
+          },
+        },
+        { text: 'Cancelar', style: 'cancel' },
+      ]);
+      return;
+    }
+
+    if (videoUrl) {
+      applyMedia('video');
+      if (catalogExercise?.id) {
+        router.push(`/workout/exercise/${catalogExercise.id}` as any);
+      }
+      return;
+    }
+
+    applyMedia('gif');
+    if (catalogExercise?.id) {
+      router.push(`/workout/exercise/${catalogExercise.id}?media=gif` as any);
+      return;
+    }
+    showAlert('GIF aplicado', 'Nao foi possivel abrir detalhes porque o exercicio nao foi localizado no Firebase.');
   };
 
   const handleEditExercise = (exercise: WorkoutExercise) => {
@@ -489,6 +574,7 @@ export default function CreateWorkoutScreen() {
   const buildPayload = (): Omit<UserWorkout, 'id'> => ({
     nomeDoTreino: name.trim(),
     obsInstrucao: description.trim(),
+    personalId: isPersonal ? user?.uid : undefined,
     treino: exercises.map((exercise) => exercise.nome),
     seriesRep: exercises.map((exercise) => exercise.series ?? 0),
     repeticoes: exercises.map((exercise) => exercise.repeticoes ?? 0),
@@ -527,6 +613,7 @@ export default function CreateWorkoutScreen() {
       }
       setIsSaving(true);
       const result = await createAerobicWorkout(targetUserId, {
+        personalId: isPersonal ? user?.uid : undefined,
         items: parsedItems,
         treino: parsedItems[0].nome,
         treinos: parsedItems.map((item) => item.nome),
@@ -580,6 +667,8 @@ export default function CreateWorkoutScreen() {
 
   const renderExerciseOption = ({ item }: { item: Exercise }) => {
     const isAdded = exercises.some((e) => e.nome === item.nomeDoTreino);
+    const hasVideo = Boolean(resolveCatalogVideoUrl(item));
+    const hasGif = Boolean(resolveCatalogGifUrl(item));
     return (
       <TouchableOpacity
         style={[
@@ -597,6 +686,20 @@ export default function CreateWorkoutScreen() {
           <Text style={[styles.exerciseOptionCategory, { color: colors.textMuted }]} numberOfLines={1}>
             {item.colecao}
           </Text>
+          <View style={styles.exerciseOptionMediaRow}>
+            {hasVideo ? (
+              <View style={[styles.exerciseOptionMediaChip, { backgroundColor: colors.primary + '14' }]}>
+                <Ionicons name="play-circle-outline" size={12} color={colors.primary} />
+                <Text style={[styles.exerciseOptionMediaText, { color: colors.primary }]}>Video</Text>
+              </View>
+            ) : null}
+            {hasGif ? (
+              <View style={[styles.exerciseOptionMediaChip, { backgroundColor: colors.success + '14' }]}>
+                <Ionicons name="images-outline" size={12} color={colors.success} />
+                <Text style={[styles.exerciseOptionMediaText, { color: colors.success }]}>GIF</Text>
+              </View>
+            ) : null}
+          </View>
         </View>
         {isAdded ? (
           <Ionicons name="checkmark-circle" size={24} color={colors.success} />
@@ -1361,6 +1464,24 @@ const styles = StyleSheet.create({
   exerciseOptionCategory: {
     fontSize: 12,
     marginTop: spacing.xs,
+  },
+  exerciseOptionMediaRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing.xs,
+    marginTop: spacing.xs,
+  },
+  exerciseOptionMediaChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: spacing.xs,
+    paddingVertical: 3,
+    borderRadius: borderRadius.full,
+  },
+  exerciseOptionMediaText: {
+    fontSize: 11,
+    fontWeight: '600',
   },
   editForm: {
     flexShrink: 1,

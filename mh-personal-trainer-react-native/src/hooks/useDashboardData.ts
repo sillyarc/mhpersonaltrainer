@@ -45,6 +45,9 @@ export function useDashboardData(): DashboardData {
       dataCriacao: workout.createdAt,
       diasDaSemana: workout.diasDaSemana || [],
       lastCompletedAt: workout.lastCompletedAt,
+      lastSessionAt: workout.lastSessionAt,
+      lastSessionStatus: workout.lastSessionStatus,
+      lastSessionRemainingExercises: workout.lastSessionRemainingExercises,
     };
   };
 

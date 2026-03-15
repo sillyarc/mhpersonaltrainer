@@ -12,7 +12,9 @@ import { useAuthStore } from '../../src/store/authStore';
 import { useAuth } from '../../src/hooks/useAuth';
 import { db, storage } from '../../src/services/firebase';
 import {
+  API_BASE_URL,
   fetchStripeConnectStatus,
+  isStripeReady,
   submitStripeConnectOnboarding,
   StripeConnectStatus,
 } from '../../src/services/payments';
@@ -166,10 +168,7 @@ export default function MHAgendaFitPersonalScreen() {
   const [loadingMyAppointments, setLoadingMyAppointments] = useState(false);
   const [hubError, setHubError] = useState('');
 
-  const apiUrl = process.env.EXPO_PUBLIC_API_URL || '';
-  const stripeReady =
-    Boolean(process.env.EXPO_PUBLIC_STRIPE_FUNCTIONS_URL) ||
-    (Boolean(apiUrl) && !apiUrl.includes('api.stripe.com'));
+  const stripeReady = isStripeReady();
 
   useEffect(() => {
     let active = true;
@@ -389,7 +388,10 @@ export default function MHAgendaFitPersonalScreen() {
   const handleSubmitReceivingForm = async () => {
     if (receivingSubmitting) return;
     if (!stripeReady) {
-      showAlert('Recebimentos', 'Servico de recebimentos nao configurado.');
+      showAlert(
+        'Recebimentos',
+        `Servico de recebimentos nao configurado. API atual: ${API_BASE_URL || 'nao definida'}.`
+      );
       return;
     }
     if (!user?.uid) {
@@ -442,6 +444,8 @@ export default function MHAgendaFitPersonalScreen() {
     try {
       const result = await submitStripeConnectOnboarding({
         ...receivingForm,
+        userId: user.uid,
+        accountId: user.stripeAccountId,
       });
       if (result.error || !result.data?.success) {
         throw new Error(result.error || 'Nao foi possivel enviar os dados.');

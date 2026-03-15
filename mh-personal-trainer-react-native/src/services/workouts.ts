@@ -47,6 +47,13 @@ const coerceDate = (value: any): Date | undefined => {
 const coerceTimestamp = (value?: Date): Timestamp | undefined =>
   value ? Timestamp.fromDate(value) : undefined;
 
+const coerceStringArray = (value: unknown): string[] => {
+  if (!Array.isArray(value)) return [];
+  return value
+    .map((item) => (typeof item === 'string' ? item.trim() : ''))
+    .filter(Boolean);
+};
+
 const stripUndefinedDeep = (value: any): any => {
   if (value === undefined) return undefined;
   if (value instanceof Date || value instanceof Timestamp) return value;
@@ -66,6 +73,44 @@ const stripUndefinedDeep = (value: any): any => {
     return next;
   }
   return value;
+};
+
+const normalizeRemoteUrl = (value: unknown): string | undefined => {
+  if (typeof value !== 'string') return undefined;
+  const trimmed = value.trim();
+  if (!trimmed) return undefined;
+  return /^https?:\/\//i.test(trimmed) ? trimmed : undefined;
+};
+
+const isGifLikeUrl = (url: string) =>
+  /\.gif($|[?#])/i.test(url) ||
+  /[?&](?:format|fm)=gif/i.test(url) ||
+  /\/gif\//i.test(url) ||
+  /(giphy|tenor)\./i.test(url);
+
+const isHypertrofiaUrl = (url: string) => /hipertrofia\.org/i.test(url);
+
+const resolveGifUrlFromRecord = (data: Record<string, any>): string | undefined => {
+  const candidates = [
+    data.gifUrl,
+    data.gifURL,
+    data.gif_url,
+    data.gif,
+    data.linkGif,
+    data.hypertrofiaGifUrl,
+    data.fotoDoTreino,
+    data.thumbnail,
+    data.image,
+    data.imagem,
+  ];
+
+  for (const candidate of candidates) {
+    const url = normalizeRemoteUrl(candidate);
+    if (!url) continue;
+    if (isGifLikeUrl(url) || isHypertrofiaUrl(url)) return url;
+  }
+
+  return undefined;
 };
 
 export async function fetchWorkouts(userId: string): Promise<QueryResult<Workout[]>> {
@@ -319,9 +364,10 @@ export async function fetchAvailableExercises(category?: string): Promise<QueryR
         id: doc.id,
         nomeDoTreino: data.treinosNoLIst || data.nomeDoTreino || 'Exercicio',
         colecao: data.colecao || 'geral',
-        videoUrl: data.videoUrl,
-        videoUrl1080: data.videoUrl1080,
-        videoUrl720: data.videoUrl720,
+        videoUrl: normalizeRemoteUrl(data.videoUrl),
+        videoUrl1080: normalizeRemoteUrl(data.videoUrl1080),
+        videoUrl720: normalizeRemoteUrl(data.videoUrl720),
+        gifUrl: resolveGifUrlFromRecord(data),
         fotoDoTreino: data.fotoDoTreino,
         seriesRep: data.seriesRep,
         carga: data.carga,
@@ -348,9 +394,10 @@ export async function fetchExerciseById(exerciseId: string): Promise<QueryResult
       id: snapshot.id,
       nomeDoTreino: data.treinosNoLIst || data.nomeDoTreino || 'Exercicio',
       colecao: data.colecao || 'geral',
-      videoUrl: data.videoUrl,
-      videoUrl1080: data.videoUrl1080,
-      videoUrl720: data.videoUrl720,
+      videoUrl: normalizeRemoteUrl(data.videoUrl),
+      videoUrl1080: normalizeRemoteUrl(data.videoUrl1080),
+      videoUrl720: normalizeRemoteUrl(data.videoUrl720),
+      gifUrl: resolveGifUrlFromRecord(data),
       fotoDoTreino: data.fotoDoTreino,
       seriesRep: data.seriesRep,
       carga: data.carga,
@@ -378,6 +425,7 @@ export async function fetchUserWorkouts(
       id: doc.id,
       nomeDoTreino: doc.data().nomeDoTreino || 'Treino',
       obsInstrucao: doc.data().obsInstrucao,
+      personalId: typeof doc.data().personalId === 'string' ? doc.data().personalId : undefined,
       treino: doc.data().treino || [],
       seriesRep: doc.data().seriesRep || [],
       repeticoes: doc.data().repeticoes || [],
@@ -387,6 +435,10 @@ export async function fetchUserWorkouts(
       arquivos: doc.data().arquivos === true || doc.data().arquivos === 'true',
       diasDaSemana: doc.data().diasDaSemana || [],
       lastCompletedAt: doc.data().lastCompletedAt?.toDate?.() || (doc.data().lastCompletedAt ? new Date(doc.data().lastCompletedAt) : undefined),
+      lastSessionAt: doc.data().lastSessionAt?.toDate?.() || (doc.data().lastSessionAt ? new Date(doc.data().lastSessionAt) : undefined),
+      lastSessionStatus: doc.data().lastSessionStatus,
+      lastSessionRemainingExercises: Number(doc.data().lastSessionRemainingExercises || 0),
+      lastSessionSkippedExerciseIds: coerceStringArray(doc.data().lastSessionSkippedExerciseIds),
       data: coerceDate(doc.data().data),
       createdAt: doc.data().createdAt?.toDate(),
       updatedAt: doc.data().updatedAt?.toDate(),
@@ -404,6 +456,7 @@ export async function fetchUserWorkouts(
         id: doc.id,
         nomeDoTreino: doc.data().nomeDoTreino || 'Treino',
         obsInstrucao: doc.data().obsInstrucao,
+        personalId: typeof doc.data().personalId === 'string' ? doc.data().personalId : undefined,
         treino: doc.data().treino || [],
         seriesRep: doc.data().seriesRep || [],
         repeticoes: doc.data().repeticoes || [],
@@ -413,6 +466,10 @@ export async function fetchUserWorkouts(
         arquivos: doc.data().arquivos === true || doc.data().arquivos === 'true',
         diasDaSemana: doc.data().diasDaSemana || [],
         lastCompletedAt: doc.data().lastCompletedAt?.toDate?.() || (doc.data().lastCompletedAt ? new Date(doc.data().lastCompletedAt) : undefined),
+        lastSessionAt: doc.data().lastSessionAt?.toDate?.() || (doc.data().lastSessionAt ? new Date(doc.data().lastSessionAt) : undefined),
+        lastSessionStatus: doc.data().lastSessionStatus,
+        lastSessionRemainingExercises: Number(doc.data().lastSessionRemainingExercises || 0),
+        lastSessionSkippedExerciseIds: coerceStringArray(doc.data().lastSessionSkippedExerciseIds),
         data: coerceDate(doc.data().data),
         createdAt: doc.data().createdAt?.toDate(),
         updatedAt: doc.data().updatedAt?.toDate(),
@@ -447,6 +504,7 @@ export async function fetchUserWorkoutById(
       id: snapshot.id,
       nomeDoTreino: data.nomeDoTreino || 'Treino',
       obsInstrucao: data.obsInstrucao,
+      personalId: typeof data.personalId === 'string' ? data.personalId : undefined,
       treino: data.treino || [],
       seriesRep: data.seriesRep || [],
       repeticoes: data.repeticoes || [],
@@ -456,6 +514,10 @@ export async function fetchUserWorkoutById(
       arquivos: data.arquivos === true || data.arquivos === 'true',
       diasDaSemana: data.diasDaSemana || [],
       lastCompletedAt: data.lastCompletedAt?.toDate?.() || (data.lastCompletedAt ? new Date(data.lastCompletedAt) : undefined),
+      lastSessionAt: data.lastSessionAt?.toDate?.() || (data.lastSessionAt ? new Date(data.lastSessionAt) : undefined),
+      lastSessionStatus: data.lastSessionStatus,
+      lastSessionRemainingExercises: Number(data.lastSessionRemainingExercises || 0),
+      lastSessionSkippedExerciseIds: coerceStringArray(data.lastSessionSkippedExerciseIds),
       data: coerceDate(data.data),
       createdAt: data.createdAt?.toDate(),
       updatedAt: data.updatedAt?.toDate(),
@@ -474,11 +536,18 @@ export async function createUserWorkout(
     const workoutsRef = collection(db, 'users', userId, 'createTreinos');
     const payload: any = {
       ...workout,
+      ...(workout.personalId ? { personalId: workout.personalId } : {}),
       createdAt: Timestamp.now(),
       updatedAt: Timestamp.now(),
     };
     if (workout.data) {
       payload.data = coerceTimestamp(workout.data);
+    }
+    if (workout.lastCompletedAt) {
+      payload.lastCompletedAt = Timestamp.fromDate(workout.lastCompletedAt);
+    }
+    if (workout.lastSessionAt) {
+      payload.lastSessionAt = Timestamp.fromDate(workout.lastSessionAt);
     }
     const docRef = await addDoc(workoutsRef, payload);
 
@@ -498,12 +567,18 @@ export async function updateUserWorkout(
 ): Promise<QueryResult<void>> {
   try {
     const ref = doc(db, 'users', userId, 'createTreinos', workoutId);
-    const payload: any = {
+    const payload: any = stripUndefinedDeep({
       ...updates,
       updatedAt: Timestamp.now(),
-    };
+    });
     if (updates.data) {
       payload.data = coerceTimestamp(updates.data);
+    }
+    if (updates.lastCompletedAt) {
+      payload.lastCompletedAt = Timestamp.fromDate(updates.lastCompletedAt);
+    }
+    if (updates.lastSessionAt) {
+      payload.lastSessionAt = Timestamp.fromDate(updates.lastSessionAt);
     }
     await updateDoc(ref, payload);
     return { data: undefined, error: null };
@@ -558,6 +633,7 @@ export async function fetchAerobicWorkouts(
       const items = normalizeAerobicItems(data);
       return {
         id: doc.id,
+        personalId: typeof data.personalId === 'string' ? data.personalId : undefined,
         items,
         treinos: items.map((item) => item.nome),
         treino: data.treino || items[0]?.nome || undefined,
@@ -589,6 +665,7 @@ export async function createAerobicWorkout(
     const treinos = items.map((item) => item.nome);
     const payload: any = stripUndefinedDeep({
       ...workout,
+      personalId: workout.personalId || undefined,
       items,
       treinos,
       treino: workout.treino || treinos[0] || '',
@@ -637,6 +714,7 @@ export async function fetchAerobicWorkoutById(
     return {
       data: {
         id: snapshot.id,
+        personalId: typeof data.personalId === 'string' ? data.personalId : undefined,
         items,
         treinos,
         treino: typeof data.treino === 'string' ? data.treino : treinos[0] || '',

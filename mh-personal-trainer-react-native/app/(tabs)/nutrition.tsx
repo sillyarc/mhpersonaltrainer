@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+﻿import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   KeyboardAvoidingView,
@@ -66,10 +66,21 @@ const WATER_STEP = 250;
 const WATER_GOAL = 2500;
 const STEPS_GOAL = 8000;
 
+const DARK_MODE_ACCENT = '#194784';
+const DARK_MODE_ACCENT_ALT = '#133864';
+const DARK_MODE_ACCENT_DEEP = '#0A2A52';
+const DARK_MODE_ACCENT_TEXT = '#E6EEF8';
+const DARK_MODE_ACCENT_TEXT_MUTED = 'rgba(230,238,248,0.84)';
+const DARK_MODE_ACCENT_TEXT_SOFT = 'rgba(230,238,248,0.74)';
+const DARK_MODE_ACCENT_SURFACE = 'rgba(25,71,132,0.16)';
+const DARK_MODE_ACCENT_SURFACE_STRONG = 'rgba(25,71,132,0.24)';
+const DARK_MODE_ACCENT_BORDER = 'rgba(25,71,132,0.42)';
+const DARK_MODE_ACCENT_BORDER_SOFT = 'rgba(25,71,132,0.28)';
+
 const dateKey = () => new Date().toISOString().slice(0, 10);
 const clamp = (v: number, min: number, max: number) => Math.max(min, Math.min(max, v));
 const dayLabel = (d: Date) => ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sab'][d.getDay()] || '--';
-const formatTemp = (v: number | null) => (v === null ? '--' : `${Math.round(v)}°C`);
+const formatTemp = (v: number | null) => (v === null ? '--' : `${Math.round(v)}Â°C`);
 const parseMacroValue = (value: any) => {
   const parsed = Number(value);
   if (!Number.isFinite(parsed)) return 0;
@@ -835,7 +846,7 @@ export default function NutritionTabScreen() {
         </LinearGradient>
 
         <LinearGradient colors={['#101A2A', '#15283F', '#1A3452']} style={styles.weeklyCard}>
-          <LinearGradient colors={['#7DD3FC', '#38BDF8']} style={styles.weeklyAccent} />
+          <LinearGradient colors={[DARK_MODE_ACCENT_ALT, DARK_MODE_ACCENT]} style={styles.weeklyAccent} />
           <View style={styles.weeklyHeader}>
             <View style={{ flex: 1 }}>
               <Text style={styles.weeklyTitle}>Desempenho semanal</Text>
@@ -861,33 +872,33 @@ export default function NutritionTabScreen() {
           </View>
         </LinearGradient>
 
-        <SectionCard title="Passos" subtitle={pedometerAvailable ? 'Sensor em tempo real' : 'Sensor indisponivel no aparelho'} value={stepsToday.toLocaleString('pt-BR')} icon="walk-outline" iconColor="#9FD7FF" gradient={['#0E1C2D', '#163552', '#1D4F76']}>
-          <Progress progress={stepsProgress} color="#67D6FF" track="rgba(255,255,255,0.2)" />
+        <SectionCard title="Passos" subtitle={pedometerAvailable ? 'Sensor em tempo real' : 'Sensor indisponivel no aparelho'} value={stepsToday.toLocaleString('pt-BR')} icon="walk-outline" iconColor={DARK_MODE_ACCENT_TEXT} gradient={['#0E1C2D', '#163552', '#1D4F76']}>
+          <Progress progress={stepsProgress} color={DARK_MODE_ACCENT} track="rgba(255,255,255,0.2)" />
           <View style={styles.chipRow}>
             <MetricChip label="Meta" value={STEPS_GOAL.toLocaleString('pt-BR')} />
             <MetricChip label="Distancia" value={`${walkingDistanceKm} km`} />
             <MetricChip label="Gasto" value={`${walkingCalories} kcal`} />
           </View>
           <View style={styles.autoStepHintWrap}>
-            <Ionicons name="information-circle-outline" size={14} color="#9FD7FF" />
+            <Ionicons name="information-circle-outline" size={14} color={DARK_MODE_ACCENT_TEXT} />
             <Text style={styles.autoStepHint}>Passos atualizam automaticamente pelo sensor do aparelho.</Text>
           </View>
         </SectionCard>
 
-        <SectionCard title="Hidratacao" subtitle="Controle de agua diario" value={`${waterMl}ml`} icon="water-outline" iconColor="#9EEBFF" gradient={['#0B2949', '#13426E', '#1F6CB8']}>
+        <SectionCard title="Hidratacao" subtitle="Controle de agua diario" value={`${waterMl}ml`} icon="water-outline" iconColor={DARK_MODE_ACCENT_TEXT} gradient={['#0B2949', '#13426E', '#1F6CB8']}>
           <View style={styles.hydrationBody}>
             <View style={styles.bottleWrap}>
               <View style={styles.bottleCap} />
               <View style={styles.bottleNeck} />
               <View style={styles.bottleBody}>
                 <View style={styles.bottleGloss} />
-                <LinearGradient colors={['#67D6FF', '#38BDF8', '#2563EB']} start={{ x: 0.5, y: 0 }} end={{ x: 0.5, y: 1 }} style={[styles.bottleWater, { height: `${Math.max(waterProgress, waterMl > 0 ? 8 : 0)}%` }]} />
-                <View style={styles.bottleIconWrap}><Ionicons name="water" size={18} color="#E0F2FE" /></View>
+                <LinearGradient colors={[DARK_MODE_ACCENT_ALT, DARK_MODE_ACCENT, DARK_MODE_ACCENT_DEEP]} start={{ x: 0.5, y: 0 }} end={{ x: 0.5, y: 1 }} style={[styles.bottleWater, { height: `${Math.max(waterProgress, waterMl > 0 ? 8 : 0)}%` }]} />
+                <View style={styles.bottleIconWrap}><Ionicons name="water" size={18} color={DARK_MODE_ACCENT_TEXT} /></View>
               </View>
             </View>
             <View style={styles.hydrationInfo}>
               <Text style={styles.hydrationLead}>{waterProgress}% da meta</Text>
-              <Progress progress={waterProgress} color="#67D6FF" track="rgba(255,255,255,0.2)" />
+              <Progress progress={waterProgress} color={DARK_MODE_ACCENT} track="rgba(255,255,255,0.2)" />
               <View style={[styles.chipRow, { marginTop: 8 }]}>
                 <MetricChip label="Copos" value={`${cups}/${cupsGoal}`} />
                 <MetricChip label="Meta" value={`${WATER_GOAL} ml`} />
@@ -929,15 +940,15 @@ export default function NutritionTabScreen() {
         </SectionCard>
 
         <SectionCard title="Insight IA" subtitle={aiInsightUpdatedAt ? `Atualizacao automatica ${new Date(aiInsightUpdatedAt).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}` : 'Aguardando primeira atualizacao'} value={hasPremium ? 'PRO' : 'FREE'} icon="sparkles-outline" iconColor="#C6B6FF" gradient={['#111B33', '#1D2F4F', '#273C5F']}>
-          {loadingAi ? <View style={styles.autoInsightLoading}><ActivityIndicator size="small" color="#9ED8FF" /><Text style={styles.autoInsightLoadingText}>Atualizando insight automaticamente...</Text></View> : null}
-          {weatherSnapshot ? <View style={styles.weatherTag}><Ionicons name={weatherSnapshot.isHot ? 'sunny-outline' : weatherSnapshot.isRainRisk ? 'rainy-outline' : 'partly-sunny-outline'} size={14} color="#9FD7FF" /><Text style={styles.weatherTagText}>{weatherSnapshot.city}: {weatherSnapshot.summary} ({formatTemp(weatherSnapshot.temperatureC)})</Text></View> : null}
+          {loadingAi ? <View style={styles.autoInsightLoading}><ActivityIndicator size="small" color={DARK_MODE_ACCENT} /><Text style={styles.autoInsightLoadingText}>Atualizando insight automaticamente...</Text></View> : null}
+          {weatherSnapshot ? <View style={styles.weatherTag}><Ionicons name={weatherSnapshot.isHot ? 'sunny-outline' : weatherSnapshot.isRainRisk ? 'rainy-outline' : 'partly-sunny-outline'} size={14} color={DARK_MODE_ACCENT_TEXT} /><Text style={styles.weatherTagText}>{weatherSnapshot.city}: {weatherSnapshot.summary} ({formatTemp(weatherSnapshot.temperatureC)})</Text></View> : null}
           {aiInsight ? <View style={styles.insightBubble}><Text style={styles.cardHint}>{aiInsight}</Text></View> : <Text style={styles.cardHint}>A IA monta automaticamente seus insights diarios.</Text>}
-          {!hasPremium ? <TouchableOpacity style={styles.outlinePremiumBtn} onPress={() => router.push('/profile/subscription' as any)}><Ionicons name="rocket-outline" size={14} color="#B0E0FF" /><Text style={styles.outlinePremiumLabel}>Upgrade para insights ilimitados</Text></TouchableOpacity> : null}
+          {!hasPremium ? <TouchableOpacity style={styles.outlinePremiumBtn} onPress={() => router.push('/profile/subscription' as any)}><Ionicons name="rocket-outline" size={14} color={DARK_MODE_ACCENT_TEXT} /><Text style={styles.outlinePremiumLabel}>Upgrade para insights ilimitados</Text></TouchableOpacity> : null}
         </SectionCard>
 
         {!hasPremium ? (
           <LinearGradient colors={['#15233A', '#1A335A', '#245CA0']} style={styles.upgradeCard}>
-            <View style={styles.upgradeHeader}><View style={styles.upgradeIconWrap}><Ionicons name="flash-outline" size={16} color="#BCE8FF" /></View><Text style={styles.upgradeTitle}>Quer destravar o modo premium?</Text></View>
+            <View style={styles.upgradeHeader}><View style={styles.upgradeIconWrap}><Ionicons name="flash-outline" size={16} color={DARK_MODE_ACCENT_TEXT} /></View><Text style={styles.upgradeTitle}>Quer destravar o modo premium?</Text></View>
             <Text style={styles.upgradeText}>Plano individual com IA ampliada, analises detalhadas e mais precisao nas recomendacoes.</Text>
             <TouchableOpacity style={styles.upgradeButton} onPress={() => router.push('/profile/subscription' as any)}><Text style={styles.upgradeButtonText}>Ver planos e assinar</Text></TouchableOpacity>
           </LinearGradient>
@@ -1146,7 +1157,7 @@ export default function NutritionTabScreen() {
 function SectionCard({ title, subtitle, value, icon, iconColor, gradient, children }: { title: string; subtitle: string; value: string; icon: keyof typeof Ionicons.glyphMap; iconColor: string; gradient: [string, string, string]; children: React.ReactNode; }) {
   return (
     <LinearGradient colors={gradient} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.card}>
-      <LinearGradient colors={['#7DD3FC', '#38BDF8']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={styles.cardAccent} />
+      <LinearGradient colors={[DARK_MODE_ACCENT_ALT, DARK_MODE_ACCENT]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={styles.cardAccent} />
       <View style={styles.cardHead}>
         <View style={styles.cardTitleWrap}>
           <View style={styles.cardIconWrap}><Ionicons name={icon} size={14} color={iconColor} /></View>
@@ -1164,12 +1175,12 @@ function HeroStat({ label, value }: { label: string; value: string }) {
 }
 
 function HeroQuickAction({ icon, label, onPress, loading = false }: { icon: keyof typeof Ionicons.glyphMap; label: string; onPress: () => void; loading?: boolean; }) {
-  return <TouchableOpacity style={styles.heroQuickBtn} onPress={onPress} disabled={loading}>{loading ? <ActivityIndicator size="small" color="#EAF6FF" /> : <Ionicons name={icon} size={14} color="#D7EEFF" />}<Text style={styles.heroQuickLabel}>{label}</Text></TouchableOpacity>;
+  return <TouchableOpacity style={styles.heroQuickBtn} onPress={onPress} disabled={loading}>{loading ? <ActivityIndicator size="small" color={DARK_MODE_ACCENT_TEXT} /> : <Ionicons name={icon} size={14} color={DARK_MODE_ACCENT_TEXT} />}<Text style={styles.heroQuickLabel}>{label}</Text></TouchableOpacity>;
 }
 
 function WeeklyBar({ label, value, active, empty }: { label: string; value: number; active: boolean; empty: boolean }) {
   const safe = clamp(value, 0, 100);
-  return <View style={styles.weeklyBarItem}><View style={[styles.weeklyBarTrack, active && styles.weeklyBarTrackActive]}><View style={[styles.weeklyBarFill, { height: `${Math.max(safe, empty ? 6 : 10)}%`, backgroundColor: active ? '#7DD3FC' : empty ? 'rgba(172,205,231,0.2)' : '#53B8FF' }]} /></View><Text style={[styles.weeklyBarLabel, active && styles.weeklyBarLabelActive]}>{label}</Text></View>;
+  return <View style={styles.weeklyBarItem}><View style={[styles.weeklyBarTrack, active && styles.weeklyBarTrackActive]}><View style={[styles.weeklyBarFill, { height: `${Math.max(safe, empty ? 6 : 10)}%`, backgroundColor: active ? DARK_MODE_ACCENT_ALT : empty ? 'rgba(172,205,231,0.2)' : DARK_MODE_ACCENT }]} /></View><Text style={[styles.weeklyBarLabel, active && styles.weeklyBarLabelActive]}>{label}</Text></View>;
 }
 
 function Progress({ progress, color, track }: { progress: number; color: string; track: string }) {
@@ -1192,7 +1203,7 @@ const styles = StyleSheet.create({
   heroOverline: { color: '#CFE6FF', fontSize: 13, fontWeight: '700', marginBottom: 5 },
   heroTitle: { color: '#F6FBFF', fontSize: 34, fontWeight: '800' },
   heroSubtitle: { color: '#D7EAFE', fontSize: 14, lineHeight: 20, maxWidth: '92%' },
-  heroBadge: { flexDirection: 'row', alignItems: 'center', gap: 4, borderRadius: 999, borderWidth: 1, borderColor: 'rgba(157,220,255,0.4)', backgroundColor: 'rgba(0,0,0,0.24)', paddingHorizontal: 9, paddingVertical: 6 },
+  heroBadge: { flexDirection: 'row', alignItems: 'center', gap: 4, borderRadius: 999, borderWidth: 1, borderColor: DARK_MODE_ACCENT_BORDER, backgroundColor: 'rgba(0,0,0,0.24)', paddingHorizontal: 9, paddingVertical: 6 },
   heroBadgeText: { color: '#CBEAFC', fontSize: 11, fontWeight: '700' },
   heroStats: { flexDirection: 'row', gap: 8, marginTop: 4 },
   heroQuickRow: { flexDirection: 'row', gap: 8, marginTop: 2 },
@@ -1204,73 +1215,73 @@ const styles = StyleSheet.create({
   weeklyCard: { borderRadius: 18, padding: 14, gap: 10, overflow: 'hidden', borderWidth: 1, borderColor: 'rgba(255,255,255,0.14)' },
   weeklyAccent: { position: 'absolute', left: 0, right: 0, top: 0, height: 3 },
   weeklyHeader: { flexDirection: 'row', alignItems: 'center', gap: 10 },
-  weeklyTitle: { color: '#ECF7FF', fontSize: 20, fontWeight: '700' },
-  weeklySubtitle: { color: 'rgba(225,242,255,0.8)', fontSize: 12, marginTop: 1 },
-  weeklyScoreBadge: { minWidth: 74, borderRadius: 13, borderWidth: 1, borderColor: 'rgba(157,220,255,0.45)', backgroundColor: 'rgba(6,19,34,0.35)', paddingHorizontal: 10, paddingVertical: 8, alignItems: 'center' },
+  weeklyTitle: { color: DARK_MODE_ACCENT_TEXT, fontSize: 20, fontWeight: '700' },
+  weeklySubtitle: { color: DARK_MODE_ACCENT_TEXT_MUTED, fontSize: 12, marginTop: 1 },
+  weeklyScoreBadge: { minWidth: 74, borderRadius: 13, borderWidth: 1, borderColor: DARK_MODE_ACCENT_BORDER, backgroundColor: 'rgba(6,19,34,0.35)', paddingHorizontal: 10, paddingVertical: 8, alignItems: 'center' },
   weeklyScoreValue: { color: '#FFFFFF', fontSize: 22, fontWeight: '800', lineHeight: 24 },
-  weeklyScoreLabel: { color: '#CDE7FB', fontSize: 11, fontWeight: '700', marginTop: 1 },
+  weeklyScoreLabel: { color: DARK_MODE_ACCENT_TEXT, fontSize: 11, fontWeight: '700', marginTop: 1 },
   weeklyBars: { flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'space-between', gap: 7, marginTop: 2 },
   weeklyBarItem: { flex: 1, alignItems: 'center', gap: 6 },
-  weeklyBarTrack: { width: '100%', height: 84, borderRadius: 12, justifyContent: 'flex-end', overflow: 'hidden', borderWidth: 1, borderColor: 'rgba(194,227,248,0.16)', backgroundColor: 'rgba(2,8,16,0.35)', paddingHorizontal: 5, paddingBottom: 5 },
-  weeklyBarTrackActive: { borderColor: 'rgba(125,211,252,0.6)', backgroundColor: 'rgba(14,40,63,0.5)' },
+  weeklyBarTrack: { width: '100%', height: 84, borderRadius: 12, justifyContent: 'flex-end', overflow: 'hidden', borderWidth: 1, borderColor: DARK_MODE_ACCENT_BORDER_SOFT, backgroundColor: 'rgba(2,8,16,0.35)', paddingHorizontal: 5, paddingBottom: 5 },
+  weeklyBarTrackActive: { borderColor: DARK_MODE_ACCENT_BORDER, backgroundColor: 'rgba(14,40,63,0.5)' },
   weeklyBarFill: { width: '100%', borderRadius: 8 },
-  weeklyBarLabel: { color: 'rgba(216,236,250,0.72)', fontSize: 11, fontWeight: '700' },
-  weeklyBarLabelActive: { color: '#CFF1FF' },
+  weeklyBarLabel: { color: DARK_MODE_ACCENT_TEXT_SOFT, fontSize: 11, fontWeight: '700' },
+  weeklyBarLabelActive: { color: DARK_MODE_ACCENT_TEXT },
   card: { borderRadius: 18, padding: 14, gap: 10, overflow: 'hidden', borderWidth: 1, borderColor: 'rgba(255,255,255,0.14)' },
   cardAccent: { position: 'absolute', left: 0, right: 0, top: 0, height: 3 },
   cardHead: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 8 },
   cardTitleWrap: { flexDirection: 'row', alignItems: 'center', gap: 8, flex: 1 },
-  cardIconWrap: { width: 28, height: 28, borderRadius: 14, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: 'rgba(174,226,255,0.35)', backgroundColor: 'rgba(174,226,255,0.16)' },
-  cardTitle: { color: '#ECF7FF', fontSize: 20, fontWeight: '700' },
-  cardSubtitle: { color: 'rgba(225,242,255,0.8)', fontSize: 12, marginTop: 1 },
+  cardIconWrap: { width: 28, height: 28, borderRadius: 14, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: DARK_MODE_ACCENT_BORDER, backgroundColor: DARK_MODE_ACCENT_SURFACE },
+  cardTitle: { color: DARK_MODE_ACCENT_TEXT, fontSize: 20, fontWeight: '700' },
+  cardSubtitle: { color: DARK_MODE_ACCENT_TEXT_MUTED, fontSize: 12, marginTop: 1 },
   cardValue: { color: '#FFFFFF', fontSize: 28, fontWeight: '800' },
   track: { height: 8, borderRadius: 999, overflow: 'hidden' },
   fill: { height: '100%' },
   row: { flexDirection: 'row', gap: 10 },
-  autoStepHintWrap: { borderWidth: 1, borderColor: 'rgba(159,215,255,0.24)', backgroundColor: 'rgba(0,0,0,0.2)', borderRadius: 11, flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 10, paddingVertical: 8 },
-  autoStepHint: { color: '#CFE8FA', fontSize: 12, flex: 1 },
+  autoStepHintWrap: { borderWidth: 1, borderColor: DARK_MODE_ACCENT_BORDER_SOFT, backgroundColor: 'rgba(0,0,0,0.2)', borderRadius: 11, flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 10, paddingVertical: 8 },
+  autoStepHint: { color: DARK_MODE_ACCENT_TEXT, fontSize: 12, flex: 1 },
   hydrationBody: { flexDirection: 'row', gap: 10, alignItems: 'stretch' },
   bottleWrap: { width: 95, alignItems: 'center', justifyContent: 'center' },
-  bottleCap: { width: 34, height: 7, borderTopLeftRadius: 4, borderTopRightRadius: 4, backgroundColor: 'rgba(207,237,255,0.72)' },
-  bottleNeck: { width: 24, height: 10, borderBottomLeftRadius: 8, borderBottomRightRadius: 8, backgroundColor: 'rgba(190,228,255,0.4)', marginBottom: 4 },
-  bottleBody: { width: 82, height: 170, borderRadius: 28, borderWidth: 2, borderColor: 'rgba(186,230,253,0.75)', backgroundColor: 'rgba(4, 20, 35, 0.4)', overflow: 'hidden', justifyContent: 'flex-end', alignItems: 'center', paddingBottom: 12 },
+  bottleCap: { width: 34, height: 7, borderTopLeftRadius: 4, borderTopRightRadius: 4, backgroundColor: 'rgba(230,238,248,0.58)' },
+  bottleNeck: { width: 24, height: 10, borderBottomLeftRadius: 8, borderBottomRightRadius: 8, backgroundColor: 'rgba(25,71,132,0.35)', marginBottom: 4 },
+  bottleBody: { width: 82, height: 170, borderRadius: 28, borderWidth: 2, borderColor: 'rgba(25,71,132,0.55)', backgroundColor: 'rgba(4, 20, 35, 0.4)', overflow: 'hidden', justifyContent: 'flex-end', alignItems: 'center', paddingBottom: 12 },
   bottleWater: { position: 'absolute', left: 0, right: 0, bottom: 0 },
   bottleGloss: { position: 'absolute', left: 12, top: 18, width: 12, height: 92, borderRadius: 8, backgroundColor: 'rgba(255,255,255,0.24)' },
-  bottleIconWrap: { width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(0,0,0,0.2)', borderWidth: 1, borderColor: 'rgba(190,228,255,0.35)' },
+  bottleIconWrap: { width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(0,0,0,0.2)', borderWidth: 1, borderColor: DARK_MODE_ACCENT_BORDER_SOFT },
   hydrationInfo: { flex: 1, gap: 8, justifyContent: 'space-between' },
-  hydrationLead: { color: '#ECF7FF', fontSize: 14, fontWeight: '700' },
+  hydrationLead: { color: DARK_MODE_ACCENT_TEXT, fontSize: 14, fontWeight: '700' },
   hydrationActionBtn: { flex: 1, height: 40, borderRadius: 11, borderWidth: 1, borderColor: 'rgba(255,255,255,0.32)', backgroundColor: 'rgba(0,0,0,0.22)', alignItems: 'center', justifyContent: 'center' },
-  hydrationActionText: { color: '#EAF6FF', fontSize: 14, fontWeight: '700' },
+  hydrationActionText: { color: DARK_MODE_ACCENT_TEXT, fontSize: 14, fontWeight: '700' },
   chipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   metricChip: { borderWidth: 1, borderColor: 'rgba(255,255,255,0.24)', backgroundColor: 'rgba(6,18,32,0.32)', borderRadius: 10, paddingHorizontal: 8, paddingVertical: 7, minWidth: 74 },
-  metricChipLabel: { color: 'rgba(219,238,252,0.82)', fontSize: 11, fontWeight: '600' },
+  metricChipLabel: { color: DARK_MODE_ACCENT_TEXT_SOFT, fontSize: 11, fontWeight: '600' },
   metricChipValue: { color: '#FFFFFF', fontSize: 13, fontWeight: '800', marginTop: 2 },
-  cardHint: { color: 'rgba(225,242,255,0.86)', fontSize: 13, lineHeight: 18 },
+  cardHint: { color: DARK_MODE_ACCENT_TEXT_MUTED, fontSize: 13, lineHeight: 18 },
   quickMealRow: { flexDirection: 'row', gap: 8 },
   quickMealBtn: { flex: 1, borderWidth: 1, borderColor: 'rgba(255,255,255,0.28)', borderRadius: 10, paddingVertical: 7, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(255,255,255,0.1)' },
   quickMealLabel: { color: '#FFE9DD', fontSize: 12, fontWeight: '700' },
   primaryBtn: { height: 42, borderRadius: 11, alignItems: 'center', justifyContent: 'center', flexDirection: 'row', gap: 6 },
-  primaryBtnLabel: { color: '#031426', fontSize: 14, fontWeight: '800' },
-  lightButton: { backgroundColor: '#8ED4FF' },
+  primaryBtnLabel: { color: '#F8FAFC', fontSize: 14, fontWeight: '800' },
+  lightButton: { backgroundColor: DARK_MODE_ACCENT },
   mealRow: { borderWidth: 1, borderRadius: 10, borderColor: 'rgba(255,255,255,0.22)', paddingHorizontal: 10, paddingVertical: 8, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', backgroundColor: 'rgba(0,0,0,0.2)' },
   mealText: { color: '#F4FAFF', fontSize: 14, fontWeight: '700', flex: 1 },
   mealActions: { flexDirection: 'row', alignItems: 'center', gap: 8, marginLeft: 10 },
-  mealKcal: { color: '#D4EAFA', fontSize: 12, fontWeight: '700', marginLeft: 8 },
+  mealKcal: { color: DARK_MODE_ACCENT_TEXT, fontSize: 12, fontWeight: '700', marginLeft: 8 },
   mealDeleteBtn: { width: 28, height: 28, borderRadius: 8, borderWidth: 1, borderColor: 'rgba(249,196,183,0.34)', backgroundColor: 'rgba(0,0,0,0.2)', alignItems: 'center', justifyContent: 'center' },
-  autoInsightLoading: { flexDirection: 'row', alignItems: 'center', gap: 8, borderWidth: 1, borderColor: 'rgba(176,224,255,0.26)', borderRadius: 10, backgroundColor: 'rgba(0,0,0,0.2)', paddingHorizontal: 10, paddingVertical: 8 },
-  autoInsightLoadingText: { color: '#CAE6FA', fontSize: 12 },
-  weatherTag: { flexDirection: 'row', alignItems: 'center', gap: 6, borderWidth: 1, borderColor: 'rgba(176,224,255,0.3)', borderRadius: 10, backgroundColor: 'rgba(0,0,0,0.24)', paddingHorizontal: 10, paddingVertical: 8 },
-  weatherTagText: { color: '#D5EAF9', fontSize: 12, flex: 1 },
+  autoInsightLoading: { flexDirection: 'row', alignItems: 'center', gap: 8, borderWidth: 1, borderColor: DARK_MODE_ACCENT_BORDER_SOFT, borderRadius: 10, backgroundColor: 'rgba(0,0,0,0.2)', paddingHorizontal: 10, paddingVertical: 8 },
+  autoInsightLoadingText: { color: DARK_MODE_ACCENT_TEXT, fontSize: 12 },
+  weatherTag: { flexDirection: 'row', alignItems: 'center', gap: 6, borderWidth: 1, borderColor: DARK_MODE_ACCENT_BORDER_SOFT, borderRadius: 10, backgroundColor: 'rgba(0,0,0,0.24)', paddingHorizontal: 10, paddingVertical: 8 },
+  weatherTagText: { color: DARK_MODE_ACCENT_TEXT, fontSize: 12, flex: 1 },
   insightBubble: { borderWidth: 1, borderColor: 'rgba(198,182,255,0.32)', backgroundColor: 'rgba(12,20,36,0.5)', borderRadius: 11, padding: 10 },
   outlinePremiumBtn: { height: 40, borderRadius: 10, borderWidth: 1, borderColor: 'rgba(176,224,255,0.35)', backgroundColor: 'rgba(0,0,0,0.26)', alignItems: 'center', justifyContent: 'center', flexDirection: 'row', gap: 6 },
-  outlinePremiumLabel: { color: '#B0E0FF', fontSize: 13, fontWeight: '700' },
-  upgradeCard: { borderRadius: 18, borderWidth: 1, borderColor: 'rgba(157,220,255,0.28)', padding: 14, gap: 10 },
+  outlinePremiumLabel: { color: DARK_MODE_ACCENT_TEXT, fontSize: 13, fontWeight: '700' },
+  upgradeCard: { borderRadius: 18, borderWidth: 1, borderColor: DARK_MODE_ACCENT_BORDER_SOFT, padding: 14, gap: 10 },
   upgradeHeader: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  upgradeIconWrap: { width: 28, height: 28, borderRadius: 14, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: 'rgba(188,232,255,0.38)', backgroundColor: 'rgba(188,232,255,0.16)' },
-  upgradeTitle: { color: '#EAF6FF', fontSize: 17, fontWeight: '800', flex: 1 },
-  upgradeText: { color: 'rgba(220,238,252,0.9)', fontSize: 13, lineHeight: 18 },
-  upgradeButton: { height: 42, borderRadius: 10, backgroundColor: '#9FD7FF', alignItems: 'center', justifyContent: 'center' },
-  upgradeButtonText: { color: '#08203B', fontSize: 14, fontWeight: '800' },
+  upgradeIconWrap: { width: 28, height: 28, borderRadius: 14, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: DARK_MODE_ACCENT_BORDER, backgroundColor: DARK_MODE_ACCENT_SURFACE },
+  upgradeTitle: { color: DARK_MODE_ACCENT_TEXT, fontSize: 17, fontWeight: '800', flex: 1 },
+  upgradeText: { color: DARK_MODE_ACCENT_TEXT_MUTED, fontSize: 13, lineHeight: 18 },
+  upgradeButton: { height: 42, borderRadius: 10, backgroundColor: DARK_MODE_ACCENT, alignItems: 'center', justifyContent: 'center' },
+  upgradeButtonText: { color: '#F8FAFC', fontSize: 14, fontWeight: '800' },
   soloSheetBackdrop: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.45)',
@@ -1526,3 +1537,4 @@ const styles = StyleSheet.create({
     gap: 8,
   },
 });
+

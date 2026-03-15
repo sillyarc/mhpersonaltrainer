@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+﻿import React, { useEffect, useMemo, useState } from 'react';
 import {
   View,
   Text,
@@ -447,8 +447,8 @@ export default function MHAgendaFitDetailsScreen() {
                 </Text>
                 {(personal.cidade || personal.estado) ? (
                   <View style={styles.heroLocationRow}>
-                    <Ionicons name="location-outline" size={13} color="#BEE5FF" />
-                    <Text style={[styles.heroLocationText, { color: 'rgba(214,236,255,0.9)' }]} numberOfLines={1}>
+                    <Ionicons name="location-outline" size={13} color="#E6EEF8" />
+                    <Text style={[styles.heroLocationText, { color: 'rgba(230,238,248,0.9)' }]} numberOfLines={1}>
                       {[personal.cidade, personal.estado].filter(Boolean).join(' - ')}
                     </Text>
                   </View>
@@ -457,11 +457,11 @@ export default function MHAgendaFitDetailsScreen() {
             </View>
             <View style={styles.heroBadgesRow}>
               <View style={styles.heroBadge}>
-                <Ionicons name="shield-checkmark-outline" size={14} color="#8ED6FF" />
+                <Ionicons name="shield-checkmark-outline" size={14} color="#194784" />
                 <Text style={styles.heroBadgeText}>Pagamento protegido</Text>
               </View>
               <View style={styles.heroBadge}>
-                <Ionicons name="card-outline" size={14} color="#8ED6FF" />
+                <Ionicons name="card-outline" size={14} color="#194784" />
                 <Text style={styles.heroBadgeText}>{services.length} servicos</Text>
               </View>
             </View>
@@ -789,7 +789,7 @@ const styles = StyleSheet.create({
   heroCard: {
     borderRadius: borderRadius.xl,
     borderWidth: 1,
-    borderColor: 'rgba(174,226,255,0.34)',
+    borderColor: 'rgba(25,71,132,0.34)',
     overflow: 'hidden',
     padding: spacing.lg,
     gap: spacing.md,
@@ -1115,3 +1115,5 @@ const styles = StyleSheet.create({
     fontSize: 12,
   },
 });
+
+

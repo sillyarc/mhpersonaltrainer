@@ -9,17 +9,25 @@ import Constants from 'expo-constants';
 import { useTheme } from '../../src/hooks/useTheme';
 import { useAuthStore } from '../../src/store/authStore';
 import {
+  API_BASE_URL,
+  STRIPE_PAYMENT_LINK_ANUAL,
+  STRIPE_PAYMENT_LINK_BIMESTRAL,
+  STRIPE_PAYMENT_LINK_MENSAL,
+  STRIPE_PAYMENT_LINK_SEMESTRAL,
+  STRIPE_PUBLISHABLE_KEY,
+  STRIPE_RETURN_URL,
   createSubscription,
   createSetupIntent,
   extractSubscriptionDetails,
   formatCurrency,
+  isStripeReady,
 } from '../../src/services/payments';
 
 const stripePaymentLinks = {
-  mensal: process.env.EXPO_PUBLIC_STRIPE_PAYMENT_LINK_MENSAL || '',
-  bimestral: process.env.EXPO_PUBLIC_STRIPE_PAYMENT_LINK_BIMESTRAL || '',
-  semestral: process.env.EXPO_PUBLIC_STRIPE_PAYMENT_LINK_SEMESTRAL || '',
-  anual: process.env.EXPO_PUBLIC_STRIPE_PAYMENT_LINK_ANUAL || '',
+  mensal: STRIPE_PAYMENT_LINK_MENSAL,
+  bimestral: STRIPE_PAYMENT_LINK_BIMESTRAL,
+  semestral: STRIPE_PAYMENT_LINK_SEMESTRAL,
+  anual: STRIPE_PAYMENT_LINK_ANUAL,
 };
 const PAYMENT_LINK_ENV_BY_PLAN_ID: Record<string, string> = {
   mensal: 'EXPO_PUBLIC_STRIPE_PAYMENT_LINK_MENSAL',
@@ -77,15 +85,10 @@ export default function PlanoAssinaturaScreen() {
   const { user } = useAuthStore();
   const { initPaymentSheet, presentPaymentSheet } = useStripe();
   const [loadingPlan, setLoadingPlan] = useState<string | null>(null);
-  const apiBaseUrl = process.env.EXPO_PUBLIC_API_URL || '';
-  const stripeKey = process.env.EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY || '';
-  const stripeFunctionsUrl = process.env.EXPO_PUBLIC_STRIPE_FUNCTIONS_URL || '';
-  const stripeReturnUrl =
-    process.env.EXPO_PUBLIC_STRIPE_RETURN_URL || 'mhpersonaltrainer://stripe-redirect';
   const isExpoGo =
     Constants.appOwnership === 'expo' ||
     (Constants as { executionEnvironment?: string }).executionEnvironment === 'storeClient';
-  const hasStripeEndpoint = !!stripeFunctionsUrl || !!apiBaseUrl;
+  const stripeReady = isStripeReady();
 
   const openPaymentLink = async (url?: string) => {
     if (!url) return false;
@@ -101,9 +104,9 @@ export default function PlanoAssinaturaScreen() {
   const getExpoGoPaymentHint = (planId?: string) => {
     const envKey = (planId && PAYMENT_LINK_ENV_BY_PLAN_ID[planId]) || '';
     if (envKey) {
-      return `Configure ${envKey} no arquivo .env para abrir o checkout no navegador pelo Expo Go.`;
+      return `Configure ${envKey} no .env ou em expo.extra para abrir o checkout no navegador pelo Expo Go.`;
     }
-    return 'Configure EXPO_PUBLIC_STRIPE_PAYMENT_LINK_* no arquivo .env para abrir o checkout no navegador pelo Expo Go.';
+    return 'Configure EXPO_PUBLIC_STRIPE_PAYMENT_LINK_* no .env ou em expo.extra para abrir o checkout no navegador pelo Expo Go.';
   };
 
   const handleSelectPlan = async (plan: (typeof localPlans)[number]) => {
@@ -128,10 +131,10 @@ export default function PlanoAssinaturaScreen() {
       );
       return;
     }
-    if (!hasStripeEndpoint || !stripeKey) {
+    if (!stripeReady || !STRIPE_PUBLISHABLE_KEY) {
       showAlert(
         'Stripe não configurado',
-        'Defina EXPO_PUBLIC_STRIPE_FUNCTIONS_URL (ou EXPO_PUBLIC_API_URL com /api/payments) e EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY no arquivo .env para ativar as assinaturas.'
+        `Defina EXPO_PUBLIC_STRIPE_FUNCTIONS_URL (ou EXPO_PUBLIC_API_URL com /api/payments) e EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY no .env ou em expo.extra para ativar as assinaturas. API atual: ${API_BASE_URL || 'nao definida'}.`
       );
       return;
     }
@@ -165,7 +168,7 @@ export default function PlanoAssinaturaScreen() {
           const setupParams: any = {
             setupIntentClientSecret: setupIntentResult.data.setupIntentClientSecret,
             merchantDisplayName: 'MH Personal Trainer',
-            returnURL: stripeReturnUrl,
+            returnURL: STRIPE_RETURN_URL,
             googlePay: { merchantCountryCode: 'BR', testEnv: true },
             applePay: { merchantCountryCode: 'BR' },
           };
@@ -197,7 +200,7 @@ export default function PlanoAssinaturaScreen() {
         paymentIntentClientSecret: details.clientSecret,
         merchantDisplayName: 'MH Personal Trainer',
         allowsDelayedPaymentMethods: true,
-        returnURL: stripeReturnUrl,
+        returnURL: STRIPE_RETURN_URL,
         googlePay: { merchantCountryCode: 'BR', testEnv: true },
         applePay: { merchantCountryCode: 'BR' },
       };

@@ -21,12 +21,12 @@ export default function ProfileScreen() {
 
   const handleLogout = () => {
     showAlert(
-      'Sair',
-      'Tem certeza que deseja sair?',
+      t('profile.logoutTitle'),
+      t('profile.logoutMessage'),
       [
-        { text: 'Cancelar', style: 'cancel' },
+        { text: t('common.cancel'), style: 'cancel' },
         {
-          text: 'Sair',
+          text: t('auth.logout'),
           style: 'destructive',
           onPress: async () => {
             await logout();
@@ -57,7 +57,7 @@ export default function ProfileScreen() {
       ? [
           {
             icon: 'key-outline',
-            label: 'código do personal',
+            label: t('profile.personalCode'),
             route: '/personal/change-code',
           },
         ]
@@ -87,13 +87,13 @@ export default function ProfileScreen() {
   const getRoleLabel = () => {
     switch (role) {
       case 'admin':
-        return 'Administrador';
+        return t('profile.roleAdmin');
       case 'professor':
-        return 'Professor';
+        return t('profile.roleProfessor');
       case 'personal':
-        return 'Personal Trainer';
+        return t('profile.rolePersonal');
       default:
-        return 'Aluno';
+        return t('profile.roleStudent');
     }
   };
 
@@ -121,7 +121,7 @@ export default function ProfileScreen() {
             />
             <View style={styles.profileInfo}>
               <Text style={[styles.profileName, { color: colors.text }]}>
-                {user?.displayName || 'UsuÃ¡rio'}
+                {user?.displayName || t('profile.userFallback')}
               </Text>
               <Text style={[styles.profileEmail, { color: colors.textSecondary }]}>
                 {user?.email}
@@ -151,12 +151,12 @@ export default function ProfileScreen() {
               <Ionicons name="star" size={24} color={colors.warning} />
               <View style={styles.subscriptionInfo}>
                 <Text style={[styles.subscriptionTitle, { color: colors.text }]}>
-                  Plano {user.tipoDeAssinatura || 'Premium'}
+                  {`${t('profile.subscription')}: ${user.tipoDeAssinatura || t('profile.premium')}`}
                 </Text>
                 <Text
                   style={[styles.subscriptionStatus, { color: colors.success }]}
                 >
-                  Ativo
+                  {t('profile.active')}
                 </Text>
               </View>
             </View>

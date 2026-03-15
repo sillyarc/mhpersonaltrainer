@@ -6,3 +6,4 @@ export { Loading } from './Loading';
 export { Avatar } from './Avatar';
 export { AvatarStack } from './AvatarStack';
 export { SearchableSelect } from './SearchableSelect';
+export { FloatingHomeButton } from './FloatingHomeButton';

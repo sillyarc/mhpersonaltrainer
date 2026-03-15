@@ -78,6 +78,7 @@ function ExerciseCardItem({
 }) {
   const { colors, spacing, borderRadius, typography } = useTheme();
   const videoUrl = item.videoUrl1080 || item.videoUrl720 || item.videoUrl;
+  const gifUrl = item.gifUrl;
   const categoryVisual = getCategoryVisual(item.colecao || 'geral', colors);
 
   return (
@@ -114,8 +115,12 @@ function ExerciseCardItem({
             {item.colecao || 'geral'}
           </Text>
         </View>
-        {videoUrl ? (
-          <Ionicons name="play-circle" size={22} color={colors.primary} />
+        {videoUrl || gifUrl ? (
+          <Ionicons
+            name={videoUrl ? 'play-circle' : 'images-outline'}
+            size={22}
+            color={colors.primary}
+          />
         ) : null}
       </View>
       <View style={[styles.exerciseMeta, { marginTop: spacing.sm }]}>

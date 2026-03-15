@@ -23,6 +23,18 @@ const resolveBaseUrl = (req) => {
   }
 };
 
+const optionalString = (value) => {
+  if (value === undefined || value === null) return "";
+  return String(value).trim();
+};
+
+const appendStripeStatus = (url, status) => {
+  const normalized = optionalString(url);
+  if (!normalized) return "";
+  const separator = normalized.includes("?") ? "&" : "?";
+  return `${normalized}${separator}stripe=${status}`;
+};
+
 exports.createCheckoutSession = functions
   .region("southamerica-east1")
   .https.onRequest((req, res) => {
@@ -53,15 +65,36 @@ exports.createCheckoutSession = functions
           });
         }
 
-        const baseUrl = resolveBaseUrl(req);
-        if (!baseUrl) {
-          return res.status(400).json({
-            error: "Base URL nao identificada",
-          });
+        const returnUrl = optionalString(payload.returnUrl);
+        const successUrl =
+          optionalString(payload.successUrl) ||
+          (returnUrl ? appendStripeStatus(returnUrl, "success") : "");
+        const cancelUrl =
+          optionalString(payload.cancelUrl) ||
+          (returnUrl ? appendStripeStatus(returnUrl, "cancel") : "");
+
+        let resolvedSuccessUrl = successUrl;
+        let resolvedCancelUrl = cancelUrl;
+
+        if (!resolvedSuccessUrl || !resolvedCancelUrl) {
+          const baseUrl = resolveBaseUrl(req);
+          if (baseUrl) {
+            resolvedSuccessUrl =
+              resolvedSuccessUrl ||
+              `${baseUrl}/financeiro/personal?stripe=success`;
+            resolvedCancelUrl =
+              resolvedCancelUrl ||
+              `${baseUrl}/financeiro/personal?stripe=cancel`;
+          }
         }
 
-        const successUrl = `${baseUrl}/financeiro/personal?stripe=success`;
-        const cancelUrl = `${baseUrl}/financeiro/personal?stripe=cancel`;
+        if (!resolvedSuccessUrl || !resolvedCancelUrl) {
+          return res.status(400).json({
+            error: "URLs de retorno nao identificadas",
+            details:
+              "Envie returnUrl/successUrl/cancelUrl no payload ou chame a function a partir de um browser com origin/referer.",
+          });
+        }
 
         const metadata = {};
         if (payload.studentId) metadata.studentId = String(payload.studentId);
@@ -95,8 +128,8 @@ exports.createCheckoutSession = functions
               },
             },
           ],
-          success_url: successUrl,
-          cancel_url: cancelUrl,
+          success_url: resolvedSuccessUrl,
+          cancel_url: resolvedCancelUrl,
           ...(Object.keys(metadata).length ? { metadata } : {}),
           ...(Object.keys(paymentIntentData).length
             ? { payment_intent_data: paymentIntentData }

@@ -21,6 +21,7 @@ import { getFirebaseDb } from './firebase';
 import { User } from '../types/user';
 import { fetchEvaluations } from './evaluations';
 import { isPremiumUserRecord } from './ai';
+import { normalizeSupportedLanguage } from '../i18n';
 
 export interface Treino {
   id: string;
@@ -33,6 +34,9 @@ export interface Treino {
   dataCriacao?: Date;
   diasDaSemana?: string[];
   lastCompletedAt?: Date;
+  lastSessionAt?: Date;
+  lastSessionStatus?: 'completed' | 'partial' | 'not_completed';
+  lastSessionRemainingExercises?: number;
 }
 
 export interface Aluno {
@@ -241,6 +245,7 @@ async function getUserDocument(uid: string): Promise<User | null> {
       subscribeId: data.subscribeId,
       stripeAtivo: data.stripeAtivo,
       stripeAccountId: data.stripeAccountId,
+      language: normalizeSupportedLanguage(data.language || data.locale || data.idioma) || undefined,
       bio: data.bio,
       cref: data.cref,
       instagram: data.instagram,
@@ -953,6 +958,18 @@ async function updateLastActiveTime(uid: string): Promise<void> {
   }
 }
 
+async function updateUserLanguage(uid: string, language: string): Promise<void> {
+  const normalizedLanguage = normalizeSupportedLanguage(language);
+  if (!normalizedLanguage) {
+    throw new Error('Unsupported language');
+  }
+
+  const db = getFirebaseDb();
+  await updateDoc(doc(db, 'users', uid), {
+    language: normalizedLanguage,
+  });
+}
+
 async function unlinkStudentFromPersonal(personalId: string, studentId: string): Promise<void> {
   const db = getFirebaseDb();
   const [codigoPersonal, studentSnap] = await Promise.all([
@@ -1050,6 +1067,7 @@ export const firestoreService = {
   getCodigoPersonal,
   getPersonalStudentCapacityByCode,
   updateLastActiveTime,
+  updateUserLanguage,
   updateStudentStatus,
   getAdminOverview,
 };

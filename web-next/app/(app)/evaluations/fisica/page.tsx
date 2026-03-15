@@ -4,6 +4,7 @@ import { useState, type FormEvent } from 'react';
 import PageShell from '@/components/PageShell';
 import DataTable from '@/components/data/DataTable';
 import UserScopePicker from '@/components/data/UserScopePicker';
+import { useAuth } from '@/lib/auth';
 import { formatDate, useCollectionData, useUserScope } from '@/lib/firestoreHooks';
 import {
   SKINFOLD_PROTOCOL_OPTIONS,
@@ -144,7 +145,9 @@ const buildTestDraft = (base?: Partial<TestDraft>): TestDraft => ({
 });
 
 export default function AvaliacaoFisicaPage() {
+  const { user, role } = useAuth();
   const { userId } = useUserScope();
+  const isPersonal = role === 'personal' || role === 'professor';
   const { data } = useCollectionData<FisicaRow>(['users', userId, 'avaliacoesFisicas']);
   const [basicValues, setBasicValues] = useState(basicInitialState);
   const [compositionValues, setCompositionValues] = useState(compositionInitialState);
@@ -280,6 +283,7 @@ export default function AvaliacaoFisicaPage() {
     const result = await createPhysicalTestEvaluation({
       type: 'fisica',
       userId,
+      personalId: isPersonal ? user?.uid : undefined,
       date: new Date(),
       status: 'concluida',
       testes,

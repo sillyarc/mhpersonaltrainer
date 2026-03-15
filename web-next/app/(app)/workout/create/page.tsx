@@ -140,6 +140,7 @@ export default function WorkoutCreatePage() {
       const result = await createUserWorkout(targetId, {
         nomeDoTreino: nome,
         obsInstrucao: objetivo,
+        personalId: isPersonal ? user.uid : undefined,
         treino: [],
         diasDaSemana: dias,
         arquivos: false,

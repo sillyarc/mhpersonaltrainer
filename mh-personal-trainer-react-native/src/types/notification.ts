@@ -1,3 +1,5 @@
+import type { EvaluationType } from './evaluation';
+
 export interface NotificationItem {
   id: string;
   titulo: string;
@@ -8,6 +10,11 @@ export interface NotificationItem {
   tipo?: string;
   treinoId?: string;
   avOnlineId?: string;
+  evaluationId?: string;
+  evaluationType?: EvaluationType;
+  evaluationUserId?: string;
+  unread?: boolean;
+  readBy?: string[];
   securityEvent?: boolean;
   securityStatus?: 'pending' | 'confirmed' | 'denied';
   securityResolvedAt?: Date;

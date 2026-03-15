@@ -1,25 +1,147 @@
-const API_BASE_URL = process.env.EXPO_PUBLIC_API_URL || '';
-const STRIPE_PUBLISHABLE_KEY = process.env.EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY || '';
-const STRIPE_FUNCTIONS_BASE_URL = process.env.EXPO_PUBLIC_STRIPE_FUNCTIONS_URL || '';
+import Constants from 'expo-constants';
+
+type StripeExtraConfig = {
+  publishableKey?: string;
+  functionsUrl?: string;
+  subscriptionEndpoint?: string;
+  connectStatusEndpoint?: string;
+  connectOnboardingEndpoint?: string;
+  checkoutEndpoint?: string;
+  setupIntentEndpoint?: string;
+  webBaseUrl?: string;
+  checkoutSuccessUrl?: string;
+  checkoutCancelUrl?: string;
+  connectReturnUrl?: string;
+  connectRefreshUrl?: string;
+  paymentLinkMensal?: string;
+  paymentLinkBimestral?: string;
+  paymentLinkSemestral?: string;
+  paymentLinkAnual?: string;
+  returnUrl?: string;
+  priceIdAlunoMensal?: string;
+  paymentLinkAlunoMensal?: string;
+};
+
+type ExpoExtra = {
+  apiUrl?: string;
+  stripe?: StripeExtraConfig;
+};
+
+const expoExtra = (Constants.expoConfig?.extra ?? {}) as ExpoExtra;
+const stripeExtraConfig = expoExtra.stripe ?? {};
+
+const pickConfigValue = (envValue: string | undefined, extraValue?: string) =>
+  (envValue ?? '').trim() || (extraValue ?? '').trim();
+
+const normalizeBaseUrl = (value: string | undefined) => String(value || '').trim().replace(/\/+$/, '');
+
+const buildAbsoluteUrl = (baseUrl: string, path: string) => {
+  const normalizedBase = normalizeBaseUrl(baseUrl);
+  const normalizedPath = path.startsWith('/') ? path : `/${path}`;
+  return `${normalizedBase}${normalizedPath}`;
+};
+
+export const API_BASE_URL = pickConfigValue(process.env.EXPO_PUBLIC_API_URL, expoExtra.apiUrl);
+export const STRIPE_PUBLISHABLE_KEY = pickConfigValue(
+  process.env.EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY,
+  stripeExtraConfig.publishableKey
+);
+export const STRIPE_FUNCTIONS_BASE_URL = pickConfigValue(
+  process.env.EXPO_PUBLIC_STRIPE_FUNCTIONS_URL,
+  stripeExtraConfig.functionsUrl
+);
 const STRIPE_SUBSCRIPTION_ENDPOINT =
-  process.env.EXPO_PUBLIC_STRIPE_SUBSCRIPTION_ENDPOINT || 'createInscricao';
+  pickConfigValue(
+    process.env.EXPO_PUBLIC_STRIPE_SUBSCRIPTION_ENDPOINT,
+    stripeExtraConfig.subscriptionEndpoint
+  ) || 'createInscricao';
 const STRIPE_CONNECT_STATUS_ENDPOINT =
-  process.env.EXPO_PUBLIC_STRIPE_CONNECT_STATUS_ENDPOINT || 'stripeConnectStatus';
+  pickConfigValue(
+    process.env.EXPO_PUBLIC_STRIPE_CONNECT_STATUS_ENDPOINT,
+    stripeExtraConfig.connectStatusEndpoint
+  ) || 'stripeConnectStatus';
 const STRIPE_CONNECT_ONBOARDING_ENDPOINT =
-  process.env.EXPO_PUBLIC_STRIPE_CONNECT_ONBOARDING_ENDPOINT || 'createAndVerifyStripeAccount';
+  pickConfigValue(
+    process.env.EXPO_PUBLIC_STRIPE_CONNECT_ONBOARDING_ENDPOINT,
+    stripeExtraConfig.connectOnboardingEndpoint
+  ) || 'createAndVerifyStripeAccount';
 const STRIPE_CHECKOUT_ENDPOINT =
-  process.env.EXPO_PUBLIC_STRIPE_CHECKOUT_ENDPOINT || 'createCheckoutSession';
+  pickConfigValue(
+    process.env.EXPO_PUBLIC_STRIPE_CHECKOUT_ENDPOINT,
+    stripeExtraConfig.checkoutEndpoint
+  ) || 'createCheckoutSession';
 const STRIPE_SETUP_INTENT_ENDPOINT =
-  process.env.EXPO_PUBLIC_STRIPE_SETUP_INTENT_ENDPOINT || 'createSetupIntent';
-const STRIPE_PAYMENT_LINK_MENSAL = process.env.EXPO_PUBLIC_STRIPE_PAYMENT_LINK_MENSAL || '';
-const STRIPE_PAYMENT_LINK_BIMESTRAL = process.env.EXPO_PUBLIC_STRIPE_PAYMENT_LINK_BIMESTRAL || '';
-const STRIPE_PAYMENT_LINK_SEMESTRAL = process.env.EXPO_PUBLIC_STRIPE_PAYMENT_LINK_SEMESTRAL || '';
-const STRIPE_PAYMENT_LINK_ANUAL = process.env.EXPO_PUBLIC_STRIPE_PAYMENT_LINK_ANUAL || '';
+  pickConfigValue(
+    process.env.EXPO_PUBLIC_STRIPE_SETUP_INTENT_ENDPOINT,
+    stripeExtraConfig.setupIntentEndpoint
+  ) || 'createSetupIntent';
+export const STRIPE_PAYMENT_LINK_MENSAL = pickConfigValue(
+  process.env.EXPO_PUBLIC_STRIPE_PAYMENT_LINK_MENSAL,
+  stripeExtraConfig.paymentLinkMensal
+);
+export const STRIPE_PAYMENT_LINK_BIMESTRAL = pickConfigValue(
+  process.env.EXPO_PUBLIC_STRIPE_PAYMENT_LINK_BIMESTRAL,
+  stripeExtraConfig.paymentLinkBimestral
+);
+export const STRIPE_PAYMENT_LINK_SEMESTRAL = pickConfigValue(
+  process.env.EXPO_PUBLIC_STRIPE_PAYMENT_LINK_SEMESTRAL,
+  stripeExtraConfig.paymentLinkSemestral
+);
+export const STRIPE_PAYMENT_LINK_ANUAL = pickConfigValue(
+  process.env.EXPO_PUBLIC_STRIPE_PAYMENT_LINK_ANUAL,
+  stripeExtraConfig.paymentLinkAnual
+);
+export const STRIPE_RETURN_URL =
+  pickConfigValue(process.env.EXPO_PUBLIC_STRIPE_RETURN_URL, stripeExtraConfig.returnUrl) ||
+  'mhpersonaltrainer://stripe-redirect';
+const STRIPE_WEB_BASE_URL =
+  normalizeBaseUrl(
+    pickConfigValue(process.env.EXPO_PUBLIC_STRIPE_WEB_BASE_URL, stripeExtraConfig.webBaseUrl)
+  ) || 'https://mhpersonaltrainer.com.br';
+const STRIPE_CHECKOUT_SUCCESS_URL =
+  pickConfigValue(
+    process.env.EXPO_PUBLIC_STRIPE_CHECKOUT_SUCCESS_URL,
+    stripeExtraConfig.checkoutSuccessUrl
+  ) || buildAbsoluteUrl(STRIPE_WEB_BASE_URL, '/financeiro/aluno?stripe=success');
+const STRIPE_CHECKOUT_CANCEL_URL =
+  pickConfigValue(
+    process.env.EXPO_PUBLIC_STRIPE_CHECKOUT_CANCEL_URL,
+    stripeExtraConfig.checkoutCancelUrl
+  ) || buildAbsoluteUrl(STRIPE_WEB_BASE_URL, '/financeiro/aluno?stripe=cancel');
+const STRIPE_CONNECT_RETURN_URL =
+  pickConfigValue(
+    process.env.EXPO_PUBLIC_STRIPE_CONNECT_RETURN_URL,
+    stripeExtraConfig.connectReturnUrl
+  ) || buildAbsoluteUrl(STRIPE_WEB_BASE_URL, '/financeiro/personal?stripe=return');
+const STRIPE_CONNECT_REFRESH_URL =
+  pickConfigValue(
+    process.env.EXPO_PUBLIC_STRIPE_CONNECT_REFRESH_URL,
+    stripeExtraConfig.connectRefreshUrl
+  ) || buildAbsoluteUrl(STRIPE_WEB_BASE_URL, '/financeiro/personal?stripe=refresh');
+export const STRIPE_PRICE_ID_ALUNO_MENSAL = pickConfigValue(
+  process.env.EXPO_PUBLIC_STRIPE_PRICE_ID_ALUNO_MENSAL,
+  stripeExtraConfig.priceIdAlunoMensal
+);
+export const STRIPE_PAYMENT_LINK_ALUNO_MENSAL = pickConfigValue(
+  process.env.EXPO_PUBLIC_STRIPE_PAYMENT_LINK_ALUNO_MENSAL,
+  stripeExtraConfig.paymentLinkAlunoMensal
+);
+
+export function isStripeReady(): boolean {
+  return Boolean(STRIPE_FUNCTIONS_BASE_URL) || (Boolean(API_BASE_URL) && !API_BASE_URL.includes('api.stripe.com'));
+}
 
 function buildStripeFunctionUrl(endpoint: string): string {
   const base = STRIPE_FUNCTIONS_BASE_URL.replace(/\/+$/, '');
   const path = endpoint.replace(/^\/+/, '');
   return `${base}/${path}`;
+}
+
+function buildBrowserCompatHeaders(path: string): Record<string, string> {
+  return {
+    Origin: STRIPE_WEB_BASE_URL,
+    Referer: buildAbsoluteUrl(STRIPE_WEB_BASE_URL, path),
+  };
 }
 
 function buildSubscriptionPayload(
@@ -80,6 +202,8 @@ export interface StripeConnectStatus {
 }
 
 export interface StripeConnectOnboardingPayload {
+  userId?: string;
+  accountId?: string;
   email: string;
   firstName: string;
   lastName: string;
@@ -384,7 +508,12 @@ export async function submitStripeConnectOnboarding(
       ? buildStripeFunctionUrl(endpoint)
       : `${API_BASE_URL.replace(/\/+$/, '')}/${endpoint}`;
     const body = new URLSearchParams();
-    Object.entries(payload).forEach(([key, value]) => {
+    const normalizedPayload = {
+      ...payload,
+      returnUrl: payload.returnUrl || STRIPE_CONNECT_RETURN_URL,
+      refreshUrl: payload.refreshUrl || STRIPE_CONNECT_REFRESH_URL,
+    };
+    Object.entries(normalizedPayload).forEach(([key, value]) => {
       if (value !== undefined && value !== null && String(value).trim() !== '') {
         body.append(key, String(value));
       }
@@ -392,7 +521,10 @@ export async function submitStripeConnectOnboarding(
 
     const response = await fetch(onboardingUrl, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+        ...buildBrowserCompatHeaders('/financeiro/personal'),
+      },
       body: body.toString(),
     });
 
@@ -426,6 +558,9 @@ export async function createStripeCheckoutSession(payload: {
   destinationAccountId?: string;
   applicationFeeAmount?: number;
   description?: string;
+  returnUrl?: string;
+  successUrl?: string;
+  cancelUrl?: string;
 }): Promise<{ data: StripeCheckoutResult | null; error: string | null }> {
   try {
     if (!STRIPE_FUNCTIONS_BASE_URL && !API_BASE_URL) {
@@ -437,15 +572,29 @@ export async function createStripeCheckoutSession(payload: {
     const checkoutUrl = STRIPE_FUNCTIONS_BASE_URL
       ? buildStripeFunctionUrl(STRIPE_CHECKOUT_ENDPOINT)
       : `${API_BASE_URL}/api/payments/create-checkout`;
+    const checkoutPayload = {
+      ...payload,
+      returnUrl: payload.returnUrl || STRIPE_RETURN_URL,
+      successUrl: payload.successUrl || STRIPE_CHECKOUT_SUCCESS_URL,
+      cancelUrl: payload.cancelUrl || STRIPE_CHECKOUT_CANCEL_URL,
+    };
     const response = await fetch(checkoutUrl, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
+      headers: {
+        'Content-Type': 'application/json',
+        ...buildBrowserCompatHeaders('/financeiro/aluno'),
+      },
+      body: JSON.stringify(checkoutPayload),
     });
 
-    if (!response.ok) throw new Error('Failed to create checkout session');
+    if (!response.ok) {
+      throw new Error(await getHttpErrorMessage(response, 'Failed to create checkout session'));
+    }
 
     const data = await response.json();
+    if (data?.error) {
+      return { data: null, error: extractErrorMessageFromPayload(data, 'Failed to create checkout session') };
+    }
     return {
       data: {
         checkoutUrl: data.checkoutUrl || data.url,

@@ -5,6 +5,7 @@ export interface Exercise {
   videoUrl?: string;
   videoUrl1080?: string;
   videoUrl720?: string;
+  gifUrl?: string;
   fotoDoTreino?: string;
   seriesRep?: number;
   carga?: number;
@@ -26,10 +27,13 @@ export interface Workout {
 
 export type WorkoutMetricValue = number | string;
 
+export type WorkoutSessionStatus = 'completed' | 'partial' | 'not_completed';
+
 export interface UserWorkout {
   id: string;
   nomeDoTreino: string;
   obsInstrucao?: string;
+  personalId?: string;
   treino: string[];
   seriesRep?: WorkoutMetricValue[];
   repeticoes?: WorkoutMetricValue[];
@@ -39,6 +43,10 @@ export interface UserWorkout {
   arquivos?: boolean;
   diasDaSemana?: string[];
   lastCompletedAt?: Date;
+  lastSessionAt?: Date;
+  lastSessionStatus?: WorkoutSessionStatus;
+  lastSessionRemainingExercises?: number;
+  lastSessionSkippedExerciseIds?: string[];
   data?: Date;
   createdAt?: Date;
   updatedAt?: Date;
@@ -49,6 +57,7 @@ export interface AerobicWorkout {
   treino?: string;
   treinos?: string[];
   items?: AerobicWorkoutItem[];
+  personalId?: string;
   aquecimento?: string;
   voltaacalma?: string;
   observacoes?: string;
@@ -74,6 +83,8 @@ export interface WorkoutExercise {
   intervalo?: WorkoutMetricValue;
   observacao?: string;
   videoUrl?: string;
+  gifUrl?: string;
+  mediaType?: 'video' | 'gif';
 }
 
 export interface WorkoutRoutine {

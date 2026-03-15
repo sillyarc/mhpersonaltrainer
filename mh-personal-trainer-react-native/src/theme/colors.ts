@@ -1,4 +1,4 @@
-export const lightColors = {
+﻿export const lightColors = {
   primary: '#38B6FF',
   secondary: '#002A5D',
   tertiary: '#EE8B60',
@@ -36,7 +36,7 @@ export const lightColors = {
 };
 
 export const darkColors = {
-  primary: '#38B6FF',
+  primary: '#194784',
   secondary: '#002A5D',
   tertiary: '#EE8B60',
   alternate: '#262D34',
@@ -58,8 +58,8 @@ export const darkColors = {
   info: '#FFFFFF',
   customColor1: '#D7199E',
   customColor2: '#222222',
-  customColor3: '#38B6FF',
-  customColor4: '#002A5D',
+  customColor3: '#194784',
+  customColor4: '#0A2A52',
   customColor5: '#4D222222',
   customColor6: '#DADADA',
   border: '#262D34',
@@ -67,7 +67,7 @@ export const darkColors = {
   surface: '#1D2428',
   overlay: 'rgba(0, 0, 0, 0.7)',
   gradient: {
-    primary: ['#38B6FF', '#002A5D'],
+    primary: ['#194784', '#0A2A52'],
     secondary: ['#1D2428', '#14181B'],
   },
 };
@@ -78,3 +78,4 @@ export type ColorScheme = 'light' | 'dark';
 export const getColors = (scheme: ColorScheme): ThemeColors => {
   return scheme === 'dark' ? darkColors : lightColors;
 };
+

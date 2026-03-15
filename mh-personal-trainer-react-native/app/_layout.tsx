@@ -14,10 +14,12 @@ import { firestoreService } from '../src/services/firestoreService';
 import { registerForPushNotificationsAsync, savePushToken } from '../src/services/notifications';
 import { notifyAdminsUserOnline } from '../src/services/notificationCenter';
 import { useAppStore } from '../src/store/appStore';
-import { changeLanguage } from '../src/i18n';
+import { changeLanguage, normalizeSupportedLanguage } from '../src/i18n';
 import { useAuthStore } from '../src/store/authStore';
+import { STRIPE_PUBLISHABLE_KEY } from '../src/services/payments';
 import '../src/i18n';
 import { AppAlertHost } from '../src/components/common/AppAlertHost';
+import { FloatingHomeButton } from '../src/components/common';
 import { getThemeColors } from '../src/theme';
 
 const queryClient = new QueryClient({
@@ -47,13 +49,13 @@ const getWebAccessAllowed = (width: number) => {
 };
 
 export default function RootLayout() {
-  const { colorScheme, language } = useAppStore();
-  const { setUser, setLoading } = useAuthStore();
-  const stripePublishableKey = process.env.EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY || '';
+  const { colorScheme, language, setLanguage } = useAppStore();
+  const { user, setUser, setLoading } = useAuthStore();
   const webLandingUrl = (process.env.EXPO_PUBLIC_WEB_LANDING_URL || '').trim();
   const { width } = useWindowDimensions();
   const colors = getThemeColors(colorScheme);
   const notifiedUserRef = useRef<string | null>(null);
+  const syncedLanguageRef = useRef<string | null>(null);
 
   const allowWeb = useMemo(() => getWebAccessAllowed(width), [width]);
 
@@ -162,6 +164,28 @@ export default function RootLayout() {
   }, [language]);
 
   useEffect(() => {
+    const remoteLanguage = normalizeSupportedLanguage(user?.language);
+    if (remoteLanguage && remoteLanguage !== language) {
+      setLanguage(remoteLanguage);
+      return;
+    }
+
+    if (!user?.uid || remoteLanguage || !language) {
+      return;
+    }
+
+    const syncKey = `${user.uid}:${language}`;
+    if (syncedLanguageRef.current === syncKey) {
+      return;
+    }
+    syncedLanguageRef.current = syncKey;
+    void firestoreService.updateUserLanguage(user.uid, language).catch((error) => {
+      console.warn('Error syncing user language:', error);
+      syncedLanguageRef.current = null;
+    });
+  }, [user?.uid, user?.language, language, setLanguage]);
+
+  useEffect(() => {
     if (Platform.OS !== 'android') return;
 
     const applyImmersiveMode = async () => {
@@ -220,7 +244,7 @@ export default function RootLayout() {
     <GestureHandlerRootView style={{ flex: 1 }}>
       <SafeAreaProvider>
         <StripeProvider
-          publishableKey={stripePublishableKey}
+          publishableKey={STRIPE_PUBLISHABLE_KEY}
           urlScheme="mhpersonaltrainer"
           merchantIdentifier="merchant.com.mh.personaltrainer"
         >
@@ -234,6 +258,7 @@ export default function RootLayout() {
               <AppAlertHost />
               <View style={{ flex: 1, backgroundColor: colors.background }}>
                 <Stack
+                  key={language}
                   screenOptions={{
                     headerShown: false,
                     animation: 'slide_from_right',
@@ -244,6 +269,7 @@ export default function RootLayout() {
                   <Stack.Screen name="(auth)" options={{ headerShown: false }} />
                   <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
                 </Stack>
+                <FloatingHomeButton />
               </View>
             </PaperProvider>
           </QueryClientProvider>

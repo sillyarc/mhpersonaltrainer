@@ -4,6 +4,45 @@ import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 const _kLocaleStorageKey = '__locale_key__';
+const _kDefaultLanguageCode = 'pt';
+const _kSupportedLanguageCodes = ['pt', 'en', 'es', 'fr', 'de'];
+const _kLanguageAliases = <String, String>{
+  'pt': 'pt',
+  'ptbr': 'pt',
+  'pt_br': 'pt',
+  'pt-br': 'pt',
+  'portugues': 'pt',
+  'português': 'pt',
+  'portuguãªs': 'pt',
+  'english': 'en',
+  'en': 'en',
+  'enus': 'en',
+  'en_us': 'en',
+  'en-us': 'en',
+  'ingles': 'en',
+  'inglês': 'en',
+  'es': 'es',
+  'eses': 'es',
+  'es_es': 'es',
+  'es-es': 'es',
+  'espanol': 'es',
+  'español': 'es',
+  'espãnol': 'es',
+  'espaã±ol': 'es',
+  'fr': 'fr',
+  'frfr': 'fr',
+  'fr_fr': 'fr',
+  'fr-fr': 'fr',
+  'francais': 'fr',
+  'français': 'fr',
+  'franã§ais': 'fr',
+  'de': 'de',
+  'dede': 'de',
+  'de_de': 'de',
+  'de-de': 'de',
+  'deutsch': 'de',
+  'detstch': 'de',
+};
 
 class FFLocalizations {
   FFLocalizations(this.locale);
@@ -13,29 +52,93 @@ class FFLocalizations {
   static FFLocalizations of(BuildContext context) =>
       Localizations.of<FFLocalizations>(context, FFLocalizations)!;
 
-  static List<String> languages() => ['pt', 'en', 'es', 'fr', 'de'];
+  static List<String> languages() => List.unmodifiable(_kSupportedLanguageCodes);
+
+  static String? normalizeNullableLanguage(String? language) {
+    if (language == null) {
+      return null;
+    }
+
+    final trimmed = language.trim();
+    if (trimmed.isEmpty) {
+      return null;
+    }
+
+    final lower = trimmed.toLowerCase();
+    final collapsed = lower.replaceAll(' ', '');
+    final directAlias = _kLanguageAliases[collapsed];
+    if (directAlias != null) {
+      return directAlias;
+    }
+
+    final normalizedTag = lower.replaceAll('-', '_');
+    final normalizedAlias = _kLanguageAliases[normalizedTag];
+    if (normalizedAlias != null) {
+      return normalizedAlias;
+    }
+
+    final parts = normalizedTag.split('_').where((part) => part.isNotEmpty);
+    if (parts.isEmpty) {
+      return null;
+    }
+
+    final baseLanguage = parts.first;
+    if (_kSupportedLanguageCodes.contains(baseLanguage)) {
+      return baseLanguage;
+    }
+
+    return _kLanguageAliases[baseLanguage];
+  }
+
+  static String normalizeLanguage(String? language) =>
+      normalizeNullableLanguage(language) ?? _kDefaultLanguageCode;
+
+  static bool isSupportedLanguage(String? language) =>
+      normalizeNullableLanguage(language) != null;
 
   static late SharedPreferences _prefs;
   static Future initialize() async =>
       _prefs = await SharedPreferences.getInstance();
   static Future storeLocale(String locale) =>
-      _prefs.setString(_kLocaleStorageKey, locale);
+      _prefs.setString(_kLocaleStorageKey, normalizeLanguage(locale));
+
   static Locale? getStoredLocale() {
-    final locale = _prefs.getString(_kLocaleStorageKey);
-    return locale != null && locale.isNotEmpty ? createLocale(locale) : null;
+    final storedLocale = _prefs.getString(_kLocaleStorageKey);
+    final normalizedLocale = normalizeNullableLanguage(storedLocale);
+    if (normalizedLocale == null) {
+      return null;
+    }
+
+    if (storedLocale != normalizedLocale) {
+      _prefs.setString(_kLocaleStorageKey, normalizedLocale);
+    }
+
+    return createLocale(normalizedLocale);
   }
 
-  String get languageCode => locale.toString();
+  String get languageCode => normalizeLanguage(locale.toString());
+
   String? get languageShortCode =>
-      _languagesWithShortCode.contains(locale.toString())
-          ? '${locale.toString()}_short'
+      _languagesWithShortCode.contains(languageCode)
+          ? '${languageCode}_short'
           : null;
+
   int get languageIndex => languages().contains(languageCode)
       ? languages().indexOf(languageCode)
       : 0;
 
-  String getText(String key) =>
-      (kTranslationsMap[key] ?? {})[locale.toString()] ?? '';
+  String getText(String key) {
+    final translations = kTranslationsMap[key] ?? const <String, String>{};
+    return translations[locale.toString()] ??
+        translations[locale.languageCode] ??
+        translations[languageCode] ??
+        translations[_kDefaultLanguageCode] ??
+        translations['en'] ??
+        translations.values.firstWhere(
+          (value) => value.isNotEmpty,
+          orElse: () => '',
+        );
+  }
 
   String getVariableText({
     String? ptText = '',
@@ -130,20 +233,37 @@ class FFLocalizationsDelegate extends LocalizationsDelegate<FFLocalizations> {
   bool shouldReload(FFLocalizationsDelegate old) => false;
 }
 
-Locale createLocale(String language) => language.contains('_')
-    ? Locale.fromSubtags(
-        languageCode: language.split('_').first,
-        scriptCode: language.split('_').last,
-      )
-    : Locale(language);
+Locale createLocale(String language) {
+  final normalizedLanguage = FFLocalizations.normalizeLanguage(language);
+  final localeParts = language
+      .trim()
+      .replaceAll('-', '_')
+      .split('_')
+      .where((part) => part.isNotEmpty)
+      .toList();
+
+  if (localeParts.length <= 1) {
+    return Locale(normalizedLanguage);
+  }
+
+  final secondPart = localeParts[1];
+  if (secondPart.length == 4) {
+    return Locale.fromSubtags(
+      languageCode: normalizedLanguage,
+      scriptCode: secondPart,
+      countryCode: localeParts.length > 2 ? localeParts[2].toUpperCase() : null,
+    );
+  }
+
+  return Locale.fromSubtags(
+    languageCode: normalizedLanguage,
+    countryCode: secondPart.toUpperCase(),
+  );
+}
 
 bool _isSupportedLocale(Locale locale) {
-  final language = locale.toString();
-  return FFLocalizations.languages().contains(
-    language.endsWith('_')
-        ? language.substring(0, language.length - 1)
-        : language,
-  );
+  return FFLocalizations.isSupportedLanguage(locale.toString()) ||
+      FFLocalizations.isSupportedLanguage(locale.languageCode);
 }
 
 final kTranslationsMap = <Map<String, Map<String, String>>>[
