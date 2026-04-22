@@ -1,6 +1,7 @@
 import { initializeApp, getApps, getApp } from 'firebase/app';
 import { getFirestore } from 'firebase/firestore';
 import { getAuth } from 'firebase/auth';
+import { getDatabase } from 'firebase/database';
 import { getStorage } from 'firebase/storage';
 
 const pickEnv = (nextPublicKey: string, expoPublicKey: string) =>
@@ -13,6 +14,7 @@ const firebaseDefaults = {
   storageBucket: 'profissions-2746d.appspot.com',
   messagingSenderId: '733790875876',
   appId: '1:733790875876:web:57d4a8a1271e8bfec53cf1',
+  databaseURL: 'https://profissions-2746d-default-rtdb.firebaseio.com',
   measurementId: 'G-TX29X2CZTT',
 };
 
@@ -29,6 +31,9 @@ const firebaseConfig = {
     'EXPO_PUBLIC_FIREBASE_MESSAGING_SENDER_ID'
   ) || firebaseDefaults.messagingSenderId,
   appId: pickEnv('NEXT_PUBLIC_FIREBASE_APP_ID', 'EXPO_PUBLIC_FIREBASE_APP_ID') || firebaseDefaults.appId,
+  databaseURL:
+    pickEnv('NEXT_PUBLIC_FIREBASE_DATABASE_URL', 'EXPO_PUBLIC_FIREBASE_DATABASE_URL') ||
+    firebaseDefaults.databaseURL,
   measurementId:
     pickEnv('NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID', 'EXPO_PUBLIC_FIREBASE_MEASUREMENT_ID') ||
     firebaseDefaults.measurementId,
@@ -39,3 +44,4 @@ const app = getApps().length ? getApp() : initializeApp(firebaseConfig);
 export const db = getFirestore(app);
 export const auth = getAuth(app);
 export const storage = getStorage(app);
+export const realtimeDb = getDatabase(app);

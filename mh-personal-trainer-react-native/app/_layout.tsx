@@ -12,8 +12,16 @@ import { StripeProvider } from '@stripe/stripe-react-native';
 import { onAuthStateChanged } from 'firebase/auth';
 import { initializeFirebase } from '../src/services/firebase';
 import { firestoreService } from '../src/services/firestoreService';
+import {
+  clearMonitoringContext,
+  initializeMonitoringContext,
+  recordMonitoringError,
+  startMonitoringTrace,
+  type MonitoringTraceHandle,
+} from '../src/services/monitoring';
 import { registerForPushNotificationsAsync, savePushToken } from '../src/services/notifications';
 import { notifyAdminsUserOnline } from '../src/services/notificationCenter';
+import { attachPresence, detachPresence, updatePresenceAppState } from '../src/services/presence';
 import { useAppStore } from '../src/store/appStore';
 import { changeLanguage, normalizeSupportedLanguage } from '../src/i18n';
 import { useAuthStore } from '../src/store/authStore';
@@ -83,13 +91,14 @@ const parseInviteNavigationTarget = (url: string) => {
 
 export default function RootLayout() {
   const { colorScheme, language, setLanguage } = useAppStore();
-  const { user, setUser, setLoading } = useAuthStore();
+  const { user, isLoading, setUser, setLoading } = useAuthStore();
   const webLandingUrl = (process.env.EXPO_PUBLIC_WEB_LANDING_URL || '').trim();
   const { width } = useWindowDimensions();
   const colors = getThemeColors(colorScheme);
   const notifiedUserRef = useRef<string | null>(null);
   const syncedLanguageRef = useRef<string | null>(null);
   const lastHandledLinkRef = useRef<string | null>(null);
+  const authBootstrapTraceRef = useRef<MonitoringTraceHandle | null>(null);
 
   const allowWeb = useMemo(() => getWebAccessAllowed(width), [width]);
 
@@ -101,6 +110,40 @@ export default function RootLayout() {
   }, [allowWeb, webLandingUrl]);
 
   useEffect(() => {
+    let active = true;
+
+    void startMonitoringTrace('app_auth_bootstrap', {
+      platform: Platform.OS,
+    }).then((trace) => {
+      if (!active) {
+        void trace.stop();
+        return;
+      }
+      authBootstrapTraceRef.current = trace;
+    });
+
+    return () => {
+      active = false;
+      const trace = authBootstrapTraceRef.current;
+      authBootstrapTraceRef.current = null;
+      void trace?.stop();
+      void detachPresence();
+    };
+  }, []);
+
+  useEffect(() => {
+    if (isLoading || !authBootstrapTraceRef.current) {
+      return;
+    }
+
+    const trace = authBootstrapTraceRef.current;
+    authBootstrapTraceRef.current = null;
+    trace.putAttribute('auth_state', user?.uid ? 'authenticated' : 'anonymous');
+    trace.incrementMetric('auth_resolved', 1);
+    void trace.stop();
+  }, [isLoading, user?.uid]);
+
+  useEffect(() => {
     let unsubscribe: (() => void) | undefined;
     let auth: ReturnType<typeof initializeFirebase>['auth'] | null = null;
 
@@ -108,6 +151,10 @@ export default function RootLayout() {
       ({ auth } = initializeFirebase());
     } catch (error) {
       console.error('Firebase initialization failed:', error);
+      void recordMonitoringError(error, {
+        area: 'firebase_initialize',
+        attributes: { platform: Platform.OS },
+      });
       setUser(null);
       setLoading(false);
       return;
@@ -135,56 +182,71 @@ export default function RootLayout() {
     };
     
     unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
-      if (firebaseUser) {
-        try {
-          const userData = await firestoreService.getUserDocument(firebaseUser.uid);
-          
-          if (userData) {
-            setUser(userData);
-            await firestoreService.updateLastActiveTime(firebaseUser.uid);
-          } else {
-            setUser({
-              uid: firebaseUser.uid,
-              email: firebaseUser.email || '',
-              displayName: firebaseUser.displayName || '',
-              photoUrl: firebaseUser.photoURL || undefined,
-              createdTime: new Date(),
-              professorAccount: false,
-              admin: false,
-              assinatura: false,
-              planoChatGPT: false,
-              acessoSuspenso: false,
-            });
-          }
-          notifyAppOpen(firebaseUser, userData);
-          registerForPushNotificationsAsync()
-            .then((token) => {
-              if (token) {
-                savePushToken(firebaseUser.uid, token);
-              }
-            })
-            .catch(() => {});
-        } catch (error) {
-          console.error('Error fetching user data:', error);
-          setUser({
+      const authStateTrace = await startMonitoringTrace('auth_state_change', {
+        has_user: !!firebaseUser,
+      });
+
+      try {
+        if (firebaseUser) {
+          const fallbackUser = {
             uid: firebaseUser.uid,
             email: firebaseUser.email || '',
             displayName: firebaseUser.displayName || '',
             photoUrl: firebaseUser.photoURL || undefined,
             createdTime: new Date(),
             professorAccount: false,
-              admin: false,
-              assinatura: false,
-              planoChatGPT: false,
-              acessoSuspenso: false,
+            admin: false,
+            assinatura: false,
+            planoChatGPT: false,
+            acessoSuspenso: false,
+          };
+
+          try {
+            const userData = await firestoreService.getUserDocument(firebaseUser.uid);
+
+            if (userData) {
+              authStateTrace.putAttribute(
+                'role',
+                userData.admin ? 'admin' : userData.professorAccount ? 'professor' : 'aluno'
+              );
+              authStateTrace.incrementMetric('user_doc_loaded', 1);
+              setUser(userData);
+              await firestoreService.updateLastActiveTime(firebaseUser.uid);
+            } else {
+              authStateTrace.putAttribute('role', 'fallback');
+              setUser(fallbackUser);
+            }
+
+            notifyAppOpen(firebaseUser, userData);
+            registerForPushNotificationsAsync()
+              .then((token) => {
+                if (token) {
+                  savePushToken(firebaseUser.uid, token);
+                }
+              })
+              .catch((error) => {
+                void recordMonitoringError(error, {
+                  area: 'push_register',
+                  attributes: { uid: firebaseUser.uid },
+                });
+              });
+          } catch (error) {
+            console.error('Error fetching user data:', error);
+            await recordMonitoringError(error, {
+              area: 'auth_fetch_user_data',
+              attributes: { uid: firebaseUser.uid },
             });
-          notifyAppOpen(firebaseUser);
+            setUser(fallbackUser);
+            notifyAppOpen(firebaseUser);
+          }
+          setLoading(false);
+        } else {
+          setUser(null);
+          setLoading(false);
+          notifiedUserRef.current = null;
         }
-        setLoading(false);
-      } else {
-        setUser(null);
-        setLoading(false);
-        notifiedUserRef.current = null;
+      } finally {
+        await authStateTrace.stop();
       }
     });
     
@@ -196,6 +258,24 @@ export default function RootLayout() {
       changeLanguage(language);
     }
   }, [language]);
+
+  useEffect(() => {
+    if (!user?.uid) {
+      void clearMonitoringContext();
+      void detachPresence();
+      return;
+    }
+
+    void initializeMonitoringContext(user);
+    void attachPresence(user);
+  }, [
+    user?.uid,
+    user?.admin,
+    user?.professorAccount,
+    user?.assinatura,
+    user?.displayName,
+    user?.email,
+  ]);
 
   useEffect(() => {
     const remoteLanguage = normalizeSupportedLanguage(user?.language);
@@ -218,6 +298,14 @@ export default function RootLayout() {
       syncedLanguageRef.current = null;
     });
   }, [user?.uid, user?.language, language, setLanguage]);
+
+  useEffect(() => {
+    const appStateSubscription = AppState.addEventListener('change', (state) => {
+      void updatePresenceAppState(state);
+    });
+
+    return () => appStateSubscription.remove();
+  }, []);
 
   useEffect(() => {
     if (Platform.OS !== 'android') return;

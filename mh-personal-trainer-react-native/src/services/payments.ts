@@ -1,4 +1,5 @@
 import Constants from 'expo-constants';
+import { recordMonitoringError, startMonitoringTrace } from './monitoring';
 
 type StripeExtraConfig = {
   publishableKey?: string;
@@ -300,6 +301,10 @@ export async function createPaymentIntent(
   currency: string = 'brl',
   customerId?: string
 ): Promise<{ data: PaymentIntent | null; error: string | null }> {
+  const trace = await startMonitoringTrace('stripe_create_payment_intent', {
+    currency,
+    has_customer: !!customerId,
+  });
   try {
     if (!API_BASE_URL) {
       throw new Error('API URL not configured');
@@ -319,7 +324,13 @@ export async function createPaymentIntent(
     }
     return { data, error: null };
   } catch (error: any) {
+    await recordMonitoringError(error, {
+      area: 'stripe_create_payment_intent',
+      attributes: { currency, has_customer: !!customerId },
+    });
     return { data: null, error: error.message };
+  } finally {
+    await trace.stop();
   }
 }
 
@@ -329,6 +340,10 @@ export async function createSubscription(
   name: string,
   priceId: string
 ): Promise<{ data: SubscriptionResult | null; error: string | null }> {
+  const trace = await startMonitoringTrace('stripe_create_subscription', {
+    has_user: !!userId,
+    has_price: !!priceId,
+  });
   try {
     if (!STRIPE_FUNCTIONS_BASE_URL && !API_BASE_URL) {
       throw new Error('API URL not configured');
@@ -358,7 +373,13 @@ export async function createSubscription(
     }
     return { data, error: null };
   } catch (error: any) {
+    await recordMonitoringError(error, {
+      area: 'stripe_create_subscription',
+      attributes: { user_id: userId, price_id: priceId },
+    });
     return { data: null, error: error.message };
+  } finally {
+    await trace.stop();
   }
 }
 
@@ -367,6 +388,9 @@ export async function createSetupIntent(
   name: string,
   customerId?: string
 ): Promise<{ data: SetupIntentResult | null; error: string | null }> {
+  const trace = await startMonitoringTrace('stripe_create_setup_intent', {
+    has_customer: !!customerId,
+  });
   try {
     if (!STRIPE_FUNCTIONS_BASE_URL) {
       throw new Error('Stripe functions URL not configured');
@@ -391,7 +415,13 @@ export async function createSetupIntent(
 
     return firstAttempt;
   } catch (error: any) {
+    await recordMonitoringError(error, {
+      area: 'stripe_create_setup_intent',
+      attributes: { has_customer: !!customerId },
+    });
     return { data: null, error: error.message };
+  } finally {
+    await trace.stop();
   }
 }
 
@@ -456,6 +486,10 @@ export async function fetchStripeConnectStatus(
   userId: string,
   accountId?: string
 ): Promise<{ data: StripeConnectStatus | null; error: string | null }> {
+  const trace = await startMonitoringTrace('stripe_connect_status', {
+    has_user: !!userId,
+    has_account: !!accountId,
+  });
   try {
     if (!STRIPE_FUNCTIONS_BASE_URL && !API_BASE_URL) {
       throw new Error('API URL not configured');
@@ -489,13 +523,23 @@ export async function fetchStripeConnectStatus(
     };
     return { data: normalized, error: null };
   } catch (error: any) {
+    await recordMonitoringError(error, {
+      area: 'stripe_connect_status',
+      attributes: { user_id: userId, account_id: accountId || '' },
+    });
     return { data: null, error: error.message };
+  } finally {
+    await trace.stop();
   }
 }
 
 export async function submitStripeConnectOnboarding(
   payload: StripeConnectOnboardingPayload
 ): Promise<{ data: StripeConnectOnboardingResult | null; error: string | null }> {
+  const trace = await startMonitoringTrace('stripe_connect_onboarding', {
+    has_user: !!payload.userId,
+    has_account: !!payload.accountId,
+  });
   try {
     if (!API_BASE_URL && !STRIPE_FUNCTIONS_BASE_URL) {
       throw new Error('API URL not configured');
@@ -545,7 +589,16 @@ export async function submitStripeConnectOnboarding(
       error: null,
     };
   } catch (error: any) {
+    await recordMonitoringError(error, {
+      area: 'stripe_connect_onboarding',
+      attributes: {
+        user_id: payload.userId || '',
+        account_id: payload.accountId || '',
+      },
+    });
     return { data: null, error: error.message };
+  } finally {
+    await trace.stop();
   }
 }
 
@@ -562,6 +615,11 @@ export async function createStripeCheckoutSession(payload: {
   successUrl?: string;
   cancelUrl?: string;
 }): Promise<{ data: StripeCheckoutResult | null; error: string | null }> {
+  const trace = await startMonitoringTrace('stripe_checkout_session', {
+    has_student: !!payload.studentId,
+    has_personal: !!payload.personalId,
+    currency: payload.currency || 'brl',
+  });
   try {
     if (!STRIPE_FUNCTIONS_BASE_URL && !API_BASE_URL) {
       throw new Error('API URL not configured');
@@ -605,7 +663,17 @@ export async function createStripeCheckoutSession(payload: {
       error: null,
     };
   } catch (error: any) {
+    await recordMonitoringError(error, {
+      area: 'stripe_checkout_session',
+      attributes: {
+        student_id: payload.studentId,
+        personal_id: payload.personalId,
+        payment_id: payload.paymentId,
+      },
+    });
     return { data: null, error: error.message };
+  } finally {
+    await trace.stop();
   }
 }
 

@@ -85,3 +85,6 @@ exports.consumeMobileAuthHandoff = mobileAuthHandoff.consumeMobileAuthHandoff;
 const notificationAiDispatcher = require("./notification_ai_dispatcher.js");
 exports.runNotificationAssistantAutoDispatch =
   notificationAiDispatcher.runNotificationAssistantAutoDispatch;
+
+const presenceStatus = require("./presence_status.js");
+exports.mirrorPresenceStatus = presenceStatus.mirrorPresenceStatus;

@@ -27,6 +27,7 @@
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#1a1a2e"
       },
+      "googleServicesFile": "./android/app/google-services.json",
       "backgroundColor": "#1D2428",
       "softwareKeyboardLayoutMode": "resize",
       "package": "com.mycompany.mfitfitnessapp",
@@ -56,7 +57,19 @@
       "bundler": "metro"
     },
     "plugins": [
+      "expo-dev-client",
       "expo-router",
+      [
+        "expo-build-properties",
+        {
+          "android": {
+            "minSdkVersion": 23
+          },
+          "ios": {
+            "deploymentTarget": "15.0"
+          }
+        }
+      ],
       "expo-secure-store",
       "expo-image-picker",
       [
@@ -88,7 +101,10 @@
           "iosUrlScheme": "com.googleusercontent.apps.733790875876-bdhb055p2ng79osu3cgr9dr9cft01li8"
         }
       ],
-      "@react-native-community/datetimepicker"
+      "@react-native-community/datetimepicker",
+      "@react-native-firebase/app",
+      "@react-native-firebase/crashlytics",
+      "@react-native-firebase/perf"
     ],
     "experiments": {
       "typedRoutes": true
@@ -102,7 +118,8 @@
         "projectId": "profissions-2746d",
         "storageBucket": "profissions-2746d.appspot.com",
         "messagingSenderId": "733790875876",
-        "appId": "1:733790875876:web:57d4a8a1271e8bfec53cf1"
+        "appId": "1:733790875876:web:57d4a8a1271e8bfec53cf1",
+        "databaseURL": "https://profissions-2746d-default-rtdb.firebaseio.com"
       },
       "google": {
         "expoClientId": "733790875876-2lq1n2oqs2l859s9ivh41okvk491ph38.apps.googleusercontent.com",

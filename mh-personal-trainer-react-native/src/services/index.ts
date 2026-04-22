@@ -1,4 +1,6 @@
 export * from './firebase';
+export * from './monitoring';
+export * from './presence';
 export * from './database';
 export * from './ai';
 export * from './workouts';

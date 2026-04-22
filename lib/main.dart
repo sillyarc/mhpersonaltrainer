@@ -1,3 +1,6 @@
+import 'dart:async';
+import 'dart:ui';
+
 import 'package:provider/provider.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
@@ -17,11 +20,14 @@ import 'flutter_flow/internationalization.dart';
 import 'package:flutter_spinkit/flutter_spinkit.dart';
 import 'package:flutter/foundation.dart';
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
+import 'package:firebase_performance/firebase_performance.dart';
 import 'flutter_flow/firebase_app_check_util.dart';
 import 'flutter_flow/nav/nav.dart';
 import 'index.dart';
 
 import 'backend/stripe/payment_manager.dart';
+
+Trace? _startupTrace;
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -40,14 +46,40 @@ void main() async {
   await initializeStripe();
   if (!kIsWeb) {
     FlutterError.onError = FirebaseCrashlytics.instance.recordFlutterFatalError;
+    PlatformDispatcher.instance.onError = (error, stack) {
+      FirebaseCrashlytics.instance.recordError(error, stack, fatal: true);
+      return true;
+    };
+    await FirebaseCrashlytics.instance.setCustomKey(
+      'platform',
+      defaultTargetPlatform.toString().split('.').last,
+    );
+    await FirebaseCrashlytics.instance
+        .setCustomKey('release_mode', kReleaseMode);
+    _startupTrace = FirebasePerformance.instance.newTrace('app_startup');
+    await _startupTrace?.start();
   }
 
   await initializeFirebaseAppCheck();
 
-  runApp(ChangeNotifierProvider(
-    create: (context) => appState,
-    child: MyApp(),
-  ));
+  runZonedGuarded(
+    () {
+      runApp(ChangeNotifierProvider(
+        create: (context) => appState,
+        child: MyApp(),
+      ));
+    },
+    (error, stack) async {
+      if (kIsWeb) {
+        FlutterError.presentError(
+          FlutterErrorDetails(exception: error, stack: stack),
+        );
+        return;
+      }
+      await FirebaseCrashlytics.instance
+          .recordError(error, stack, fatal: true);
+    },
+  );
 }
 
 class MyApp extends StatefulWidget {
@@ -107,6 +139,14 @@ class _MyAppState extends State<MyApp> {
       Duration(milliseconds: isWeb ? 0 : 1000),
       () => _appStateNotifier.stopShowingSplashImage(),
     );
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      final startupTrace = _startupTrace;
+      if (startupTrace == null) {
+        return;
+      }
+      _startupTrace = null;
+      await startupTrace.stop();
+    });
   }
 
   @override

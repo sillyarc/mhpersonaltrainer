@@ -22,6 +22,7 @@ import { User } from '../types/user';
 import { fetchEvaluations } from './evaluations';
 import { isPremiumUserRecord } from './ai';
 import { normalizeSupportedLanguage } from '../i18n';
+import { recordMonitoringError, startMonitoringTrace } from './monitoring';
 
 export interface Treino {
   id: string;
@@ -199,6 +200,7 @@ const normalizeHorario = (value: any) => {
 };
 
 async function getUserDocument(uid: string): Promise<User | null> {
+  const trace = await startMonitoringTrace('fs_get_user_document', { has_uid: !!uid });
   try {
     const db = getFirebaseDb();
     const userDoc = await getDoc(doc(db, 'users', uid));
@@ -226,7 +228,7 @@ async function getUserDocument(uid: string): Promise<User | null> {
       planoChatGPT: toBool(data.planoChatGPT),
       acessoSuspenso: toBool(data.acessoSuspenso),
       codigoPersonal: data.codigoPersonal,
-      personalAccountId: data.personalAccount?.id,
+      personalAccountId: data.personalAccount?.id || data.personalAccountId,
       nameDoSeuPersonal: data.nameDoSeuPersonal,
       objetivoNoApp: data.objetivoNoApp,
       experiencia: data.expericencia,
@@ -266,7 +268,13 @@ async function getUserDocument(uid: string): Promise<User | null> {
     };
   } catch (error) {
     console.error('Error fetching user document:', error);
+    await recordMonitoringError(error, {
+      area: 'firestore_get_user_document',
+      attributes: { uid },
+    });
     return null;
+  } finally {
+    await trace.stop();
   }
 }
 
@@ -353,6 +361,7 @@ async function getCodigoPersonal(uid: string): Promise<string | null> {
 }
 
 async function getAlunosDoPersonal(uid: string): Promise<Aluno[]> {
+  const trace = await startMonitoringTrace('fs_get_personal_students', { has_uid: !!uid });
   try {
     const db = getFirebaseDb();
     
@@ -459,7 +468,13 @@ async function getAlunosDoPersonal(uid: string): Promise<Aluno[]> {
     return Array.from(alunosMap.values());
   } catch (error) {
     console.error('Error fetching alunos:', error);
+    await recordMonitoringError(error, {
+      area: 'firestore_get_personal_students',
+      attributes: { uid },
+    });
     return [];
+  } finally {
+    await trace.stop();
   }
 }
 
@@ -765,6 +780,9 @@ async function getPersonalStudentCapacityByCode(
   code: number | string,
   options?: { excludeUserId?: string }
 ): Promise<PersonalStudentCapacity> {
+  const trace = await startMonitoringTrace('fs_personal_capacity', {
+    has_code: String(code || '').trim().length > 0,
+  });
   try {
     const db = getFirebaseDb();
     const profile = await getPersonalProfileByCode(code);
@@ -833,6 +851,10 @@ async function getPersonalStudentCapacityByCode(
     };
   } catch (error) {
     console.error('Error checking personal student capacity:', error);
+    await recordMonitoringError(error, {
+      area: 'firestore_personal_capacity',
+      attributes: { code: String(code || '') },
+    });
     return {
       allowed: false,
       premium: false,
@@ -843,6 +865,8 @@ async function getPersonalStudentCapacityByCode(
       personalName: 'Personal',
       reason: 'personal_not_found',
     };
+  } finally {
+    await trace.stop();
   }
 }
 
@@ -948,6 +972,7 @@ async function getDashboardStatsForPersonal(uid: string, alunos: Aluno[]): Promi
 }
 
 async function updateLastActiveTime(uid: string): Promise<void> {
+  const trace = await startMonitoringTrace('fs_update_last_active', { has_uid: !!uid });
   try {
     const db = getFirebaseDb();
     await updateDoc(doc(db, 'users', uid), {
@@ -955,6 +980,12 @@ async function updateLastActiveTime(uid: string): Promise<void> {
     });
   } catch (error) {
     console.error('Error updating last active time:', error);
+    await recordMonitoringError(error, {
+      area: 'firestore_update_last_active',
+      attributes: { uid },
+    });
+  } finally {
+    await trace.stop();
   }
 }
 
@@ -984,6 +1015,8 @@ async function unlinkStudentFromPersonal(personalId: string, studentId: string):
       updates.codigoPersonal = deleteField();
       updates.personalVinculadoEm = deleteField();
       updates.nameDoSeuPersonal = deleteField();
+      updates.personalAccount = deleteField();
+      updates.personalAccountId = deleteField();
     }
     if (Object.keys(updates).length) {
       await updateDoc(doc(db, 'users', studentId), updates);
@@ -1034,6 +1067,10 @@ async function updateStudentStatus(
   active: boolean,
   options?: UpdateStudentStatusOptions
 ): Promise<void> {
+  const trace = await startMonitoringTrace('fs_update_student_status', {
+    has_uid: !!uid,
+    active,
+  });
   try {
     const db = getFirebaseDb();
     const isPersonalDeactivation =
@@ -1049,7 +1086,13 @@ async function updateStudentStatus(
     });
   } catch (error) {
     console.error('Error updating student status:', error);
+    await recordMonitoringError(error, {
+      area: 'firestore_update_student_status',
+      attributes: { uid, active },
+    });
     throw error;
+  } finally {
+    await trace.stop();
   }
 }
 

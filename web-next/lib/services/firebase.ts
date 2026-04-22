@@ -1,8 +1,9 @@
 import { initializeApp, getApps, getApp, type FirebaseApp } from 'firebase/app';
 import { getAuth, type Auth } from 'firebase/auth';
+import { getDatabase, type Database } from 'firebase/database';
 import { getFirestore, type Firestore } from 'firebase/firestore';
 import type { FirebaseStorage } from 'firebase/storage';
-import { auth, db, storage } from '../firebaseClient';
+import { auth, db, realtimeDb, storage } from '../firebaseClient';
 
 const pickEnv = (nextPublicKey: string, expoPublicKey: string) =>
   process.env[nextPublicKey] || process.env[expoPublicKey] || '';
@@ -14,6 +15,7 @@ const firebaseDefaults = {
   storageBucket: 'profissions-2746d.appspot.com',
   messagingSenderId: '733790875876',
   appId: '1:733790875876:web:57d4a8a1271e8bfec53cf1',
+  databaseURL: 'https://profissions-2746d-default-rtdb.firebaseio.com',
   measurementId: 'G-TX29X2CZTT',
 };
 
@@ -30,6 +32,9 @@ const firebaseConfig = {
     'EXPO_PUBLIC_FIREBASE_MESSAGING_SENDER_ID'
   ) || firebaseDefaults.messagingSenderId,
   appId: pickEnv('NEXT_PUBLIC_FIREBASE_APP_ID', 'EXPO_PUBLIC_FIREBASE_APP_ID') || firebaseDefaults.appId,
+  databaseURL:
+    pickEnv('NEXT_PUBLIC_FIREBASE_DATABASE_URL', 'EXPO_PUBLIC_FIREBASE_DATABASE_URL') ||
+    firebaseDefaults.databaseURL,
   measurementId:
     pickEnv('NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID', 'EXPO_PUBLIC_FIREBASE_MEASUREMENT_ID') ||
     firebaseDefaults.measurementId,
@@ -66,7 +71,12 @@ export function getFirebaseStorage(): FirebaseStorage {
   return storage;
 }
 
-export { auth, db, storage };
+export function getFirebaseDatabase(): Database {
+  if (!app) initializeFirebase();
+  return realtimeDb;
+}
+
+export { auth, db, realtimeDb, storage };
 
 export function getFirebaseApp(): FirebaseApp {
   if (!app) initializeFirebase();

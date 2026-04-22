@@ -1,10 +1,11 @@
 'use client';
 
-import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
+import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import {
   GoogleAuthProvider,
   OAuthProvider,
   createUserWithEmailAndPassword,
+  deleteUser,
   onAuthStateChanged,
   sendPasswordResetEmail,
   signInWithEmailAndPassword,
@@ -16,6 +17,7 @@ import {
 } from 'firebase/auth';
 import {
   collection,
+  deleteDoc,
   doc,
   getDoc,
   getDocs,
@@ -24,14 +26,32 @@ import {
   setDoc,
   updateDoc,
   where,
+  writeBatch,
   serverTimestamp,
 } from 'firebase/firestore';
 import { auth, db } from './firebaseClient';
-import type { AuthState, User, UserRole } from './types/user';
+import type { AuthState, SupportedLanguage, User, UserRole } from './types/user';
 import { firestoreService } from './services/firestoreService';
 import { notifyUserLoginSecurityAlert } from './services/notificationCenter';
+import { isPremiumUserRecord, normalizeSubscriptionStatus } from './services/aiAccess';
+import { getSubscriptionStatus } from './services/payments';
 import { normalizeEmailInput } from './utils/email';
 import { fetchInvitePersonalCapacity } from './services/inviteService';
+import {
+  DEFAULT_LANGUAGE,
+  normalizeLanguage,
+  readStoredLanguage,
+  persistPreferredLanguage,
+  syncPreferredLanguage,
+} from './language';
+import {
+  clearWebMonitoringContext,
+  logWebMonitoringError,
+  setWebMonitoringContext,
+  startWebMonitoringTrace,
+  type WebMonitoringTraceHandle,
+} from './services/monitoring';
+import { attachWebPresence, detachWebPresence } from './services/presence';
 
 interface AuthContextValue extends AuthState {
   login: (email: string, password: string) => Promise<{ success: boolean; error?: string }>;
@@ -45,11 +65,35 @@ interface AuthContextValue extends AuthState {
     additionalData?: Partial<User>
   ) => Promise<{ success: boolean; error?: string }>;
   logout: () => Promise<{ success: boolean; error?: string }>;
+  deleteAccount: () => Promise<{ success: boolean; error?: string }>;
   resetPassword: (email: string) => Promise<{ success: boolean; error?: string }>;
+  setPreferredLanguage: (language: SupportedLanguage) => Promise<{ success: boolean; error?: string }>;
   refreshUser: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);
+const AUTH_SNAPSHOT_KEY = 'mh-auth-snapshot-v1';
+const AUTH_RESOLVE_TIMEOUT_MS = 6000;
+
+type StoredAuthSnapshot = {
+  uid: string;
+  email: string;
+  displayName: string;
+  photoUrl?: string;
+  createdTime?: string;
+  lastActiveTime?: string;
+  professorAccount?: boolean;
+  admin?: boolean;
+  academyAccount?: boolean;
+  assinatura?: boolean;
+  tipoDeAssinatura?: string;
+  planoChatGPT?: boolean;
+  acessoSuspenso?: boolean;
+  codigoPersonal?: number;
+  codigoAcademia?: number | string;
+  language?: SupportedLanguage;
+  role: UserRole | null;
+};
 
 const toBool = (value: any) => value === true || value === 'true' || value === 1;
 const ADMIN_EMAIL_DOMAIN = 'admin.com';
@@ -168,6 +212,44 @@ const generateUniqueCode = async (field: 'codigoPersonal' | 'codigoAcademia', di
   return generateNumericCode(digits);
 };
 
+const mergeDerivedStripeSubscription = (user: User, subscription: any): User => {
+  if (!subscription || subscription.status === 'not_found') return user;
+
+  const subscriptionStatus = String(
+    subscription.status || subscription.subscriptionStatus || ''
+  ).trim();
+  const normalizedStatus = normalizeSubscriptionStatus(subscriptionStatus);
+  const hasStripePremium = ['active', 'trialing', 'past_due'].includes(normalizedStatus);
+  const planName =
+    subscription.planName ||
+    subscription.plan?.nickname ||
+    subscription.plan ||
+    subscription.price?.nickname ||
+    user.tipoDeAssinatura;
+
+  if (
+    !subscriptionStatus &&
+    !subscription.subscriptionId &&
+    !subscription.customerId &&
+    !planName
+  ) {
+    return user;
+  }
+
+  return {
+    ...user,
+    assinatura: hasStripePremium,
+    planoChatGPT: hasStripePremium,
+    tipoDeAssinatura: planName,
+    subscribeId: subscription.subscriptionId || user.subscribeId,
+    customer: subscription.customerId || user.customer,
+    stripeSubscriptionStatus: subscriptionStatus || user.stripeSubscriptionStatus,
+    subscriptionStatus: subscriptionStatus || user.subscriptionStatus,
+    statusAssinatura: subscriptionStatus || user.statusAssinatura,
+    assinaturaStatus: subscriptionStatus || user.assinaturaStatus,
+  };
+};
+
 const resolveRole = (user: User | null): UserRole | null => {
   if (!user) return null;
   if (user.admin && isAdminEmail(user.email)) return 'admin';
@@ -176,11 +258,101 @@ const resolveRole = (user: User | null): UserRole | null => {
   return 'aluno';
 };
 
+const buildBootstrapUser = (firebaseUser: FirebaseUser, seed?: Partial<User> | null): User => ({
+  uid: firebaseUser.uid,
+  email: seed?.email || firebaseUser.email || '',
+  displayName:
+    seed?.displayName ||
+    firebaseUser.displayName ||
+    (firebaseUser.email ? firebaseUser.email.split('@')[0] : 'Usuario'),
+  photoUrl: seed?.photoUrl || firebaseUser.photoURL || undefined,
+  language: normalizeLanguage(seed?.language, readStoredLanguage() || DEFAULT_LANGUAGE),
+  createdTime: seed?.createdTime || new Date(),
+  lastActiveTime: seed?.lastActiveTime,
+  professorAccount: Boolean(seed?.professorAccount),
+  admin: Boolean(seed?.admin),
+  academyAccount: Boolean(seed?.academyAccount),
+  assinatura: Boolean(seed?.assinatura),
+  tipoDeAssinatura: seed?.tipoDeAssinatura,
+  planoChatGPT: Boolean(seed?.planoChatGPT),
+  acessoSuspenso: Boolean(seed?.acessoSuspenso),
+  codigoPersonal: seed?.codigoPersonal,
+  codigoAcademia: seed?.codigoAcademia,
+});
+
+const persistAuthSnapshot = (user: User | null, role?: UserRole | null) => {
+  if (typeof window === 'undefined') return;
+  try {
+    if (!user) {
+      window.localStorage.removeItem(AUTH_SNAPSHOT_KEY);
+      return;
+    }
+    const snapshot: StoredAuthSnapshot = {
+      uid: user.uid,
+      email: user.email,
+      displayName: user.displayName,
+      photoUrl: user.photoUrl,
+      createdTime: user.createdTime?.toISOString?.(),
+      lastActiveTime: user.lastActiveTime?.toISOString?.(),
+      professorAccount: user.professorAccount,
+      admin: user.admin,
+      academyAccount: user.academyAccount,
+      assinatura: user.assinatura,
+      tipoDeAssinatura: user.tipoDeAssinatura,
+      planoChatGPT: user.planoChatGPT,
+      acessoSuspenso: user.acessoSuspenso,
+      codigoPersonal: user.codigoPersonal,
+      codigoAcademia: user.codigoAcademia,
+      language: normalizeLanguage(user.language, readStoredLanguage() || DEFAULT_LANGUAGE),
+      role: role !== undefined ? role : resolveRole(user),
+    };
+    window.localStorage.setItem(AUTH_SNAPSHOT_KEY, JSON.stringify(snapshot));
+  } catch (error) {
+    // Ignore local persistence issues and keep auth flow moving.
+  }
+};
+
+const readAuthSnapshot = (uid?: string): { user: User; role: UserRole | null } | null => {
+  if (typeof window === 'undefined') return null;
+  try {
+    const raw = window.localStorage.getItem(AUTH_SNAPSHOT_KEY);
+    if (!raw) return null;
+    const snapshot = JSON.parse(raw) as StoredAuthSnapshot;
+    if (!snapshot?.uid || (uid && snapshot.uid !== uid)) {
+      return null;
+    }
+    return {
+      user: {
+        uid: snapshot.uid,
+        email: snapshot.email || '',
+        displayName: snapshot.displayName || '',
+        photoUrl: snapshot.photoUrl,
+        language: normalizeLanguage(snapshot.language, readStoredLanguage() || DEFAULT_LANGUAGE),
+        createdTime: snapshot.createdTime ? new Date(snapshot.createdTime) : new Date(),
+        lastActiveTime: snapshot.lastActiveTime ? new Date(snapshot.lastActiveTime) : undefined,
+        professorAccount: Boolean(snapshot.professorAccount),
+        admin: Boolean(snapshot.admin),
+        academyAccount: Boolean(snapshot.academyAccount),
+        assinatura: Boolean(snapshot.assinatura),
+        tipoDeAssinatura: snapshot.tipoDeAssinatura,
+        planoChatGPT: Boolean(snapshot.planoChatGPT),
+        acessoSuspenso: Boolean(snapshot.acessoSuspenso),
+        codigoPersonal: snapshot.codigoPersonal,
+        codigoAcademia: snapshot.codigoAcademia,
+      },
+      role: snapshot.role ?? null,
+    };
+  } catch (error) {
+    return null;
+  }
+};
+
 const mapUserData = (uid: string, data: Record<string, any>): User => ({
   uid,
   email: data.email || '',
   displayName: data.display_name || '',
   photoUrl: data.photo_url,
+  language: normalizeLanguage(data.language || data.locale || data.idioma, readStoredLanguage() || DEFAULT_LANGUAGE),
   phoneNumber: data.phone_number,
   birthday: data.birthday,
   genero: data.genero,
@@ -252,6 +424,7 @@ const ensureUserDocument = async (
       email,
       display_name: displayName,
       photo_url: photoUrl,
+      language: readStoredLanguage() || DEFAULT_LANGUAGE,
       created_time: serverTimestamp(),
       last_active_time: serverTimestamp(),
       professorAccount: false,
@@ -269,6 +442,7 @@ const ensureUserDocument = async (
   if (!data?.display_name && displayName) updates.display_name = displayName;
   if (!data?.photo_url && photoUrl) updates.photo_url = photoUrl;
   if (!data?.email && email) updates.email = email;
+  if (!data?.language) updates.language = readStoredLanguage() || DEFAULT_LANGUAGE;
   const shouldBeAdmin = isAdminEmail(email);
   if (shouldBeAdmin && !toBool(data?.admin)) updates.admin = true;
   if (!shouldBeAdmin && toBool(data?.admin)) updates.admin = false;
@@ -296,6 +470,22 @@ const fetchUserDoc = async (uid: string): Promise<User | null> => {
   return user;
 };
 
+const resolveStripeBackedUser = async (user: User | null): Promise<User | null> => {
+  if (!user?.uid) return user;
+
+  try {
+    const result = await getSubscriptionStatus(user.uid, {
+      email: user.email,
+      subscriptionId: user.subscribeId,
+      customerId: user.customer,
+    });
+    if (!result.data) return user;
+    return mergeDerivedStripeSubscription(user, result.data);
+  } catch {
+    return user;
+  }
+};
+
 const getAuthErrorMessage = (code: string): string => {
   const messages: Record<string, string> = {
     'auth/email-already-in-use': 'Este email ja esta em uso.',
@@ -309,6 +499,8 @@ const getAuthErrorMessage = (code: string): string => {
     'auth/network-request-failed': 'Erro de conexao. Verifique sua internet.',
     'auth/popup-closed-by-user': 'Janela de login foi fechada.',
     'auth/popup-blocked': 'Pop-up bloqueado pelo navegador.',
+    'auth/requires-recent-login':
+      'Por seguranca, entre novamente na conta antes de excluir o perfil.',
   };
   return messages[code] || 'Ocorreu um erro. Tente novamente.';
 };
@@ -320,13 +512,29 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     isLoading: true,
     role: null,
   });
+  const bootstrapTraceRef = useRef<WebMonitoringTraceHandle | null>(null);
 
-  const setUserState = useCallback((user: User | null) => {
+  const setUserState = useCallback((user: User | null, options?: { roleOverride?: UserRole | null }) => {
+    const normalizedUser = user
+      ? {
+          ...user,
+          language: syncPreferredLanguage(user.language),
+        }
+      : user;
+    const nextRole = normalizedUser
+      ? options && 'roleOverride' in options
+        ? options.roleOverride ?? null
+        : resolveRole(normalizedUser)
+      : null;
+    if (!normalizedUser) {
+      syncPreferredLanguage(readStoredLanguage() || DEFAULT_LANGUAGE);
+    }
+    persistAuthSnapshot(normalizedUser, nextRole);
     setState({
-      user,
-      isAuthenticated: Boolean(user),
+      user: normalizedUser,
+      isAuthenticated: Boolean(normalizedUser),
       isLoading: false,
-      role: resolveRole(user),
+      role: nextRole,
     });
   }, []);
 
@@ -335,20 +543,94 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     if (!current?.uid) return;
     const userData = await fetchUserDoc(current.uid);
     if (userData) {
-      setUserState(userData);
+      setUserState(await resolveStripeBackedUser(userData));
     }
   }, [setUserState]);
 
   useEffect(() => {
     let mounted = true;
-    const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
+
+    void startWebMonitoringTrace('web_auth_bootstrap', {
+      surface: 'auth_provider',
+    }).then((trace) => {
+      if (!mounted) {
+        void trace.stop();
+        return;
+      }
+      bootstrapTraceRef.current = trace;
+    });
+
+    return () => {
+      mounted = false;
+      const trace = bootstrapTraceRef.current;
+      bootstrapTraceRef.current = null;
+      void trace?.stop();
+      void detachWebPresence();
+    };
+  }, []);
+
+  useEffect(() => {
+    if (state.isLoading || !bootstrapTraceRef.current) {
+      return;
+    }
+
+    const trace = bootstrapTraceRef.current;
+    bootstrapTraceRef.current = null;
+    trace.putAttribute('auth_state', state.user?.uid ? 'authenticated' : 'anonymous');
+    trace.incrementMetric('auth_resolved', 1);
+    void trace.stop();
+  }, [state.isLoading, state.user?.uid]);
+
+  useEffect(() => {
+    if (!state.user?.uid) {
+      clearWebMonitoringContext();
+      void detachWebPresence();
+      return;
+    }
+
+    setWebMonitoringContext(state.user, state.role);
+    void attachWebPresence(state.user, state.role);
+  }, [state.user?.uid, state.user?.displayName, state.user?.email, state.role]);
+
+  useEffect(() => {
+    let mounted = true;
+    const resolveStuckLoading = () => {
       if (!mounted) return;
-      if (!firebaseUser) {
+      const current = auth.currentUser;
+      if (!current) {
         setUserState(null);
         return;
       }
+      const cached = readAuthSnapshot(current.uid);
+      const bootstrapUser = buildBootstrapUser(current, cached?.user);
+      setUserState(bootstrapUser, { roleOverride: cached?.role ?? null });
+    };
+    const resolveTimer =
+      typeof window !== 'undefined'
+        ? window.setTimeout(resolveStuckLoading, AUTH_RESOLVE_TIMEOUT_MS)
+        : null;
 
+    const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
+      const authStateTrace = await startWebMonitoringTrace('web_auth_state_change', {
+        has_user: !!firebaseUser,
+      });
+      if (!mounted) {
+        await authStateTrace.stop();
+        return;
+      }
+      if (resolveTimer !== null) {
+        window.clearTimeout(resolveTimer);
+      }
       try {
+        if (!firebaseUser) {
+          setUserState(null);
+          return;
+        }
+
+        const cached = readAuthSnapshot(firebaseUser.uid);
+        const bootstrapUser = buildBootstrapUser(firebaseUser, cached?.user);
+        setUserState(bootstrapUser, { roleOverride: cached?.role ?? null });
+
         const userData = await fetchUserDoc(firebaseUser.uid);
         if (!mounted) return;
         if (userData) {
@@ -371,17 +653,51 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             updates.admin = false;
             nextUser = { ...nextUser, admin: false };
           }
+          authStateTrace.putAttribute(
+            'role',
+            nextUser.admin
+              ? 'admin'
+              : nextUser.academyAccount
+                ? 'academy'
+                : nextUser.professorAccount
+                  ? 'professor'
+                  : 'aluno'
+          );
+          authStateTrace.incrementMetric('user_doc_loaded', 1);
           setUserState(nextUser);
+          void resolveStripeBackedUser(nextUser).then((resolvedUser) => {
+            if (!mounted || !resolvedUser) return;
+            setUserState(resolvedUser);
+          });
           await updateDoc(doc(db, 'users', firebaseUser.uid), updates);
         } else {
           await ensureUserDocument(firebaseUser);
           const refreshed = await fetchUserDoc(firebaseUser.uid);
           if (!mounted) return;
-          setUserState(refreshed);
+          if (refreshed) {
+            setUserState(refreshed);
+            void resolveStripeBackedUser(refreshed).then((resolvedUser) => {
+              if (!mounted || !resolvedUser) return;
+              setUserState(resolvedUser);
+            });
+          } else {
+            setUserState(bootstrapUser, { roleOverride: cached?.role ?? null });
+          }
         }
       } catch (error) {
         console.error('Error fetching user data:', error);
-        setUserState(null);
+        logWebMonitoringError('web_auth_state_change', error, {
+          uid: firebaseUser?.uid || '',
+        });
+        if (firebaseUser) {
+          const cached = readAuthSnapshot(firebaseUser.uid);
+          const bootstrapUser = buildBootstrapUser(firebaseUser, cached?.user);
+          setUserState(bootstrapUser, { roleOverride: cached?.role ?? null });
+        } else {
+          setUserState(null);
+        }
+      } finally {
+        await authStateTrace.stop();
       }
     });
 
@@ -398,17 +714,24 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           loginMethod: fallbackMethod,
         });
       })
-      .catch(() => {
+      .catch((error) => {
+        logWebMonitoringError('web_auth_redirect', error);
         // Redirect flow errors are handled by auth state listener.
       });
 
     return () => {
       mounted = false;
+      if (resolveTimer !== null) {
+        window.clearTimeout(resolveTimer);
+      }
       unsubscribe();
     };
   }, [setUserState]);
 
   const login = useCallback(async (email: string, password: string) => {
+    const trace = await startWebMonitoringTrace('web_login_email', {
+      provider: 'password',
+    });
     try {
       const normalizedEmail = normalizeEmailInput(email);
       const result = await signInWithEmailAndPassword(auth, normalizedEmail, password);
@@ -424,11 +747,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       });
       return { success: true };
     } catch (error: any) {
+      logWebMonitoringError('web_login_email', error, { provider: 'password' });
       return { success: false, error: getAuthErrorMessage(error.code) };
+    } finally {
+      await trace.stop();
     }
   }, [refreshUser]);
 
   const loginAsPersonal = useCallback(async (email: string, password: string) => {
+    const trace = await startWebMonitoringTrace('web_login_personal', {
+      provider: 'password',
+    });
     try {
       const normalizedEmail = normalizeEmailInput(email);
       const result = await signInWithEmailAndPassword(auth, normalizedEmail, password);
@@ -449,11 +778,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       });
       return { success: true };
     } catch (error: any) {
+      logWebMonitoringError('web_login_personal', error, { provider: 'password' });
       return { success: false, error: getAuthErrorMessage(error.code) };
+    } finally {
+      await trace.stop();
     }
   }, [setUserState]);
 
   const loginWithGoogle = useCallback(async () => {
+    const trace = await startWebMonitoringTrace('web_login_google', {
+      provider: 'google',
+    });
     try {
       const provider = new GoogleAuthProvider();
       try {
@@ -477,11 +812,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
       return { success: true };
     } catch (error: any) {
+      logWebMonitoringError('web_login_google', error, { provider: 'google' });
       return { success: false, error: getAuthErrorMessage(error.code) };
+    } finally {
+      await trace.stop();
     }
   }, [refreshUser]);
 
   const loginWithApple = useCallback(async () => {
+    const trace = await startWebMonitoringTrace('web_login_apple', {
+      provider: 'apple',
+    });
     try {
       const provider = new OAuthProvider('apple.com');
       try {
@@ -505,7 +846,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
       return { success: true };
     } catch (error: any) {
+      logWebMonitoringError('web_login_apple', error, { provider: 'apple' });
       return { success: false, error: getAuthErrorMessage(error.code) };
+    } finally {
+      await trace.stop();
     }
   }, [refreshUser]);
 
@@ -516,6 +860,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       displayName: string,
       additionalData?: Partial<User>
     ) => {
+      const trace = await startWebMonitoringTrace('web_register_account', {
+        has_personal_flag: !!additionalData?.professorAccount,
+      });
       try {
         const normalizedEmail = normalizeEmailInput(email);
         const payloadAdditional: Partial<User> = { ...(additionalData || {}) };
@@ -547,6 +894,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           email: normalizedEmail,
           display_name: displayName,
           uid: result.user.uid,
+          language: readStoredLanguage() || DEFAULT_LANGUAGE,
           created_time: serverTimestamp(),
           last_active_time: serverTimestamp(),
           professorAccount: false,
@@ -559,31 +907,144 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         await refreshUser();
         return { success: true };
       } catch (error: any) {
+        logWebMonitoringError('web_register_account', error, {
+          has_personal_flag: !!additionalData?.professorAccount,
+        });
         const message = error?.code ? getAuthErrorMessage(error.code) : error?.message;
         return { success: false, error: message || 'Ocorreu um erro. Tente novamente.' };
+      } finally {
+        await trace.stop();
       }
     },
     [refreshUser]
   );
 
   const logout = useCallback(async () => {
+    const trace = await startWebMonitoringTrace('web_logout');
     try {
       await signOut(auth);
       setUserState(null);
       return { success: true };
     } catch (error: any) {
+      logWebMonitoringError('web_logout', error);
       return { success: false, error: error.message };
+    } finally {
+      await trace.stop();
+    }
+  }, [setUserState]);
+
+  const deleteAccount = useCallback(async () => {
+    const trace = await startWebMonitoringTrace('web_delete_account');
+    try {
+      const current = auth.currentUser;
+      if (!current?.uid) {
+        return {
+          success: false,
+          error: 'Sua sessao expirou. Entre novamente para concluir a exclusao.',
+        };
+      }
+
+      const uid = current.uid;
+      const userRef = doc(db, 'users', uid);
+
+      const cleanupUserData = async () => {
+        const batch = writeBatch(db);
+        batch.delete(userRef);
+
+        for (const subcollection of ['academyPlans', 'personalAccount']) {
+          try {
+            const snapshot = await getDocs(collection(db, 'users', uid, subcollection));
+            snapshot.docs.forEach((docSnap) => {
+              batch.delete(docSnap.ref);
+            });
+          } catch (error) {
+            console.warn(`Nao foi possivel limpar users/${uid}/${subcollection} antes da exclusao.`, error);
+          }
+        }
+
+        try {
+          const supportSnapshots = await Promise.all([
+            getDocs(query(collection(db, 'supporte'), where('userId', '==', uid), limit(50))),
+            getDocs(query(collection(db, 'supporte'), where('user', '==', userRef), limit(50))),
+          ]);
+          const seen = new Set<string>();
+          supportSnapshots.forEach((snapshot) => {
+            snapshot.docs.forEach((docSnap) => {
+              if (seen.has(docSnap.ref.path)) return;
+              seen.add(docSnap.ref.path);
+              batch.delete(docSnap.ref);
+            });
+          });
+        } catch (error) {
+          console.warn('Nao foi possivel limpar tickets vinculados antes da exclusao.', error);
+        }
+
+        await batch.commit();
+      };
+
+      try {
+        await cleanupUserData();
+      } catch (error) {
+        console.warn('A limpeza previa da conta falhou e sera concluida depois da exclusao.', error);
+        try {
+          await deleteDoc(userRef);
+        } catch (deleteProfileError) {
+          console.warn('Nao foi possivel remover o documento principal do usuario.', deleteProfileError);
+        }
+      }
+
+      await deleteUser(current);
+      setUserState(null);
+      return { success: true };
+    } catch (error: any) {
+      logWebMonitoringError('web_delete_account', error);
+      return {
+        success: false,
+        error: error?.code ? getAuthErrorMessage(error.code) : error?.message || 'Nao foi possivel excluir a conta.',
+      };
+    } finally {
+      await trace.stop();
     }
   }, [setUserState]);
 
   const resetPassword = useCallback(async (email: string) => {
+    const trace = await startWebMonitoringTrace('web_reset_password');
     try {
       await sendPasswordResetEmail(auth, normalizeEmailInput(email));
       return { success: true };
     } catch (error: any) {
+      logWebMonitoringError('web_reset_password', error);
       return { success: false, error: getAuthErrorMessage(error.code) };
+    } finally {
+      await trace.stop();
     }
   }, []);
+
+  const setPreferredLanguage = useCallback(
+    async (language: SupportedLanguage) => {
+      const current = auth.currentUser;
+      const previousLanguage = state.user?.language || readStoredLanguage() || DEFAULT_LANGUAGE;
+      const nextLanguage = persistPreferredLanguage(language);
+
+      try {
+        if (current?.uid) {
+          await updateDoc(doc(db, 'users', current.uid), {
+            language: nextLanguage,
+          });
+        }
+        await refreshUser();
+        return { success: true };
+      } catch (error: any) {
+        logWebMonitoringError('web_set_language', error, { language: nextLanguage });
+        persistPreferredLanguage(previousLanguage);
+        return {
+          success: false,
+          error: 'Nao foi possivel salvar o idioma agora. Tente novamente.',
+        };
+      }
+    },
+    [refreshUser, state.user?.language]
+  );
 
   const value = useMemo(
     () => ({
@@ -594,10 +1055,24 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       loginWithApple,
       register,
       logout,
+      deleteAccount,
       resetPassword,
+      setPreferredLanguage,
       refreshUser,
     }),
-    [state, login, loginAsPersonal, loginWithGoogle, loginWithApple, register, logout, resetPassword, refreshUser]
+    [
+      state,
+      login,
+      loginAsPersonal,
+      loginWithGoogle,
+      loginWithApple,
+      register,
+      logout,
+      deleteAccount,
+      resetPassword,
+      setPreferredLanguage,
+      refreshUser,
+    ]
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

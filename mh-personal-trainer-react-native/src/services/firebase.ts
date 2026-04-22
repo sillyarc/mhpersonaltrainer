@@ -1,6 +1,7 @@
 import { initializeApp, getApps, getApp, FirebaseApp } from 'firebase/app';
 // @ts-ignore - getReactNativePersistence exists in RN bundle but missing from TS definitions
 import { initializeAuth, getReactNativePersistence, getAuth, Auth } from 'firebase/auth';
+import { getDatabase, Database } from 'firebase/database';
 import { getFirestore, Firestore } from 'firebase/firestore';
 import { getStorage, FirebaseStorage } from 'firebase/storage';
 import { Platform } from 'react-native';
@@ -14,6 +15,7 @@ type FirebaseExtraConfig = {
   storageBucket?: string;
   messagingSenderId?: string;
   appId?: string;
+  databaseURL?: string;
 };
 
 type ExpoExtra = {
@@ -41,12 +43,18 @@ const firebaseConfig = {
     firebaseExtraConfig.messagingSenderId
   ),
   appId: pickFirebaseConfigValue(process.env.EXPO_PUBLIC_FIREBASE_APP_ID, firebaseExtraConfig.appId),
+  databaseURL:
+    pickFirebaseConfigValue(
+      process.env.EXPO_PUBLIC_FIREBASE_DATABASE_URL,
+      firebaseExtraConfig.databaseURL
+    ) || 'https://profissions-2746d-default-rtdb.firebaseio.com',
 };
 
 let app: FirebaseApp;
 let auth: Auth;
 let db: Firestore;
 let storage: FirebaseStorage;
+let realtimeDb: Database;
 let initialized = false;
 
 function assertFirebaseConfig() {
@@ -57,6 +65,7 @@ function assertFirebaseConfig() {
     'storageBucket',
     'messagingSenderId',
     'appId',
+    'databaseURL',
   ];
   const missingKeys = requiredKeys.filter((key) => !firebaseConfig[key]);
 
@@ -68,8 +77,8 @@ function assertFirebaseConfig() {
 }
 
 export function initializeFirebase() {
-  if (initialized && app && auth && db && storage) {
-    return { app, auth, db, storage };
+  if (initialized && app && auth && db && storage && realtimeDb) {
+    return { app, auth, db, storage, realtimeDb };
   }
 
   assertFirebaseConfig();
@@ -113,9 +122,13 @@ export function initializeFirebase() {
     storage = getStorage(app);
   }
 
+  if (!realtimeDb) {
+    realtimeDb = getDatabase(app);
+  }
+
   initialized = true;
 
-  return { app, auth, db, storage };
+  return { app, auth, db, storage, realtimeDb };
 }
 
 export function getFirebaseAuth(): Auth {
@@ -137,6 +150,13 @@ export function getFirebaseStorage(): FirebaseStorage {
     initializeFirebase();
   }
   return storage;
+}
+
+export function getFirebaseDatabase(): Database {
+  if (!realtimeDb) {
+    initializeFirebase();
+  }
+  return realtimeDb;
 }
 
 export { auth, db, storage };
