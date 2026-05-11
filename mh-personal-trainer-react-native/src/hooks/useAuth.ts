@@ -28,21 +28,31 @@ const normalizePersonalCodeValue = (value: any): number | null => {
   return Number.isNaN(numeric) ? null : numeric;
 };
 
-const resolvePersonalCode = async (
+const resolvePersonalIdentity = async (
   db: any,
   uid: string,
-  fallback?: string | number | null
-): Promise<{ code: number | null; needsSync: boolean }> => {
-  const fallbackCode = normalizePersonalCodeValue(fallback);
+  fallback?: { codigoPersonal?: string | number | null; professorAccount?: boolean | string | number | null }
+): Promise<{
+  code: number | null;
+  isPersonal: boolean;
+  shouldSyncCode: boolean;
+  shouldSyncProfessorFlag: boolean;
+}> => {
+  const fallbackCode = normalizePersonalCodeValue(fallback?.codigoPersonal);
+  const fallbackProfessorAccount = toBool(fallback?.professorAccount);
+  let resolvedCode = fallbackCode;
+  let resolvedProfessorAccount = fallbackProfessorAccount;
+
   try {
     const personalAccountRef = collection(db, 'users', uid, 'personalAccount');
     const personalSnapshot = await getDocs(query(personalAccountRef, limit(1)));
     if (!personalSnapshot.empty) {
+      resolvedProfessorAccount = true;
       const personalCode = normalizePersonalCodeValue(
         personalSnapshot.docs[0].data().codigoPersonal
       );
       if (personalCode !== null) {
-        return { code: personalCode, needsSync: personalCode !== fallbackCode };
+        resolvedCode = personalCode;
       }
     }
 
@@ -51,17 +61,24 @@ const resolvePersonalCode = async (
       query(professorAccountRef, where('uid', '==', uid), limit(1))
     );
     if (!professorSnapshot.empty) {
+      resolvedProfessorAccount = true;
       const professorCode = normalizePersonalCodeValue(
         professorSnapshot.docs[0].data().codigoPersonal
       );
       if (professorCode !== null) {
-        return { code: professorCode, needsSync: professorCode !== fallbackCode };
+        resolvedCode = professorCode;
       }
     }
   } catch (error) {
-    console.warn('Error resolving personal code:', error);
+    console.warn('Error resolving personal identity:', error);
   }
-  return { code: fallbackCode, needsSync: false };
+
+  return {
+    code: resolvedCode,
+    isPersonal: resolvedProfessorAccount,
+    shouldSyncCode: resolvedCode !== null && resolvedCode !== fallbackCode,
+    shouldSyncProfessorFlag: resolvedProfessorAccount !== fallbackProfessorAccount,
+  };
 };
 
 const normalizeServicos = (value: any) => {
@@ -96,6 +113,27 @@ const normalizeHorario = (value: any) => {
   return hasAny ? horario : undefined;
 };
 
+const normalizeLinkedPersonalId = (value: any) => {
+  const nestedId =
+    typeof value?.personalAccount?.id === 'string' ? value.personalAccount.id.trim() : '';
+  if (nestedId) return nestedId;
+
+  const legacyId = typeof value?.personalAccountId === 'string' ? value.personalAccountId.trim() : '';
+  return legacyId || undefined;
+};
+
+const normalizeUserReferenceIds = (value: any): string[] => {
+  if (!Array.isArray(value)) return [];
+
+  return value
+    .map((item) => {
+      if (typeof item === 'string') return item.trim();
+      if (typeof item?.id === 'string') return item.id.trim();
+      return '';
+    })
+    .filter((item): item is string => item.length > 0);
+};
+
 const getPasswordResetSettings = () => {
   const directUrl = (process.env.EXPO_PUBLIC_PASSWORD_RESET_URL || '').trim();
   if (directUrl) {
@@ -127,36 +165,75 @@ export function useAuth() {
       const userDoc = await getDoc(doc(db, 'users', uid));
       if (userDoc.exists()) {
         const data = userDoc.data();
-        let resolvedPersonalCode = data.codigoPersonal;
-        if (toBool(data.professorAccount)) {
-          const resolved = await resolvePersonalCode(db, uid, data.codigoPersonal);
-          if (resolved.code !== null) {
-            resolvedPersonalCode = resolved.code;
+        const authUser = auth.currentUser;
+        const resolvedPersonalIdentity = await resolvePersonalIdentity(db, uid, {
+          codigoPersonal: data.codigoPersonal,
+          professorAccount: data.professorAccount,
+        });
+        const resolvedPersonalCode =
+          resolvedPersonalIdentity.code !== null
+            ? resolvedPersonalIdentity.code
+            : data.codigoPersonal;
+        const resolvedEmail = String(data.email || authUser?.email || '').trim();
+        const resolvedDisplayName = String(
+          data.display_name ||
+            authUser?.displayName ||
+            (resolvedEmail ? resolvedEmail.split('@')[0] : '')
+        ).trim();
+        const resolvedPhotoUrl = String(data.photo_url || authUser?.photoURL || '').trim();
+
+        if (
+          resolvedPersonalIdentity.shouldSyncProfessorFlag ||
+          resolvedPersonalIdentity.shouldSyncCode ||
+          (!data.email && !!resolvedEmail) ||
+          (!data.display_name && !!resolvedDisplayName) ||
+          (!data.photo_url && !!resolvedPhotoUrl)
+        ) {
+          const syncPayload: Record<string, any> = {};
+          if (resolvedPersonalIdentity.shouldSyncProfessorFlag) {
+            syncPayload.professorAccount = resolvedPersonalIdentity.isPersonal;
           }
-          if (resolved.needsSync && resolved.code !== null) {
-            await updateDoc(doc(db, 'users', uid), {
-              codigoPersonal: resolved.code,
-            });
+          if (
+            resolvedPersonalIdentity.shouldSyncCode &&
+            resolvedPersonalIdentity.code !== null
+          ) {
+            syncPayload.codigoPersonal = resolvedPersonalIdentity.code;
+          }
+          if (!data.email && resolvedEmail) {
+            syncPayload.email = resolvedEmail;
+          }
+          if (!data.display_name && resolvedDisplayName) {
+            syncPayload.display_name = resolvedDisplayName;
+          }
+          if (!data.photo_url && resolvedPhotoUrl) {
+            syncPayload.photo_url = resolvedPhotoUrl;
+          }
+          if (Object.keys(syncPayload).length > 0) {
+            try {
+              await updateDoc(doc(db, 'users', uid), syncPayload);
+            } catch (error) {
+              console.warn('Error syncing personal identity:', error);
+            }
           }
         }
         const userData: User = {
           uid,
-          email: data.email || '',
-          displayName: data.display_name || '',
-          photoUrl: data.photo_url,
+          email: resolvedEmail,
+          displayName: resolvedDisplayName,
+          photoUrl: resolvedPhotoUrl || undefined,
           phoneNumber: data.phone_number,
           birthday: data.birthday,
           genero: data.genero,
           createdTime: data.created_time?.toDate() || new Date(),
           lastActiveTime: data.last_active_time?.toDate(),
-          professorAccount: toBool(data.professorAccount),
+          professorAccount: resolvedPersonalIdentity.isPersonal,
           admin: toBool(data.admin),
           assinatura: toBool(data.assinatura),
           tipoDeAssinatura: data.tipoDeAssinatura,
           planoChatGPT: toBool(data.planoChatGPT),
           acessoSuspenso: toBool(data.acessoSuspenso),
           codigoPersonal: resolvedPersonalCode,
-          personalAccountId: data.personalAccount?.id,
+          personalAccountId: normalizeLinkedPersonalId(data),
           nameDoSeuPersonal: data.nameDoSeuPersonal,
           objetivoNoApp: data.objetivoNoApp,
           experiencia: data.expericencia,
@@ -175,6 +252,9 @@ export function useAuth() {
           subscribeId: data.subscribeId,
           stripeAtivo: data.stripeAtivo,
           stripeAccountId: data.stripeAccountId,
+          stripePriceId: data.stripePriceId || data.priceId,
+          stripeSubscriptionStatus:
+            data.stripeSubscriptionStatus || data.subscriptionStatus || data.statusAssinatura,
           bio: data.bio,
           cref: data.cref,
           instagram: data.instagram,
@@ -185,7 +265,7 @@ export function useAuth() {
           especializacao: data.especializacao,
           servicos: normalizeServicos(data.servicos),
           horarioAtendimento: normalizeHorario(data.horarioAtendimento),
-          alunos: data.alunos?.map((ref: any) => ref.id) || [],
+          alunos: normalizeUserReferenceIds(data.alunos),
           treinos: data.treinos || [],
           rotinaDeTreino: data.rotinaDeTreino || [],
         };
@@ -363,8 +443,10 @@ export function useAuth() {
   ) => {
     setLoading(true);
     try {
-      const payloadAdditional: Partial<User> = { ...(additionalData || {}) };
-      const shouldCheckStudentCapacity = !toBool(payloadAdditional.professorAccount);
+      const payloadAdditional: Record<string, any> = { ...(additionalData || {}) };
+      const isPersonalRegistration = toBool(payloadAdditional.professorAccount);
+      delete payloadAdditional.professorAccount;
+      const shouldCheckStudentCapacity = !isPersonalRegistration;
       const personalCodeCandidate = shouldCheckStudentCapacity
         ? normalizePersonalCodeValue(payloadAdditional.codigoPersonal)
         : null;
@@ -376,12 +458,20 @@ export function useAuth() {
             success: false,
             error:
               capacity.reason === 'personal_not_found'
-                ? 'Codigo do personal nao encontrado.'
+                ? 'Código do personal não encontrado.'
                 : 'Esse personal atingiu o limite de 4 alunos no plano gratuito. Peca para ele assinar o Premium para liberar alunos ilimitados.',
           };
         }
         if (!payloadAdditional.nameDoSeuPersonal && capacity.personalName) {
           payloadAdditional.nameDoSeuPersonal = capacity.personalName;
+        }
+        if (capacity.personalId) {
+          payloadAdditional.personalAccount = { id: capacity.personalId };
+          payloadAdditional.personalAccountId = capacity.personalId;
+          payloadAdditional.personalVinculadoEm = serverTimestamp();
+          if (!payloadAdditional.alunoDesde) {
+            payloadAdditional.alunoDesde = serverTimestamp();
+          }
         }
       }
 
@@ -392,7 +482,7 @@ export function useAuth() {
         uid: result.user.uid,
         created_time: serverTimestamp(),
         last_active_time: serverTimestamp(),
-        professorAccount: false,
+        professorAccount: isPersonalRegistration,
         admin: false,
         assinatura: false,
         planoChatGPT: false,
@@ -494,10 +584,10 @@ function getAuthErrorMessage(code: string): string {
     'auth/too-many-requests': 'Muitas tentativas. Tente novamente mais tarde.',
     'auth/network-request-failed': 'Erro de conexão. Verifique sua internet.',
     'auth/invalid-continue-uri': 'URL de recuperacao invalida. Verifique o dominio no Firebase.',
-    'auth/unauthorized-continue-uri': 'URL de recuperacao nao autorizada. Ajuste Authorized Domains no Firebase.',
+    'auth/unauthorized-continue-uri': 'URL de recuperação não autorizada. Ajuste Authorized Domains no Firebase.',
     'auth/missing-continue-uri': 'URL de recuperacao ausente. Configure o dominio no Firebase.',
     'auth/invalid-api-key': 'API key do Firebase invalida.',
-    'auth/app-not-authorized': 'Aplicativo nao autorizado para Firebase Auth.',
+    'auth/app-not-authorized': 'Aplicativo não autorizado para Firebase Auth.',
   };
   return messages[code] || 'Ocorreu um erro. Tente novamente.';
 }

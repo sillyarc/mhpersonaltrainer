@@ -175,7 +175,7 @@ export default function StudentDetailScreen() {
           </TouchableOpacity>
           
           <TouchableOpacity
-            style={[styles.actionBtn, { backgroundColor: colors.accent }]}
+            style={[styles.actionBtn, { backgroundColor: colors.accent1 || colors.tertiary }]}
             onPress={() => router.push(`/chat/${id}`)}
           >
             <Ionicons name="chatbubbles" size={22} color="#fff" />

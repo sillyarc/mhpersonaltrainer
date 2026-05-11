@@ -13,13 +13,22 @@ import {
   Keyboard,
   TouchableWithoutFeedback,
 } from 'react-native';
+import * as DocumentPicker from 'expo-document-picker';
+import { getDownloadURL, ref, uploadBytes } from 'firebase/storage';
 import DraggableFlatList from 'react-native-draggable-flatlist';
 import { showAlert } from '@utils/alert';
+import {
+  buildExerciseNameLookup,
+  resolveExerciseByName,
+  resolveExerciseMediaByName,
+  resolveExerciseMediaFromExercise,
+} from '@utils/exerciseLookup';
 import {
   coerceMetricValue,
   formatMetricText,
   formatMetricWithSuffix,
   parseMetricInput,
+  toNumericMetric,
 } from '@utils/workoutMetrics';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router, useLocalSearchParams } from 'expo-router';
@@ -28,7 +37,13 @@ import { useTheme } from '../../src/hooks/useTheme';
 import { Button, Input, Card, SearchableSelect, DateInput } from '../../src/components/common';
 import { ExerciseCard } from '../../src/components/workout/ExerciseCard';
 import { spacing, borderRadius } from '../../src/theme';
-import { Exercise, ExerciseCategory, WorkoutExercise, UserWorkout } from '../../src/types/workout';
+import {
+  Exercise,
+  ExerciseCategory,
+  WorkoutExercise,
+  WorkoutExerciseExtraField,
+  UserWorkout,
+} from '../../src/types/workout';
 import {
   fetchAvailableExercises,
   fetchUserWorkoutById,
@@ -40,6 +55,8 @@ import { useAuthStore } from '../../src/store/authStore';
 import { firestoreService, Aluno } from '../../src/services/firestoreService';
 import { notifyConversationEvent } from '../../src/services/chat';
 import { chatWithAI } from '../../src/services/ai';
+import { getFirebaseStorage } from '../../src/services/firebase';
+import { sendWorkoutAssignmentNotification } from '../../src/services/notificationCenter';
 
 interface AerobicItemForm {
   id: string;
@@ -50,6 +67,21 @@ const createEmptyAerobicItem = (): AerobicItemForm => ({
   id: `${Date.now()}-${Math.random()}`,
   nome: '',
 });
+
+const createCustomExerciseId = () =>
+  `custom-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+
+const sanitizeStorageFileName = (value: string) => {
+  const normalized = value
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-zA-Z0-9._-]+/g, '-')
+    .replace(/-+/g, '-')
+    .replace(/^-|-$/g, '')
+    .toLowerCase();
+
+  return normalized || 'video-exercicio';
+};
 
 const CATEGORIES: { id: ExerciseCategory | null; label: string }[] = [
   { id: null, label: 'Todos' },
@@ -64,6 +96,29 @@ const CATEGORIES: { id: ExerciseCategory | null; label: string }[] = [
   { id: 'funcional', label: 'Funcional' },
 ];
 
+const resolveCatalogVideoUrl = (exercise?: Exercise | null) =>
+  exercise?.videoUrl1080 || exercise?.videoUrl720 || exercise?.videoUrl || '';
+
+const resolveCatalogGifUrl = (exercise?: Exercise | null) =>
+  exercise?.gifUrl || '';
+
+const EXTRA_FIELD_PRESETS = [
+  { key: 'tempo', label: 'Tempo', unit: 'min', placeholder: '20' },
+  { key: 'distancia', label: 'Distancia', unit: 'km', placeholder: '5' },
+  { key: 'cadencia', label: 'Cadencia', unit: 'rpm', placeholder: '90' },
+  { key: 'ritmo', label: 'Ritmo', unit: '/km', placeholder: '5:30' },
+  { key: 'velocidade', label: 'Velocidade', unit: 'km/h', placeholder: '12' },
+  { key: 'inclinacao', label: 'Inclinacao', unit: '%', placeholder: '3' },
+] as const;
+
+const SERIES_PRESETS = ['1', '2', '3', '4', '5', '6', '8', '10'];
+
+const createEmptyExtraFieldValues = () =>
+  EXTRA_FIELD_PRESETS.reduce<Record<string, string>>((acc, preset) => {
+    acc[preset.key] = '';
+    return acc;
+  }, {});
+
 export default function CreateWorkoutScreen() {
   const { colors } = useTheme();
   const { user, role } = useAuthStore();
@@ -71,24 +126,43 @@ export default function CreateWorkoutScreen() {
   const insets = useSafeAreaInsets();
   const isEditing = !!editId;
   const isPersonal = role === 'personal' || role === 'professor';
+  const canManageStudentWorkout = isPersonal || role === 'admin';
 
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
   const [exercises, setExercises] = useState<WorkoutExercise[]>([]);
   const [workoutDate, setWorkoutDate] = useState<Date>(new Date());
   const [showExerciseModal, setShowExerciseModal] = useState(false);
+  const [isCustomExerciseWindowEnabled, setIsCustomExerciseWindowEnabled] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
   const [selectedCategory, setSelectedCategory] = useState<ExerciseCategory | null>(null);
   const [exerciseSearch, setExerciseSearch] = useState('');
+  const [customExerciseName, setCustomExerciseName] = useState('');
+  const [customSeries, setCustomSeries] = useState('3');
+  const [customReps, setCustomReps] = useState('12');
+  const [customWeight, setCustomWeight] = useState('0');
+  const [customRest, setCustomRest] = useState('60');
+  const [customNote, setCustomNote] = useState('');
+  const [customVideoUrl, setCustomVideoUrl] = useState('');
+  const [isUploadingCustomVideo, setIsUploadingCustomVideo] = useState(false);
+  const [customExtraFieldValues, setCustomExtraFieldValues] = useState<Record<string, string>>(
+    createEmptyExtraFieldValues()
+  );
   const [editingExercise, setEditingExercise] = useState<WorkoutExercise | null>(null);
   const [editingSeries, setEditingSeries] = useState('');
   const [editingReps, setEditingReps] = useState('');
   const [editingWeight, setEditingWeight] = useState('');
   const [editingRest, setEditingRest] = useState('');
   const [editingNote, setEditingNote] = useState('');
+  const [editingVideoUrl, setEditingVideoUrl] = useState('');
+  const [isUploadingEditingVideo, setIsUploadingEditingVideo] = useState(false);
+  const [editingExtraFieldValues, setEditingExtraFieldValues] = useState<Record<string, string>>(
+    createEmptyExtraFieldValues()
+  );
   const [isSaving, setIsSaving] = useState(false);
   const [assistantPrompt, setAssistantPrompt] = useState('');
   const [isGenerating, setIsGenerating] = useState(false);
+  const [isAssistantExpanded, setIsAssistantExpanded] = useState(false);
   const [isAerobic, setIsAerobic] = useState(false);
   const [aerobicItems, setAerobicItems] = useState<AerobicItemForm[]>([createEmptyAerobicItem()]);
   const [aerobicAquecimento, setAerobicAquecimento] = useState('');
@@ -100,7 +174,6 @@ export default function CreateWorkoutScreen() {
     typeof studentId === 'string' ? studentId : null
   );
 
-  const normalizeName = (value: string) => value.trim().toLowerCase();
   const normalizeCategory = (value: string) =>
     value
       .normalize('NFD')
@@ -108,15 +181,169 @@ export default function CreateWorkoutScreen() {
       .trim()
       .toLowerCase();
 
-  const targetUserId = isPersonal ? selectedStudentId : user?.uid;
+  const routeStudentId =
+    typeof studentId === 'string' && studentId.trim().length > 0 ? studentId : null;
+  const targetUserId = canManageStudentWorkout ? selectedStudentId || routeStudentId : user?.uid;
+  const isSheetModalOpen = showEditModal;
   const studentOptions = students.map((student) => ({
     id: student.id,
     label: student.nome,
     description: student.email,
   }));
+  const availableExerciseLookup = useMemo(
+    () => buildExerciseNameLookup(availableExercises),
+    [availableExercises]
+  );
 
   const buildWorkoutRoute = (workoutId: string, targetId: string) =>
     `/workout/${workoutId}?studentId=${targetId}`;
+
+  const buildSteppedSeries = (value: string, delta: number) =>
+    String(Math.max(1, Math.min(99, Math.floor(toNumericMetric(value, 3)) + delta)));
+
+  const changeCustomSeriesStep = (delta: number) => {
+    setCustomSeries((prev) => buildSteppedSeries(prev, delta));
+  };
+
+  const changeEditingSeriesStep = (delta: number) => {
+    setEditingSeries((prev) => buildSteppedSeries(prev, delta));
+  };
+
+  const buildExtraFieldsFromValues = (values: Record<string, string>): WorkoutExerciseExtraField[] =>
+    EXTRA_FIELD_PRESETS.reduce<WorkoutExerciseExtraField[]>((acc, preset) => {
+      const parsedValue = parseMetricInput(values[preset.key] || '', '');
+      const formattedValue = formatMetricText(parsedValue);
+      if (!formattedValue) return acc;
+      acc.push({
+        key: preset.key,
+        label: preset.label,
+        value: parsedValue,
+        unit: preset.unit,
+      });
+      return acc;
+    }, []);
+
+  const buildExtraFieldValues = (fields?: WorkoutExerciseExtraField[]) => {
+    const next = createEmptyExtraFieldValues();
+    (fields || []).forEach((field) => {
+      if (typeof next[field.key] === 'string') {
+        next[field.key] = formatMetricText(field.value);
+      }
+    });
+    return next;
+  };
+
+  const updateCustomExtraFieldValue = (key: string, value: string) => {
+    setCustomExtraFieldValues((prev) => ({ ...prev, [key]: value }));
+  };
+
+  const updateEditingExtraFieldValue = (key: string, value: string) => {
+    setEditingExtraFieldValues((prev) => ({ ...prev, [key]: value }));
+  };
+
+  const uploadVideoFromDevice = async (
+    suggestedName: string,
+    onUploaded: (url: string) => void,
+    setUploading: (value: boolean) => void
+  ) => {
+    if (!user?.uid) {
+      showAlert('Video', 'Faca login novamente para enviar o video.');
+      return;
+    }
+
+    setUploading(true);
+    try {
+      const result = await DocumentPicker.getDocumentAsync({
+        type: ['video/mp4', 'video/*'],
+        copyToCacheDirectory: true,
+      });
+
+      if (result.canceled || !result.assets[0]) {
+        return;
+      }
+
+      const asset = result.assets[0];
+      const response = await fetch(asset.uri);
+      const blob = await response.blob();
+      const storage = getFirebaseStorage();
+      const extension =
+        (asset.name?.split('.').pop() || 'mp4')
+          .trim()
+          .toLowerCase() || 'mp4';
+      const safeName = sanitizeStorageFileName(
+        (suggestedName || asset.name || 'video-exercicio').replace(/\.[^.]+$/, '')
+      );
+      const fileRef = ref(
+        storage,
+        `users/${user.uid}/exercise-videos/${Date.now()}-${safeName}.${extension}`
+      );
+
+      await uploadBytes(
+        fileRef,
+        blob,
+        asset.mimeType ? { contentType: asset.mimeType } : undefined
+      );
+
+      const downloadUrl = await getDownloadURL(fileRef);
+      onUploaded(downloadUrl);
+      showAlert('Video', 'Upload concluido com sucesso.');
+    } catch (error: any) {
+      showAlert('Erro', error?.message || 'Nao foi possivel enviar o video.');
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const handleUploadCustomVideo = () =>
+    uploadVideoFromDevice(
+      customExerciseName.trim() || 'exercicio-customizado',
+      setCustomVideoUrl,
+      setIsUploadingCustomVideo
+    );
+
+  const handleUploadEditingVideo = () =>
+    uploadVideoFromDevice(
+      editingExercise?.nome?.trim() || 'exercicio-customizado',
+      setEditingVideoUrl,
+      setIsUploadingEditingVideo
+    );
+
+  const isCustomWorkoutExercise = (exercise?: WorkoutExercise | null) =>
+    Boolean(exercise?.exerciseId?.startsWith('custom-'));
+
+  const resetCustomExerciseForm = (prefilledName = '') => {
+    setCustomExerciseName(prefilledName);
+    setCustomSeries('3');
+    setCustomReps('12');
+    setCustomWeight('0');
+    setCustomRest('60');
+    setCustomNote('');
+    setCustomVideoUrl('');
+    setCustomExtraFieldValues(createEmptyExtraFieldValues());
+  };
+
+  const openExerciseModal = () => {
+    setShowExerciseModal(true);
+    setIsCustomExerciseWindowEnabled(false);
+  };
+
+  const closeExerciseModal = () => {
+    setShowExerciseModal(false);
+    setIsCustomExerciseWindowEnabled(false);
+    setExerciseSearch('');
+    setSelectedCategory(null);
+    resetCustomExerciseForm();
+  };
+
+  const handleToggleCustomExerciseWindow = (enabled: boolean) => {
+    if (enabled && !customExerciseName.trim()) {
+      const suggestedName = exerciseSearch.trim();
+      if (suggestedName) {
+        setCustomExerciseName(suggestedName);
+      }
+    }
+    setIsCustomExerciseWindowEnabled(enabled);
+  };
 
   const formatExercisePreview = (exercise: WorkoutExercise) => {
     const seriesLabel = formatMetricText(exercise.series);
@@ -134,6 +361,11 @@ export default function CreateWorkoutScreen() {
     if (cargaLabel) details.push(cargaLabel);
     const intervaloLabel = formatMetricWithSuffix(exercise.intervalo, 's');
     if (intervaloLabel) details.push(intervaloLabel);
+    (exercise.extraFields || []).forEach((field) => {
+      const valueLabel = formatMetricText(field.value);
+      if (!valueLabel) return;
+      details.push(field.unit ? `${field.label} ${valueLabel}${field.unit}` : `${field.label} ${valueLabel}`);
+    });
 
     return details.length > 0 ? `${exercise.nome} - ${details.join(' - ')}` : exercise.nome;
   };
@@ -143,6 +375,29 @@ export default function CreateWorkoutScreen() {
     objetivoDaRotina: description.trim(),
     treino: exercises.map(formatExercisePreview),
   });
+
+  const findCatalogExercise = (
+    workoutExercise: WorkoutExercise,
+    catalog: Exercise[]
+  ) => {
+    const byId = catalog.find((item) => item.id === workoutExercise.exerciseId);
+    if (byId) return byId;
+
+    const byName = resolveExerciseByName(
+      workoutExercise.nome,
+      buildExerciseNameLookup(catalog)
+    );
+    if (byName) return byName;
+
+    const currentMediaUrl = (workoutExercise.videoUrl || '').trim();
+    if (!currentMediaUrl) return undefined;
+
+    return catalog.find((item) => {
+      const catalogVideo = resolveCatalogVideoUrl(item);
+      const catalogGif = resolveCatalogGifUrl(item);
+      return catalogVideo === currentMediaUrl || catalogGif === currentMediaUrl;
+    });
+  };
 
   const handleAddAerobicItem = () => {
     setAerobicItems((prev) => [...prev, createEmptyAerobicItem()]);
@@ -213,13 +468,18 @@ export default function CreateWorkoutScreen() {
         const baseId = Date.now();
         const mappedExercises = result.workout.treino.map((item, index) => {
           const parsed = parseExerciseLine(item);
+          const catalogExercise = resolveExerciseByName(parsed.name, availableExerciseLookup);
+          const media = resolveExerciseMediaFromExercise(catalogExercise, 'video');
           return {
             exerciseId: `ai-${baseId}-${index}`,
-            nome: parsed.name,
+            nome: catalogExercise?.nomeDoTreino || parsed.name,
             series: parsed.series,
             repeticoes: parsed.reps,
             carga: 0,
             intervalo: parsed.rest,
+            videoUrl: media.url,
+            gifUrl: media.gifUrl,
+            mediaType: media.kind === 'gif' ? 'gif' : media.kind === 'video' ? 'video' : undefined,
           } as WorkoutExercise;
         });
         setName(result.workout.nomeDaRotina || 'Treino sugerido');
@@ -227,7 +487,7 @@ export default function CreateWorkoutScreen() {
         setExercises(mappedExercises);
         return;
       }
-      showAlert('Assistente', result.text || 'Nao foi possivel gerar o treino.');
+      showAlert('Assistente', result.text || 'Não foi possível gerar o treino.');
     } catch (error: any) {
       const message = error?.message || 'Falha ao gerar treino pelo assistente.';
       showAlert('Assistente', message);
@@ -254,6 +514,19 @@ export default function CreateWorkoutScreen() {
           route: buildWorkoutRoute(workoutId, targetId),
         }
       : undefined;
+    if (workoutId) {
+      try {
+        await sendWorkoutAssignmentNotification({
+          studentId: targetId,
+          workoutId,
+          workoutName,
+          personalName: user.displayName || undefined,
+          isUpdate: eventType === 'updated',
+        });
+      } catch (_) {
+        // Ignore assignment notification failures.
+      }
+    }
     try {
       await notifyConversationEvent({
         senderId: user.uid,
@@ -296,38 +569,76 @@ export default function CreateWorkoutScreen() {
       if (!isEditing || !targetUserId || !editId) return;
       const result = await fetchUserWorkoutById(targetUserId, editId);
       if (result.data) {
-        const storedVideoUrls = result.data.videoUrls || [];
-        let videoUrlByName = new Map<string, string>();
-        const needsVideoFallback = (result.data.treino || []).some(
-          (treino, index) => !storedVideoUrls[index] && treino
+        const loadedWorkout = result.data;
+        const storedVideoUrls = loadedWorkout.videoUrls || [];
+        const normalizedStoredVideoUrls = storedVideoUrls.map((item) =>
+          typeof item === 'string' ? item.trim() : ''
         );
-        if (needsVideoFallback) {
+        let exerciseLookup = buildExerciseNameLookup([]);
+        const workoutEntries = loadedWorkout.treino || [];
+        if (workoutEntries.length > 0) {
           const exercisesResult = await fetchAvailableExercises();
           if (exercisesResult.data) {
-            exercisesResult.data.forEach((exercise) => {
-              const resolvedUrl =
-                exercise.videoUrl1080 || exercise.videoUrl720 || exercise.videoUrl;
-              if (resolvedUrl) {
-                videoUrlByName.set(normalizeName(exercise.nomeDoTreino), resolvedUrl);
-              }
-            });
+            exerciseLookup = buildExerciseNameLookup(exercisesResult.data);
           }
         }
-        setName(result.data.nomeDoTreino || '');
-        setDescription(result.data.obsInstrucao || '');
-        setWorkoutDate(result.data.data || result.data.createdAt || new Date());
-        const mappedExercises: WorkoutExercise[] = (result.data.treino || []).map((treino, index) => ({
-          videoUrl:
-            storedVideoUrls[index] ||
-            videoUrlByName.get(normalizeName(treino)) ||
-            undefined,
-          exerciseId: `${result.data.id}-${index}`,
-          nome: treino,
-          series: coerceMetricValue(result.data.seriesRep?.[index], 3),
-          repeticoes: coerceMetricValue(result.data.repeticoes?.[index], 12),
-          carga: coerceMetricValue(result.data.carga?.[index], 0),
-          intervalo: coerceMetricValue(result.data.intervalo?.[index], 60),
-        }));
+        setName(loadedWorkout.nomeDoTreino || '');
+        setDescription(loadedWorkout.obsInstrucao || '');
+        setWorkoutDate(loadedWorkout.data || loadedWorkout.createdAt || new Date());
+        const resolvedMediaUrls: string[] = [];
+        const storedExerciseConfigs = loadedWorkout.exerciseConfigs || [];
+        const mappedExercises: WorkoutExercise[] = workoutEntries.map((rawName, index) => {
+          const storedConfig = storedExerciseConfigs[index];
+          const treino =
+            typeof storedConfig?.nome === 'string' && storedConfig.nome.trim()
+              ? storedConfig.nome.trim()
+              : typeof rawName === 'string'
+              ? rawName
+              : String(rawName || '');
+          const resolvedMedia = resolveExerciseMediaByName(
+            treino,
+            storedConfig?.videoUrl || normalizedStoredVideoUrls[index] || '',
+            exerciseLookup
+          );
+          resolvedMediaUrls[index] = resolvedMedia.url || '';
+          return {
+            videoUrl: storedConfig?.videoUrl || resolvedMedia.url,
+            gifUrl: storedConfig?.gifUrl || resolvedMedia.gifUrl,
+            mediaType:
+              storedConfig?.mediaType ||
+              (resolvedMedia.kind === 'gif'
+                ? 'gif'
+                : resolvedMedia.kind === 'video'
+                ? 'video'
+                : undefined),
+            exerciseId: storedConfig?.exerciseId || `${loadedWorkout.id}-${index}`,
+            nome: treino,
+            series: coerceMetricValue(storedConfig?.series ?? loadedWorkout.seriesRep?.[index], 3),
+            repeticoes: coerceMetricValue(
+              storedConfig?.repeticoes ?? loadedWorkout.repeticoes?.[index],
+              12
+            ),
+            carga: coerceMetricValue(storedConfig?.carga ?? loadedWorkout.carga?.[index], 0),
+            intervalo: coerceMetricValue(
+              storedConfig?.intervalo ?? loadedWorkout.intervalo?.[index],
+              60
+            ),
+            observacao: storedConfig?.observacao,
+            extraFields: storedConfig?.extraFields || [],
+          };
+        });
+        const shouldSyncVideoUrls =
+          resolvedMediaUrls.length > 0 &&
+          resolvedMediaUrls.some((url, index) => url !== (normalizedStoredVideoUrls[index] || ''));
+        if (shouldSyncVideoUrls) {
+          void updateUserWorkout(targetUserId, loadedWorkout.id, {
+            videoUrls: resolvedMediaUrls,
+            exerciseConfigs: mappedExercises.map((exercise) => ({
+              ...exercise,
+              videoUrl: exercise.videoUrl || '',
+            })),
+          });
+        }
         setExercises(mappedExercises);
       }
     };
@@ -366,6 +677,7 @@ export default function CreateWorkoutScreen() {
   }, [availableExercises, selectedCategory, exerciseSearch]);
 
   const handleAddExercise = (exercise: Exercise) => {
+    const media = resolveExerciseMediaFromExercise(exercise, 'video');
     const newExercise: WorkoutExercise = {
       exerciseId: exercise.id,
       nome: exercise.nomeDoTreino,
@@ -373,10 +685,132 @@ export default function CreateWorkoutScreen() {
       repeticoes: 12,
       carga: Number(exercise.carga || 0),
       intervalo: Number(exercise.intervalo || 60),
-      videoUrl: exercise.videoUrl1080 || exercise.videoUrl720 || exercise.videoUrl,
+      videoUrl: media.url,
+      gifUrl: media.gifUrl,
+      mediaType: media.kind === 'gif' ? 'gif' : media.kind === 'video' ? 'video' : undefined,
     };
     setExercises((prev) => [...prev, newExercise]);
-    setShowExerciseModal(false);
+    closeExerciseModal();
+  };
+
+  const handleAddCustomExercise = () => {
+    const trimmedName = customExerciseName.trim();
+    const trimmedVideoUrl = customVideoUrl.trim();
+    if (!trimmedName) {
+      showAlert('Exercicio proprio', 'Digite um nome para o exercicio.');
+      return;
+    }
+
+    const normalizedName = normalizeCategory(trimmedName);
+    const alreadyAdded = exercises.some(
+      (exercise) => normalizeCategory(exercise.nome) === normalizedName
+    );
+
+    if (alreadyAdded) {
+      showAlert('Exercicio proprio', 'Esse exercicio ja foi adicionado ao treino.');
+      return;
+    }
+
+    const newExercise: WorkoutExercise = {
+      exerciseId: createCustomExerciseId(),
+      nome: trimmedName,
+      series: parseMetricInput(customSeries, 3),
+      repeticoes: parseMetricInput(customReps, 12),
+      carga: parseMetricInput(customWeight, 0),
+      intervalo: parseMetricInput(customRest, 60),
+      observacao: customNote.trim() || undefined,
+      videoUrl: trimmedVideoUrl || undefined,
+      mediaType: trimmedVideoUrl ? 'video' : undefined,
+      extraFields: buildExtraFieldsFromValues(customExtraFieldValues),
+    };
+
+    setExercises((prev) => [...prev, newExercise]);
+    closeExerciseModal();
+  };
+
+  const handleViewExerciseVideo = async (exercise: WorkoutExercise) => {
+    let catalogPool = availableExercises;
+    let catalogExercise = findCatalogExercise(exercise, availableExercises);
+
+    if (!catalogExercise) {
+      const result = await fetchAvailableExercises();
+      if (result.data) {
+        catalogPool = result.data;
+        setAvailableExercises(result.data);
+        catalogExercise = findCatalogExercise(exercise, result.data);
+      }
+    }
+
+    const mediaLookup = buildExerciseNameLookup(catalogPool);
+    const fallbackMedia = resolveExerciseMediaByName(
+      exercise.nome,
+      exercise.videoUrl || '',
+      mediaLookup
+    );
+    const videoUrl = resolveCatalogVideoUrl(catalogExercise) || fallbackMedia.videoUrl || '';
+    const gifUrl = resolveCatalogGifUrl(catalogExercise) || fallbackMedia.gifUrl || exercise.gifUrl || '';
+
+    if (!videoUrl && !gifUrl) {
+      showAlert('Mídia', 'Este exercício ainda não possui vídeo ou GIF.');
+      return;
+    }
+
+    const applyMedia = (kind: 'video' | 'gif') => {
+      const nextUrl = kind === 'video' ? videoUrl : gifUrl;
+      if (!nextUrl) return;
+      setExercises((prev) =>
+        prev.map((item) =>
+          item.exerciseId === exercise.exerciseId
+            ? {
+                ...item,
+                videoUrl: nextUrl,
+                gifUrl: gifUrl || item.gifUrl,
+                mediaType: kind,
+              }
+            : item
+        )
+      );
+    };
+
+    if (videoUrl && gifUrl) {
+      showAlert('Mídia do exercicio', 'Escolha a midia padrao deste exercicio.', [
+        {
+          text: 'Video',
+          onPress: () => {
+            applyMedia('video');
+            if (catalogExercise?.id) {
+              router.push(`/workout/exercise/${catalogExercise.id}?media=video` as any);
+            }
+          },
+        },
+        {
+          text: 'GIF',
+          onPress: () => {
+            applyMedia('gif');
+            if (catalogExercise?.id) {
+              router.push(`/workout/exercise/${catalogExercise.id}?media=gif` as any);
+            }
+          },
+        },
+        { text: 'Cancelar', style: 'cancel' },
+      ]);
+      return;
+    }
+
+    if (videoUrl) {
+      applyMedia('video');
+      if (catalogExercise?.id) {
+        router.push(`/workout/exercise/${catalogExercise.id}` as any);
+      }
+      return;
+    }
+
+    applyMedia('gif');
+    if (catalogExercise?.id) {
+      router.push(`/workout/exercise/${catalogExercise.id}?media=gif` as any);
+      return;
+    }
+    showAlert('GIF aplicado', 'Não foi possível abrir detalhes porque o exercício não foi localizado no Firebase.');
   };
 
   const handleEditExercise = (exercise: WorkoutExercise) => {
@@ -386,28 +820,92 @@ export default function CreateWorkoutScreen() {
     setEditingWeight(formatMetricText(exercise.carga));
     setEditingRest(formatMetricText(exercise.intervalo));
     setEditingNote(exercise.observacao || '');
+    setEditingVideoUrl(isCustomWorkoutExercise(exercise) ? exercise.videoUrl || '' : '');
+    setEditingExtraFieldValues(buildExtraFieldValues(exercise.extraFields));
     setShowEditModal(true);
   };
 
   const handleSaveExerciseEdit = () => {
     if (!editingExercise) return;
+    const isCustomExercise = isCustomWorkoutExercise(editingExercise);
+    const trimmedEditingVideoUrl = editingVideoUrl.trim();
+    const nextSeries = parseMetricInput(editingSeries, editingExercise.series ?? 3);
+    const nextReps = parseMetricInput(editingReps, editingExercise.repeticoes ?? 12);
+    const nextWeight = parseMetricInput(editingWeight, editingExercise.carga ?? 0);
+    const nextRest = parseMetricInput(editingRest, editingExercise.intervalo ?? 60);
 
     setExercises((prev) =>
       prev.map((e) =>
         e.exerciseId === editingExercise.exerciseId
           ? {
               ...e,
-              series: parseMetricInput(editingSeries, editingExercise.series ?? 3),
-              repeticoes: parseMetricInput(editingReps, editingExercise.repeticoes ?? 12),
-              carga: parseMetricInput(editingWeight, editingExercise.carga ?? 0),
-              intervalo: parseMetricInput(editingRest, editingExercise.intervalo ?? 60),
+              series: nextSeries,
+              repeticoes: nextReps,
+              carga: nextWeight,
+              intervalo: nextRest,
               observacao: editingNote || undefined,
+              ...(isCustomExercise
+                ? {
+                    videoUrl: trimmedEditingVideoUrl || undefined,
+                    mediaType: trimmedEditingVideoUrl ? 'video' : undefined,
+                  }
+                : {}),
+              extraFields: buildExtraFieldsFromValues(editingExtraFieldValues),
             }
           : e
       )
     );
     setShowEditModal(false);
     setEditingExercise(null);
+    setEditingVideoUrl('');
+    setEditingExtraFieldValues(createEmptyExtraFieldValues());
+  };
+
+  const handleSaveAndReplicateSeries = () => {
+    if (!editingExercise) return;
+    const isCustomExercise = isCustomWorkoutExercise(editingExercise);
+    const trimmedEditingVideoUrl = editingVideoUrl.trim();
+    const nextSeries = parseMetricInput(editingSeries, editingExercise.series ?? 3);
+    const nextReps = parseMetricInput(editingReps, editingExercise.repeticoes ?? 12);
+    const nextWeight = parseMetricInput(editingWeight, editingExercise.carga ?? 0);
+    const nextRest = parseMetricInput(editingRest, editingExercise.intervalo ?? 60);
+    const currentExtraFields = buildExtraFieldsFromValues(editingExtraFieldValues);
+
+    setExercises((prev) =>
+      prev.map((e) => {
+        const replicatedMetrics = {
+          series: nextSeries,
+          repeticoes: nextReps,
+          carga: nextWeight,
+          intervalo: nextRest,
+        };
+
+        if (e.exerciseId !== editingExercise.exerciseId) {
+          return {
+            ...e,
+            ...replicatedMetrics,
+          };
+        }
+
+        return {
+          ...e,
+          ...replicatedMetrics,
+          observacao: editingNote || undefined,
+          ...(isCustomExercise
+            ? {
+                videoUrl: trimmedEditingVideoUrl || undefined,
+                mediaType: trimmedEditingVideoUrl ? 'video' : undefined,
+              }
+            : {}),
+          extraFields: currentExtraFields,
+        };
+      })
+    );
+    setShowEditModal(false);
+    setEditingExercise(null);
+    setEditingVideoUrl('');
+    setEditingExtraFieldValues(createEmptyExtraFieldValues());
+    showAlert('Séries replicadas', 'Séries, repetições, carga e descanso foram aplicados aos exercícios deste treino.');
   };
 
   const handleDeleteExercise = (exerciseId: string) => {
@@ -426,12 +924,19 @@ export default function CreateWorkoutScreen() {
   const buildPayload = (): Omit<UserWorkout, 'id'> => ({
     nomeDoTreino: name.trim(),
     obsInstrucao: description.trim(),
+    personalId: isPersonal ? user?.uid : undefined,
     treino: exercises.map((exercise) => exercise.nome),
     seriesRep: exercises.map((exercise) => exercise.series ?? 0),
     repeticoes: exercises.map((exercise) => exercise.repeticoes ?? 0),
     carga: exercises.map((exercise) => exercise.carga ?? 0),
     intervalo: exercises.map((exercise) => exercise.intervalo ?? 0),
     videoUrls: exercises.map((exercise) => exercise.videoUrl || ''),
+    exerciseConfigs: exercises.map((exercise) => ({
+      ...exercise,
+      extraFields: (exercise.extraFields || []).filter(
+        (field) => formatMetricText(field.value).trim().length > 0
+      ),
+    })),
     arquivos: false,
     data: workoutDate,
   });
@@ -464,6 +969,7 @@ export default function CreateWorkoutScreen() {
       }
       setIsSaving(true);
       const result = await createAerobicWorkout(targetUserId, {
+        personalId: isPersonal ? user?.uid : undefined,
         items: parsedItems,
         treino: parsedItems[0].nome,
         treinos: parsedItems.map((item) => item.nome),
@@ -504,7 +1010,7 @@ export default function CreateWorkoutScreen() {
     }
     if (isPersonal) {
       const workoutId = isEditing ? editId : result.data?.id;
-      notifyWorkoutEvent(targetUserId, isEditing ? 'updated' : 'created', workoutId);
+      await notifyWorkoutEvent(targetUserId, isEditing ? 'updated' : 'created', workoutId);
     }
     if (isPersonal && !isEditing) {
       handlePostSave(targetUserId);
@@ -517,6 +1023,8 @@ export default function CreateWorkoutScreen() {
 
   const renderExerciseOption = ({ item }: { item: Exercise }) => {
     const isAdded = exercises.some((e) => e.nome === item.nomeDoTreino);
+    const hasVideo = Boolean(resolveCatalogVideoUrl(item));
+    const hasGif = Boolean(resolveCatalogGifUrl(item));
     return (
       <TouchableOpacity
         style={[
@@ -534,6 +1042,20 @@ export default function CreateWorkoutScreen() {
           <Text style={[styles.exerciseOptionCategory, { color: colors.textMuted }]} numberOfLines={1}>
             {item.colecao}
           </Text>
+          <View style={styles.exerciseOptionMediaRow}>
+            {hasVideo ? (
+              <View style={[styles.exerciseOptionMediaChip, { backgroundColor: colors.primary + '14' }]}>
+                <Ionicons name="play-circle-outline" size={12} color={colors.primary} />
+                <Text style={[styles.exerciseOptionMediaText, { color: colors.primary }]}>Video</Text>
+              </View>
+            ) : null}
+            {hasGif ? (
+              <View style={[styles.exerciseOptionMediaChip, { backgroundColor: colors.success + '14' }]}>
+                <Ionicons name="images-outline" size={12} color={colors.success} />
+                <Text style={[styles.exerciseOptionMediaText, { color: colors.success }]}>GIF</Text>
+              </View>
+            ) : null}
+          </View>
         </View>
         {isAdded ? (
           <Ionicons name="checkmark-circle" size={24} color={colors.success} />
@@ -543,6 +1065,255 @@ export default function CreateWorkoutScreen() {
       </TouchableOpacity>
     );
   };
+
+  const renderSeriesQuickOptions = (
+    value: string,
+    onChange: (nextValue: string) => void,
+    onDecrease: () => void,
+    onIncrease: () => void
+  ) => (
+    <View style={[styles.seriesOptionsCard, { borderColor: colors.border, backgroundColor: colors.surface }]}>
+      <View style={styles.seriesOptionsHeader}>
+        <Text style={[styles.seriesOptionsTitle, { color: colors.textSecondary }]}>
+          Opções de séries
+        </Text>
+        <View style={styles.seriesStepper}>
+          <TouchableOpacity
+            style={[styles.seriesStepperButton, { borderColor: colors.border, backgroundColor: colors.card }]}
+            onPress={onDecrease}
+          >
+            <Ionicons name="remove" size={16} color={colors.text} />
+          </TouchableOpacity>
+          <Text style={[styles.seriesStepperValue, { color: colors.text }]}>
+            {formatMetricText(parseMetricInput(value, 3))}
+          </Text>
+          <TouchableOpacity
+            style={[styles.seriesStepperButton, { borderColor: colors.border, backgroundColor: colors.card }]}
+            onPress={onIncrease}
+          >
+            <Ionicons name="add" size={16} color={colors.text} />
+          </TouchableOpacity>
+        </View>
+      </View>
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
+        contentContainerStyle={styles.seriesPresetRow}
+      >
+        {SERIES_PRESETS.map((preset) => {
+          const isActive = value.trim() === preset;
+          return (
+            <TouchableOpacity
+              key={`series-preset-${preset}`}
+              style={[
+                styles.seriesPresetChip,
+                {
+                  backgroundColor: isActive ? colors.primary : colors.card,
+                  borderColor: isActive ? colors.primary : colors.border,
+                },
+              ]}
+              onPress={() => onChange(preset)}
+            >
+              <Text
+                style={[
+                  styles.seriesPresetText,
+                  { color: isActive ? '#fff' : colors.textSecondary },
+                ]}
+              >
+                {preset}
+              </Text>
+            </TouchableOpacity>
+          );
+        })}
+      </ScrollView>
+    </View>
+  );
+
+  const renderCustomExerciseWindow = () => (
+    <ScrollView
+      style={styles.customExerciseWindowContainer}
+      contentContainerStyle={styles.customExerciseWindowScrollContent}
+      keyboardShouldPersistTaps="handled"
+      keyboardDismissMode="on-drag"
+      showsVerticalScrollIndicator={false}
+    >
+      <View
+        style={[
+          styles.customExerciseWindow,
+          { backgroundColor: colors.card, borderColor: colors.primary + '35' },
+        ]}
+      >
+        <View style={styles.customExerciseWindowHeader}>
+          <View
+            style={[
+              styles.customExerciseIconWrap,
+              { backgroundColor: colors.primary + '14' },
+            ]}
+          >
+            <Ionicons name="create-outline" size={22} color={colors.primary} />
+          </View>
+          <View style={styles.customExerciseInfo}>
+            <Text style={[styles.customExerciseTitle, { color: colors.text }]}>
+              {customExerciseName.trim()
+                ? `Novo exercicio: ${customExerciseName.trim()}`
+                : 'Janela de novo exercicio'}
+            </Text>
+            <Text style={[styles.customExerciseSubtitle, { color: colors.textSecondary }]}>
+              Desative o toggle para voltar ao catalogo de exercicios.
+            </Text>
+          </View>
+        </View>
+
+        <View style={styles.customExerciseWindowBody}>
+          <Text style={[styles.customExerciseHint, { color: colors.textSecondary }]}>
+            Esse exercicio sera adicionado somente neste treino e podera ser editado depois.
+          </Text>
+
+          <Input
+            label="Nome do exercicio"
+            placeholder="Ex: Agachamento no smith"
+            value={customExerciseName}
+            onChangeText={setCustomExerciseName}
+            icon="create-outline"
+            autoCapitalize="sentences"
+          />
+
+          <Input
+            label="URL do video (opcional)"
+            placeholder="https://youtube.com/watch?v=... ou https://...mp4"
+            value={customVideoUrl}
+            onChangeText={setCustomVideoUrl}
+            icon="videocam-outline"
+            autoCapitalize="none"
+          />
+          <Text style={[styles.videoFieldHelper, { color: colors.textSecondary }]}>
+            Cole um link do YouTube ou envie um arquivo MP4 opcional.
+          </Text>
+          <Button
+            title={customVideoUrl ? 'Trocar MP4' : 'Enviar MP4'}
+            onPress={handleUploadCustomVideo}
+            variant="outline"
+            size="small"
+            fullWidth
+            loading={isUploadingCustomVideo}
+            icon={<Ionicons name="cloud-upload-outline" size={18} color={colors.primary} />}
+            style={styles.videoUploadButton}
+          />
+          {customVideoUrl ? (
+            <Text style={[styles.videoUploadStatus, { color: colors.success }]}>
+              Video pronto para salvar neste exercicio.
+            </Text>
+          ) : null}
+
+          <View style={styles.editRow}>
+            <View style={styles.editField}>
+              <Input
+                label="Series"
+                placeholder="3"
+                value={customSeries}
+                onChangeText={setCustomSeries}
+                keyboardType="numbers-and-punctuation"
+                inputStyle={{ paddingVertical: spacing.sm, fontSize: 14 }}
+              />
+            </View>
+            <View style={styles.editField}>
+              <Input
+                label="Repeticoes"
+                placeholder="12"
+                value={customReps}
+                onChangeText={setCustomReps}
+                keyboardType="numbers-and-punctuation"
+                inputStyle={{ paddingVertical: spacing.sm, fontSize: 14 }}
+              />
+            </View>
+          </View>
+
+          {renderSeriesQuickOptions(
+            customSeries,
+            setCustomSeries,
+            () => changeCustomSeriesStep(-1),
+            () => changeCustomSeriesStep(1)
+          )}
+
+          <View style={styles.editRow}>
+            <View style={styles.editField}>
+              <Input
+                label="Carga (kg)"
+                placeholder="0"
+                value={customWeight}
+                onChangeText={setCustomWeight}
+                keyboardType="numbers-and-punctuation"
+                inputStyle={{ paddingVertical: spacing.sm, fontSize: 14 }}
+              />
+            </View>
+            <View style={styles.editField}>
+              <Input
+                label="Descanso (seg)"
+                placeholder="60"
+                value={customRest}
+                onChangeText={setCustomRest}
+                keyboardType="numbers-and-punctuation"
+                inputStyle={{ paddingVertical: spacing.sm, fontSize: 14 }}
+              />
+            </View>
+          </View>
+
+          <Input
+            label="Observacoes"
+            placeholder="Detalhes de execucao, foco, dica..."
+            value={customNote}
+            onChangeText={setCustomNote}
+            multiline
+            numberOfLines={3}
+            inputStyle={{ paddingVertical: spacing.sm, fontSize: 14 }}
+          />
+
+          <View
+            style={[
+              styles.extraMetricsCard,
+              { borderColor: colors.border, backgroundColor: colors.background },
+            ]}
+          >
+            <Text style={[styles.extraMetricsTitle, { color: colors.text }]}>
+              Campos extras do exercicio
+            </Text>
+            <Text style={[styles.extraMetricsSubtitle, { color: colors.textSecondary }]}>
+              Use o que fizer sentido para este treino, como tempo, distancia, ritmo ou inclinacao.
+            </Text>
+            <View style={styles.extraMetricsGrid}>
+              {EXTRA_FIELD_PRESETS.map((preset) => (
+                <View key={`custom-${preset.key}`} style={styles.extraMetricField}>
+                  <Input
+                    label={`${preset.label} (${preset.unit})`}
+                    placeholder={preset.placeholder}
+                    value={customExtraFieldValues[preset.key] || ''}
+                    onChangeText={(value) => updateCustomExtraFieldValue(preset.key, value)}
+                    keyboardType="numbers-and-punctuation"
+                    inputStyle={{ paddingVertical: spacing.sm, fontSize: 14 }}
+                  />
+                </View>
+              ))}
+            </View>
+          </View>
+
+          <Button title="Adicionar exercicio" onPress={handleAddCustomExercise} fullWidth size="large" />
+        </View>
+      </View>
+    </ScrollView>
+  );
+
+  const renderExerciseListEmpty = () => (
+    <View style={styles.exerciseListEmpty}>
+      <Ionicons name="search-outline" size={34} color={colors.textMuted} />
+      <Text style={[styles.exerciseListEmptyTitle, { color: colors.text }]}>
+        Nenhum exercicio encontrado
+      </Text>
+      <Text style={[styles.exerciseListEmptyText, { color: colors.textSecondary }]}>
+        Ajuste a busca ou crie um exercicio proprio para este treino.
+      </Text>
+    </View>
+  );
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
@@ -566,7 +1337,7 @@ export default function CreateWorkoutScreen() {
             {students.length === 0 ? (
               <Card>
                 <Text style={{ color: colors.textSecondary }}>
-                  Nenhum aluno vinculado ao seu codigo ainda.
+                  Nenhum aluno vinculado ao seu código ainda.
                 </Text>
               </Card>
             ) : (
@@ -582,7 +1353,7 @@ export default function CreateWorkoutScreen() {
         )}
 
         {isPersonal && !isEditing && (
-          <Card style={styles.toggleCard}>
+          <Card style={styles.toggleCard} shadow={false} padding="small">
             <View style={styles.toggleRow}>
               <View style={styles.toggleInfo}>
                 <Text style={[styles.toggleTitle, { color: colors.text }]}>
@@ -614,31 +1385,59 @@ export default function CreateWorkoutScreen() {
         {!isAerobic && (
           <>
             {isPersonal && (
-              <Card style={styles.assistantCard}>
-                <Text style={[styles.assistantTitle, { color: colors.text }]}>
-                  Assistente para treinos
-                </Text>
-                <Text style={[styles.assistantSubtitle, { color: colors.textSecondary }]}>
-                  Descreva o treino desejado para gerar os exercícios.
-                </Text>
-                <Input
-                  label="Prompt"
-                  placeholder="Ex: Treino de peito e triceps para hipertrofia"
-                  value={assistantPrompt}
-                  onChangeText={setAssistantPrompt}
-                  multiline
-                  numberOfLines={3}
-                  icon="sparkles-outline"
-                  inputStyle={{ paddingVertical: spacing.sm, fontSize: 14 }}
-                />
-                <Button
-                  title="Gerar treino"
-                  onPress={handleGenerateWorkout}
-                  loading={isGenerating}
-                  disabled={isGenerating || !assistantPrompt.trim()}
-                  size="small"
-                  fullWidth
-                />
+              <Card style={styles.assistantCard} shadow={false}>
+                <TouchableOpacity
+                  style={styles.assistantHeaderRow}
+                  onPress={() => setIsAssistantExpanded((prev) => !prev)}
+                  activeOpacity={0.8}
+                >
+                  <View style={styles.assistantHeaderInfo}>
+                    <View
+                      style={[
+                        styles.assistantIconWrap,
+                        { backgroundColor: colors.primary + '18' },
+                      ]}
+                    >
+                      <Ionicons name="sparkles-outline" size={18} color={colors.primary} />
+                    </View>
+                    <View style={styles.assistantTextWrap}>
+                      <Text style={[styles.assistantTitle, { color: colors.text }]}>
+                        Assistente para treinos
+                      </Text>
+                      <Text style={[styles.assistantSubtitle, { color: colors.textSecondary }]}>
+                        Opcional: use IA para montar o treino mais rápido.
+                      </Text>
+                    </View>
+                  </View>
+                  <Ionicons
+                    name={isAssistantExpanded ? 'chevron-up' : 'chevron-down'}
+                    size={20}
+                    color={colors.textSecondary}
+                  />
+                </TouchableOpacity>
+
+                {isAssistantExpanded && (
+                  <View style={styles.assistantBody}>
+                    <Input
+                      label="Prompt"
+                      placeholder="Ex: Treino de peito e triceps para hipertrofia"
+                      value={assistantPrompt}
+                      onChangeText={setAssistantPrompt}
+                      multiline
+                      numberOfLines={3}
+                      icon="sparkles-outline"
+                      inputStyle={{ paddingVertical: spacing.sm, fontSize: 14 }}
+                    />
+                    <Button
+                      title="Gerar treino"
+                      onPress={handleGenerateWorkout}
+                      loading={isGenerating}
+                      disabled={isGenerating || !assistantPrompt.trim()}
+                      size="small"
+                      fullWidth
+                    />
+                  </View>
+                )}
               </Card>
             )}
 
@@ -666,7 +1465,7 @@ export default function CreateWorkoutScreen() {
                 </Text>
                 <TouchableOpacity
                   style={[styles.addExerciseButton, { backgroundColor: colors.primary }]}
-                  onPress={() => setShowExerciseModal(true)}
+                  onPress={openExerciseModal}
                 >
                   <Ionicons name="add" size={20} color="#fff" />
                   <Text style={styles.addExerciseText}>Adicionar</Text>
@@ -699,6 +1498,7 @@ export default function CreateWorkoutScreen() {
                         showActions
                         onEdit={() => handleEditExercise(item)}
                         onDelete={() => handleDeleteExercise(item.exerciseId)}
+                        onVideoPress={() => void handleViewExerciseVideo(item)}
                         onLongPress={isPersonal ? drag : undefined}
                         showDragHandle={isPersonal}
                         onDragHandlePressIn={isPersonal ? drag : undefined}
@@ -714,12 +1514,12 @@ export default function CreateWorkoutScreen() {
         )}
 
         {isAerobic && (
-          <Card style={styles.aerobicCard}>
+          <Card style={styles.aerobicCard} shadow={false}>
             <Text style={[styles.aerobicTitle, { color: colors.text }]}>
               Treino aeróbico
             </Text>
             <Text style={[styles.aerobicSubtitle, { color: colors.textSecondary }]}>
-              Adicione atividades com séries, repetições e carga.
+              Cadastre atividades de forma simples e objetiva.
             </Text>
             <View style={[styles.aerobicItemsHeader, { borderBottomColor: colors.border }]}>
               <Text style={[styles.aerobicItemsTitle, { color: colors.text }]}>Atividades</Text>
@@ -730,27 +1530,42 @@ export default function CreateWorkoutScreen() {
             </View>
 
             {aerobicItems.map((item, index) => (
-              <View
-                key={item.id}
-                style={[
-                  styles.aerobicItemCard,
-                  { backgroundColor: colors.surface, borderColor: colors.border },
-                ]}
-              >
-                <View style={styles.aerobicItemHeader}>
-                  <Text style={[styles.aerobicItemTitle, { color: colors.text }]}>
-                    Treino {index + 1}
+              <View key={item.id} style={styles.aerobicItemRow}>
+                <View
+                  style={[
+                    styles.aerobicItemIndex,
+                    {
+                      backgroundColor: colors.surface,
+                      borderColor: colors.border,
+                    },
+                  ]}
+                >
+                  <Text style={[styles.aerobicItemIndexText, { color: colors.textSecondary }]}>
+                    {index + 1}
                   </Text>
-                  <TouchableOpacity onPress={() => handleRemoveAerobicItem(item.id)}>
-                    <Ionicons name="trash-outline" size={18} color={colors.error} />
-                  </TouchableOpacity>
                 </View>
-                <Input
-                  label="Atividade"
-                  placeholder="Ex: Corrida leve"
-                  value={item.nome}
-                  onChangeText={(value) => handleChangeAerobicItem(item.id, 'nome', value)}
-                />
+                <View style={styles.aerobicItemInputWrap}>
+                  <Input
+                    placeholder={`Ex: Caminhada ${index + 1}`}
+                    value={item.nome}
+                    onChangeText={(value) => handleChangeAerobicItem(item.id, 'nome', value)}
+                    style={styles.aerobicItemInput}
+                  />
+                </View>
+                <TouchableOpacity
+                  style={[
+                    styles.aerobicRemoveButton,
+                    { backgroundColor: colors.error + '12' },
+                  ]}
+                  onPress={() => handleRemoveAerobicItem(item.id)}
+                  disabled={aerobicItems.length === 1}
+                >
+                  <Ionicons
+                    name="trash-outline"
+                    size={18}
+                    color={aerobicItems.length === 1 ? colors.textMuted : colors.error}
+                  />
+                </TouchableOpacity>
               </View>
             ))}
             <Input
@@ -777,89 +1592,133 @@ export default function CreateWorkoutScreen() {
         )}
       </ScrollView>
 
-      <View style={[styles.footer, { backgroundColor: colors.background, borderTopColor: colors.border }]}>
-        <Button
-          title={
-            isAerobic ? 'Salvar aeróbico' : isEditing ? 'Salvar alterações' : 'Criar treino'
-          }
-          onPress={handleSave}
-          fullWidth
-          size="large"
-          loading={isSaving}
-          disabled={isSaving}
-        />
-      </View>
+      {!isSheetModalOpen ? (
+        <View
+          style={[styles.footer, { backgroundColor: colors.background, borderTopColor: colors.border }]}
+        >
+          <Button
+            title={
+              isAerobic ? 'Salvar aeróbico' : isEditing ? 'Salvar alterações' : 'Criar treino'
+            }
+            onPress={handleSave}
+            fullWidth
+            size="large"
+            loading={isSaving}
+            disabled={isSaving}
+          />
+        </View>
+      ) : null}
 
       <Modal
         visible={showExerciseModal}
         animationType="slide"
         presentationStyle="pageSheet"
-        onRequestClose={() => setShowExerciseModal(false)}
+        onRequestClose={closeExerciseModal}
       >
         <SafeAreaView style={[styles.modal, { backgroundColor: colors.background }]}>
           <View style={[styles.modalHeader, { borderBottomColor: colors.border }]}>
             <Text style={[styles.modalTitle, { color: colors.text }]}>
               Selecionar exercício
             </Text>
-            <TouchableOpacity onPress={() => setShowExerciseModal(false)}>
+            <TouchableOpacity onPress={closeExerciseModal}>
               <Ionicons name="close" size={24} color={colors.text} />
             </TouchableOpacity>
           </View>
 
-          <View style={styles.exerciseSearchContainer}>
-            <Input
-              placeholder="Pesquisar treino"
-              value={exerciseSearch}
-              onChangeText={setExerciseSearch}
-              icon="search-outline"
-              style={styles.exerciseSearchInput}
-            />
-          </View>
-
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            style={styles.categoriesScroll}
-            contentContainerStyle={styles.categoriesContainer}
+          <KeyboardAvoidingView
+            style={styles.modalContent}
+            behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+            keyboardVerticalOffset={Platform.OS === 'ios' ? 10 : 0}
           >
-            {CATEGORIES.map((cat) => (
-              <TouchableOpacity
-                key={cat.id || 'all'}
-                style={[
-                  styles.categoryChip,
-                  {
-                    backgroundColor:
-                      selectedCategory === cat.id ? colors.primary : colors.surface,
-                  },
-                ]}
-                onPress={() => setSelectedCategory(cat.id)}
-              >
-                <Text
-                  style={[
-                    styles.categoryChipText,
-                    {
-                      color: selectedCategory === cat.id ? '#fff' : colors.textSecondary,
-                    },
-                  ]}
-                >
-                  {cat.label}
-                </Text>
-              </TouchableOpacity>
-            ))}
-          </ScrollView>
+            <View style={styles.customExerciseToggleContainer}>
+              <Card style={styles.toggleCard} shadow={false} padding="small">
+                <View style={styles.toggleRow}>
+                  <View style={styles.toggleInfo}>
+                    <Text style={[styles.toggleTitle, { color: colors.text }]}>
+                      Novo exercicio proprio
+                    </Text>
+                    <Text style={[styles.toggleSubtitle, { color: colors.textSecondary }]}>
+                      {isCustomExerciseWindowEnabled
+                        ? 'Janela ativa. Desative para voltar ao catalogo.'
+                        : 'Ative para abrir a janela de criacao manual.'}
+                    </Text>
+                  </View>
+                  <Switch
+                    value={isCustomExerciseWindowEnabled}
+                    onValueChange={handleToggleCustomExerciseWindow}
+                    trackColor={{ false: colors.border, true: colors.primary + '60' }}
+                    thumbColor={isCustomExerciseWindowEnabled ? colors.primary : colors.surface}
+                  />
+                </View>
+              </Card>
+            </View>
 
-          <FlatList
-            data={filteredExercises}
-            renderItem={renderExerciseOption}
-            keyExtractor={(item) => item.id}
-            contentContainerStyle={styles.exercisesList}
-          />
+            {isCustomExerciseWindowEnabled ? (
+              renderCustomExerciseWindow()
+            ) : (
+              <>
+                <View style={styles.exerciseSearchContainer}>
+                  <Input
+                    placeholder="Pesquisar treino"
+                    value={exerciseSearch}
+                    onChangeText={setExerciseSearch}
+                    icon="search-outline"
+                    style={styles.exerciseSearchInput}
+                  />
+                </View>
+
+                <ScrollView
+                  horizontal
+                  showsHorizontalScrollIndicator={false}
+                  style={styles.categoriesScroll}
+                  contentContainerStyle={styles.categoriesContainer}
+                >
+                  {CATEGORIES.map((cat) => (
+                    <TouchableOpacity
+                      key={cat.id || 'all'}
+                      style={[
+                        styles.categoryChip,
+                        {
+                          backgroundColor:
+                            selectedCategory === cat.id ? colors.primary : colors.surface,
+                        },
+                      ]}
+                      onPress={() => setSelectedCategory(cat.id)}
+                    >
+                      <Text
+                        style={[
+                          styles.categoryChipText,
+                          {
+                            color: selectedCategory === cat.id ? '#fff' : colors.textSecondary,
+                          },
+                        ]}
+                      >
+                        {cat.label}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </ScrollView>
+
+                <FlatList
+                  style={styles.exerciseOptionsList}
+                  data={filteredExercises}
+                  renderItem={renderExerciseOption}
+                  keyExtractor={(item) => item.id}
+                  contentContainerStyle={styles.exercisesList}
+                  keyboardShouldPersistTaps="handled"
+                  ListEmptyComponent={renderExerciseListEmpty}
+                />
+              </>
+            )}
+          </KeyboardAvoidingView>
         </SafeAreaView>
       </Modal>
       <Modal
         visible={showEditModal}
         animationType="slide"
         transparent
+        statusBarTranslucent={Platform.OS === 'android'}
+        navigationBarTranslucent={Platform.OS === 'android'}
         onRequestClose={() => setShowEditModal(false)}
       >
         <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
@@ -876,7 +1735,7 @@ export default function CreateWorkoutScreen() {
               <View
                 style={[
                   styles.sheetContainer,
-                  { backgroundColor: colors.background, paddingBottom: Math.max(insets.bottom, spacing.md) },
+                  { backgroundColor: colors.background },
                 ]}
               >
                 <View style={[styles.sheetHandle, { backgroundColor: colors.border }]} />
@@ -889,74 +1748,158 @@ export default function CreateWorkoutScreen() {
                   </TouchableOpacity>
                 </View>
 
-                <ScrollView
-                  style={styles.editForm}
-                  contentContainerStyle={styles.editFormContent}
-                  keyboardShouldPersistTaps="handled"
-                  showsVerticalScrollIndicator={false}
+                <View style={styles.sheetBody}>
+                  <ScrollView
+                    style={styles.editForm}
+                    contentContainerStyle={styles.editFormContent}
+                    keyboardShouldPersistTaps="handled"
+                    keyboardDismissMode="on-drag"
+                    nestedScrollEnabled
+                    showsVerticalScrollIndicator={false}
+                  >
+                    <View>
+                      <Text style={[styles.editExerciseName, { color: colors.text }]}>
+                        {editingExercise?.nome}
+                      </Text>
+
+                      <View style={styles.editRow}>
+                        <View style={styles.editField}>
+                          <Input
+                            label="Series"
+                            placeholder="3"
+                            value={editingSeries}
+                            onChangeText={setEditingSeries}
+                            keyboardType="numbers-and-punctuation"
+                            inputStyle={{ paddingVertical: spacing.sm, fontSize: 14 }}
+                          />
+                        </View>
+                        <View style={styles.editField}>
+                          <Input
+                            label="Repeticoes"
+                            placeholder="12"
+                            value={editingReps}
+                            onChangeText={setEditingReps}
+                            keyboardType="numbers-and-punctuation"
+                            inputStyle={{ paddingVertical: spacing.sm, fontSize: 14 }}
+                          />
+                        </View>
+                      </View>
+
+                      {renderSeriesQuickOptions(
+                        editingSeries,
+                        setEditingSeries,
+                        () => changeEditingSeriesStep(-1),
+                        () => changeEditingSeriesStep(1)
+                      )}
+
+                      <View style={styles.editRow}>
+                        <View style={styles.editField}>
+                          <Input
+                            label="Carga (kg)"
+                            placeholder="0"
+                            value={editingWeight}
+                            onChangeText={setEditingWeight}
+                            inputStyle={{ paddingVertical: spacing.sm, fontSize: 14 }}
+                          />
+                        </View>
+                        <View style={styles.editField}>
+                          <Input
+                            label="Descanso (seg)"
+                            placeholder="60"
+                            value={editingRest}
+                            onChangeText={setEditingRest}
+                            inputStyle={{ paddingVertical: spacing.sm, fontSize: 14 }}
+                          />
+                        </View>
+                      </View>
+
+                      <Input
+                        label="Observacoes"
+                        placeholder="Notas sobre execucao, dicas, etc."
+                        value={editingNote}
+                        onChangeText={setEditingNote}
+                        multiline
+                        numberOfLines={3}
+                        inputStyle={{ paddingVertical: spacing.sm, fontSize: 14 }}
+                      />
+
+                      {isCustomWorkoutExercise(editingExercise) ? (
+                        <>
+                          <Input
+                            label="URL do video (opcional)"
+                            placeholder="https://youtube.com/watch?v=... ou https://...mp4"
+                            value={editingVideoUrl}
+                            onChangeText={setEditingVideoUrl}
+                            icon="videocam-outline"
+                            autoCapitalize="none"
+                          />
+                          <Text style={[styles.videoFieldHelper, { color: colors.textSecondary }]}>
+                            Cole um link do YouTube ou envie um arquivo MP4 opcional.
+                          </Text>
+                          <Button
+                            title={editingVideoUrl ? 'Trocar MP4' : 'Enviar MP4'}
+                            onPress={handleUploadEditingVideo}
+                            variant="outline"
+                            size="small"
+                            fullWidth
+                            loading={isUploadingEditingVideo}
+                            icon={<Ionicons name="cloud-upload-outline" size={18} color={colors.primary} />}
+                            style={styles.videoUploadButton}
+                          />
+                          {editingVideoUrl ? (
+                            <Text style={[styles.videoUploadStatus, { color: colors.success }]}>
+                              Video pronto para salvar neste exercicio.
+                            </Text>
+                          ) : null}
+                        </>
+                      ) : null}
+
+                      <View style={[styles.extraMetricsCard, { borderColor: colors.border, backgroundColor: colors.card }]}>
+                        <Text style={[styles.extraMetricsTitle, { color: colors.text }]}>
+                          Campos extras do exercicio
+                        </Text>
+                        <Text style={[styles.extraMetricsSubtitle, { color: colors.textSecondary }]}>
+                          Ajuste metricas opcionais para deixar a prescricao mais completa.
+                        </Text>
+                        <View style={styles.extraMetricsGrid}>
+                          {EXTRA_FIELD_PRESETS.map((preset) => (
+                            <View key={`edit-${preset.key}`} style={styles.extraMetricField}>
+                              <Input
+                                label={`${preset.label} (${preset.unit})`}
+                                placeholder={preset.placeholder}
+                                value={editingExtraFieldValues[preset.key] || ''}
+                                onChangeText={(value) => updateEditingExtraFieldValue(preset.key, value)}
+                                keyboardType="numbers-and-punctuation"
+                                inputStyle={{ paddingVertical: spacing.sm, fontSize: 14 }}
+                              />
+                            </View>
+                          ))}
+                        </View>
+                      </View>
+                    </View>
+                  </ScrollView>
+                </View>
+                <View
+                  style={[
+                    styles.sheetFooter,
+                    {
+                      backgroundColor: colors.background,
+                      borderTopColor: colors.border,
+                      paddingBottom: Math.max(insets.bottom, spacing.md),
+                    },
+                  ]}
                 >
-                  <View>
-                    <Text style={[styles.editExerciseName, { color: colors.text }]}>
-                      {editingExercise?.nome}
-                    </Text>
-
-                    <View style={styles.editRow}>
-                      <View style={styles.editField}>
-                        <Input
-                          label="Series"
-                          placeholder="3"
-                          value={editingSeries}
-                          onChangeText={setEditingSeries}
-                          inputStyle={{ paddingVertical: spacing.sm, fontSize: 14 }}
-                        />
-                      </View>
-                      <View style={styles.editField}>
-                        <Input
-                          label="Repeticoes"
-                          placeholder="12"
-                          value={editingReps}
-                          onChangeText={setEditingReps}
-                          inputStyle={{ paddingVertical: spacing.sm, fontSize: 14 }}
-                        />
-                      </View>
-                    </View>
-
-                    <View style={styles.editRow}>
-                      <View style={styles.editField}>
-                        <Input
-                          label="Carga (kg)"
-                          placeholder="0"
-                          value={editingWeight}
-                          onChangeText={setEditingWeight}
-                          inputStyle={{ paddingVertical: spacing.sm, fontSize: 14 }}
-                        />
-                      </View>
-                      <View style={styles.editField}>
-                        <Input
-                          label="Descanso (seg)"
-                          placeholder="60"
-                          value={editingRest}
-                          onChangeText={setEditingRest}
-                          inputStyle={{ paddingVertical: spacing.sm, fontSize: 14 }}
-                        />
-                      </View>
-                    </View>
-
-                    <Input
-                      label="Observacoes"
-                      placeholder="Notas sobre execucao, dicas, etc."
-                      value={editingNote}
-                      onChangeText={setEditingNote}
-                      multiline
-                      numberOfLines={3}
-                      inputStyle={{ paddingVertical: spacing.sm, fontSize: 14 }}
-                    />
-                  </View>
-
-                  <View style={styles.editFooter}>
-                    <Button title="Salvar" onPress={handleSaveExerciseEdit} fullWidth size="large" />
-                  </View>
-                </ScrollView>
+                  <Button title="Salvar" onPress={handleSaveExerciseEdit} fullWidth size="large" />
+                  <Button
+                    title="Salvar e replicar séries"
+                    onPress={handleSaveAndReplicateSeries}
+                    fullWidth
+                    size="small"
+                    variant="outline"
+                    icon={<Ionicons name="copy-outline" size={18} color={colors.primary} />}
+                    style={styles.replicateSeriesButton}
+                  />
+                </View>
               </View>
             </KeyboardAvoidingView>
           </View>
@@ -993,10 +1936,10 @@ const styles = StyleSheet.create({
     paddingBottom: spacing['2xl'],
   },
   section: {
-    marginTop: spacing.md,
+    marginTop: spacing.sm,
   },
   toggleCard: {
-    marginTop: spacing.md,
+    marginTop: spacing.sm,
   },
   toggleRow: {
     flexDirection: 'row',
@@ -1017,19 +1960,44 @@ const styles = StyleSheet.create({
     lineHeight: 16,
   },
   assistantCard: {
-    marginTop: spacing.md,
+    marginTop: spacing.sm,
+  },
+  assistantHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: spacing.sm,
+  },
+  assistantHeaderInfo: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+    gap: spacing.sm,
+  },
+  assistantIconWrap: {
+    width: 34,
+    height: 34,
+    borderRadius: borderRadius.md,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  assistantTextWrap: {
+    flex: 1,
   },
   assistantTitle: {
-    fontSize: 16,
+    fontSize: 15,
     fontWeight: '600',
-    marginBottom: spacing.xs,
+    marginBottom: 2,
   },
   assistantSubtitle: {
     fontSize: 12,
-    marginBottom: spacing.md,
+    lineHeight: 16,
+  },
+  assistantBody: {
+    marginTop: spacing.md,
   },
   aerobicCard: {
-    marginTop: spacing.md,
+    marginTop: spacing.sm,
   },
   aerobicTitle: {
     fontSize: 16,
@@ -1061,21 +2029,38 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '600',
   },
-  aerobicItemCard: {
-    borderWidth: 1,
-    borderRadius: borderRadius.lg,
-    padding: spacing.md,
+  aerobicItemRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
     gap: spacing.sm,
     marginBottom: spacing.sm,
   },
-  aerobicItemHeader: {
-    flexDirection: 'row',
+  aerobicItemIndex: {
+    width: 32,
+    height: 32,
+    borderRadius: borderRadius.md,
+    borderWidth: 1,
     alignItems: 'center',
-    justifyContent: 'space-between',
+    justifyContent: 'center',
+    marginTop: 8,
   },
-  aerobicItemTitle: {
+  aerobicItemIndexText: {
     fontSize: 14,
     fontWeight: '600',
+  },
+  aerobicItemInputWrap: {
+    flex: 1,
+  },
+  aerobicItemInput: {
+    marginBottom: 0,
+  },
+  aerobicRemoveButton: {
+    width: 34,
+    height: 34,
+    borderRadius: borderRadius.md,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 7,
   },
   sectionHeader: {
     flexDirection: 'row',
@@ -1135,6 +2120,7 @@ const styles = StyleSheet.create({
     paddingTop: spacing.sm,
     paddingHorizontal: spacing.base,
     maxHeight: '85%',
+    overflow: 'hidden',
   },
   sheetHandle: {
     width: 40,
@@ -1155,12 +2141,73 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: '600',
   },
+  modalContent: {
+    flex: 1,
+  },
   exerciseSearchContainer: {
     paddingHorizontal: spacing.base,
     paddingTop: spacing.sm,
   },
   exerciseSearchInput: {
     marginBottom: spacing.sm,
+  },
+  customExerciseToggleContainer: {
+    paddingHorizontal: spacing.base,
+    paddingTop: spacing.sm,
+  },
+  customExerciseWindowContainer: {
+    flex: 1,
+  },
+  customExerciseWindowScrollContent: {
+    padding: spacing.base,
+    paddingTop: spacing.sm,
+    paddingBottom: spacing['2xl'],
+  },
+  customExerciseWindow: {
+    borderWidth: 1,
+    borderRadius: borderRadius.xl,
+    padding: spacing.base,
+  },
+  customExerciseWindowHeader: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: spacing.sm,
+    marginBottom: spacing.base,
+  },
+  customExerciseIconWrap: {
+    width: 42,
+    height: 42,
+    borderRadius: borderRadius.md,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  customExerciseInfo: {
+    flex: 1,
+  },
+  customExerciseTitle: {
+    fontSize: 15,
+    fontWeight: '600',
+    marginBottom: 2,
+  },
+  customExerciseSubtitle: {
+    fontSize: 12,
+    lineHeight: 18,
+  },
+  customExerciseWindowBody: {
+    gap: spacing.md,
+  },
+  videoFieldHelper: {
+    fontSize: 12,
+    lineHeight: 18,
+    marginTop: -6,
+  },
+  videoUploadButton: {
+    marginTop: -2,
+  },
+  videoUploadStatus: {
+    fontSize: 12,
+    fontWeight: '600',
+    marginTop: -4,
   },
   categoriesScroll: {
     maxHeight: 64,
@@ -1187,7 +2234,28 @@ const styles = StyleSheet.create({
     includeFontPadding: false,
   },
   exercisesList: {
-    padding: spacing.base,
+    paddingHorizontal: spacing.base,
+    paddingBottom: spacing.base,
+  },
+  exerciseOptionsList: {
+    flex: 1,
+  },
+  exerciseListEmpty: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing['2xl'],
+  },
+  exerciseListEmptyTitle: {
+    fontSize: 15,
+    fontWeight: '600',
+    marginTop: spacing.md,
+  },
+  exerciseListEmptyText: {
+    fontSize: 13,
+    textAlign: 'center',
+    marginTop: spacing.xs,
+    lineHeight: 19,
   },
   exerciseOption: {
     flexDirection: 'row',
@@ -1212,13 +2280,41 @@ const styles = StyleSheet.create({
     fontSize: 12,
     marginTop: spacing.xs,
   },
+  exerciseOptionMediaRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing.xs,
+    marginTop: spacing.xs,
+  },
+  exerciseOptionMediaChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: spacing.xs,
+    paddingVertical: 3,
+    borderRadius: borderRadius.full,
+  },
+  exerciseOptionMediaText: {
+    fontSize: 11,
+    fontWeight: '600',
+  },
+  sheetBody: {
+    flex: 1,
+    minHeight: 220,
+  },
   editForm: {
-    flexShrink: 1,
+    flex: 1,
   },
   editFormContent: {
     padding: spacing.md,
-    paddingBottom: spacing.xl,
+    paddingBottom: spacing.lg,
     gap: spacing.lg,
+    flexGrow: 1,
+  },
+  customExerciseHint: {
+    fontSize: 13,
+    lineHeight: 19,
+    marginBottom: spacing.lg,
   },
   editExerciseName: {
     fontSize: 18,
@@ -1232,7 +2328,90 @@ const styles = StyleSheet.create({
   editField: {
     flex: 1,
   },
-  editFooter: {
+  seriesOptionsCard: {
+    borderWidth: 1,
+    borderRadius: borderRadius.lg,
+    padding: spacing.sm,
+    gap: spacing.sm,
+  },
+  seriesOptionsHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: spacing.sm,
+  },
+  seriesOptionsTitle: {
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  seriesStepper: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+  },
+  seriesStepperButton: {
+    width: 34,
+    height: 34,
+    borderRadius: borderRadius.md,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  seriesStepperValue: {
+    minWidth: 32,
+    textAlign: 'center',
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  seriesPresetRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+  },
+  seriesPresetChip: {
+    minWidth: 38,
+    height: 34,
+    borderRadius: borderRadius.full,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: spacing.sm,
+  },
+  seriesPresetText: {
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  extraMetricsCard: {
+    marginTop: spacing.md,
+    borderWidth: 1,
+    borderRadius: borderRadius.lg,
+    padding: spacing.md,
+  },
+  extraMetricsTitle: {
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  extraMetricsSubtitle: {
+    fontSize: 12,
+    lineHeight: 18,
+    marginTop: spacing.xs,
+    marginBottom: spacing.md,
+  },
+  extraMetricsGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing.sm,
+  },
+  extraMetricField: {
+    width: '48%',
+  },
+  sheetFooter: {
+    borderTopWidth: StyleSheet.hairlineWidth,
+    paddingHorizontal: spacing.md,
     paddingTop: spacing.sm,
+    gap: spacing.sm,
+  },
+  replicateSeriesButton: {
+    marginTop: 0,
   },
 });

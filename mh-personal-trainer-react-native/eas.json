@@ -19,7 +19,7 @@
         "EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY": "pk_test_51R56vnP3w93hGHYvnyzlTzxRB9SLq3hIyBxLbZ642X7n4K0WTNQPNyS1Y1KPuq7MX3WSxz8MFeyjW6puFd0Ew9aX00XAFFYZMD",
         "EXPO_PUBLIC_API_URL": "https://api.stripe.com",
         "EXPO_PUBLIC_STRIPE_FUNCTIONS_URL": "https://southamerica-east1-profissions-2746d.cloudfunctions.net",
-        "EXPO_PUBLIC_STRIPE_SUBSCRIPTION_ENDPOINT": "createSubscriptionAluno",
+        "EXPO_PUBLIC_STRIPE_SUBSCRIPTION_ENDPOINT": "createInscricao",
         "EXPO_PUBLIC_STRIPE_SETUP_INTENT_ENDPOINT": "createSetupIntent",
         "EXPO_PUBLIC_EAS_PROJECT_ID": "265d88e6-dc8b-4c0a-80ad-2b4364e5d476"
       }
@@ -39,7 +39,7 @@
         "EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY": "pk_test_51R56vnP3w93hGHYvnyzlTzxRB9SLq3hIyBxLbZ642X7n4K0WTNQPNyS1Y1KPuq7MX3WSxz8MFeyjW6puFd0Ew9aX00XAFFYZMD",
         "EXPO_PUBLIC_API_URL": "https://api.stripe.com",
         "EXPO_PUBLIC_STRIPE_FUNCTIONS_URL": "https://southamerica-east1-profissions-2746d.cloudfunctions.net",
-        "EXPO_PUBLIC_STRIPE_SUBSCRIPTION_ENDPOINT": "createSubscriptionAluno",
+        "EXPO_PUBLIC_STRIPE_SUBSCRIPTION_ENDPOINT": "createInscricao",
         "EXPO_PUBLIC_STRIPE_SETUP_INTENT_ENDPOINT": "createSetupIntent",
         "EXPO_PUBLIC_EAS_PROJECT_ID": "265d88e6-dc8b-4c0a-80ad-2b4364e5d476"
       }

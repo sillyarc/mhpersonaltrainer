@@ -83,6 +83,7 @@ export interface AdminUserSummary {
   name: string;
   email: string;
   role: 'admin' | 'personal' | 'aluno';
+  codigoPersonal?: number | string;
   createdAt?: Date;
 }
 
@@ -1086,6 +1087,7 @@ async function getAdminOverview(): Promise<AdminOverview> {
       name: data.display_name || 'Usuario',
       email: data.email || '',
       role,
+      codigoPersonal: data.codigoPersonal,
       createdAt: data.created_time?.toDate(),
     };
   });

@@ -1,4 +1,4 @@
-﻿import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -26,6 +26,7 @@ import { useFocusEffect } from '@react-navigation/native';
 import { router, usePathname } from 'expo-router';
 import * as ExpoLinking from 'expo-linking';
 import { Ionicons } from '@expo/vector-icons';
+import { useTranslation } from 'react-i18next';
 import { Pedometer } from 'expo-sensors';
 import { addDoc, collection, doc, getDoc, getDocs, increment, limit, orderBy, query, setDoc, updateDoc } from 'firebase/firestore';
 import { useTheme } from '../../src/hooks/useTheme';
@@ -36,8 +37,10 @@ import { useDashboardData } from '../../src/hooks/useDashboardData';
 import { useAdminDashboardData } from '../../src/hooks/useAdminDashboardData';
 import { Card, Button, AvatarStack } from '../../src/components/common';
 import { firestoreService, PersonalAccount, PersonalProfile } from '../../src/services/firestoreService';
+import type { AdminUserSummary } from '../../src/services/firestoreService';
 import { getFirebaseDb } from '../../src/services/firebase';
-import { getBadgeCount } from '../../src/services/notifications';
+import { countPendingNotificationsForUser } from '../../src/services/notificationCenter';
+import { setBadgeCount } from '../../src/services/notifications';
 import { ensureConversation } from '../../src/services/chat';
 import {
   createPersonalizedEvaluation,
@@ -51,6 +54,11 @@ import { format } from 'date-fns';
 import { EvaluationQuestion, PersonalizedEvaluation } from '../../src/types/evaluation';
 import { PaymentRecord } from '../../src/types/finance';
 import { ptBR } from 'date-fns/locale';
+import { getWorkoutStatusPresentation } from '../../src/utils/workoutStatus';
+import { getLanguageTag } from '../../src/i18n';
+import { getCleanPalette } from '../../src/theme/cleanPalette';
+import { spacing as themeSpacing, borderRadius as themeBorderRadius, fontFamilies } from '../../src/theme';
+import { useResolvedPersonalAccess } from '../../src/hooks/useResolvedPersonalAccess';
 
 const hasValidPersonalCode = (code?: string | number | null) => {
   if (code === null || code === undefined) return false;
@@ -62,7 +70,38 @@ const hasValidPersonalCode = (code?: string | number | null) => {
   return false;
 };
 
+const DEFAULT_PERSONAL_INVITE_BASE = 'https://mhpersonaltrainer.com.br/invite';
+
+const buildPersonalInviteLink = (base: string, code: string) => {
+  const trimmedBase = base.trim();
+  const trimmedCode = code.trim();
+  if (!trimmedBase || !trimmedCode) return '';
+  const normalizedBase = trimmedBase.endsWith('/') ? trimmedBase.slice(0, -1) : trimmedBase;
+  const joiner = normalizedBase.includes('?') ? '&' : '?';
+  return `${normalizedBase}${joiner}code=${encodeURIComponent(trimmedCode)}`;
+};
+
 const ACTIVE_SUBSCRIPTION_STATUSES = new Set(['active', 'trialing', 'past_due']);
+
+const DARK_MODE_ACCENT = '#194784';
+const DARK_MODE_ACCENT_ALT = '#133864';
+const DARK_MODE_ACCENT_DEEP = '#0A2A52';
+const DARK_MODE_ACCENT_TEXT = '#E6EEF8';
+const DARK_MODE_ACCENT_TEXT_MUTED = 'rgba(230,238,248,0.84)';
+const DARK_MODE_ACCENT_TEXT_SOFT = 'rgba(230,238,248,0.74)';
+const DARK_MODE_ACCENT_SURFACE = 'rgba(25,71,132,0.16)';
+const DARK_MODE_ACCENT_SURFACE_STRONG = 'rgba(25,71,132,0.24)';
+const DARK_MODE_ACCENT_BORDER = 'rgba(25,71,132,0.42)';
+const DARK_MODE_ACCENT_BORDER_SOFT = 'rgba(25,71,132,0.28)';
+const CLEAN_SURFACE = '#FFFFFF';
+const CLEAN_SURFACE_ALT = '#F8FAFC';
+const CLEAN_SURFACE_SOFT = '#EEF3F8';
+const CLEAN_BORDER = '#E0E3E7';
+const CLEAN_TEXT = '#14181B';
+const CLEAN_TEXT_MUTED = '#57636C';
+const CLEAN_TEXT_SOFT = '#6B7280';
+const CLEAN_SURFACE_GRADIENT = [CLEAN_SURFACE, CLEAN_SURFACE, CLEAN_SURFACE] as const;
+const CLEAN_SURFACE_ALT_GRADIENT = [CLEAN_SURFACE_ALT, CLEAN_SURFACE_ALT, CLEAN_SURFACE_ALT] as const;
 
 const formatSubscriptionDateLabel = (value?: any) => {
   if (!value) return '-';
@@ -92,7 +131,7 @@ const formatSubscriptionStatusLabel = (value?: string) => {
     trialing: 'Em teste',
     past_due: 'Pagamento pendente',
     canceled: 'Cancelada',
-    unpaid: 'Nao paga',
+    unpaid: 'Não paga',
     incomplete: 'Incompleta',
     incomplete_expired: 'Incompleta expirada',
   };
@@ -202,22 +241,22 @@ const PROMO_COPY_PRESETS: Array<{
     id: 'convite',
     label: 'Convite',
     title: 'Treine comigo no MH Personal Trainer',
-    subtitle: 'Entre no app com meu codigo e receba treinos personalizados.',
-    cta: 'Use o codigo e comece hoje',
+    subtitle: 'Entre no app com meu código e receba treinos personalizados.',
+    cta: 'Use o código e comece hoje',
   },
   {
     id: 'resultado',
     label: 'Resultados',
     title: 'Chegou a hora de acelerar seus resultados',
-    subtitle: 'Acompanhamento real, treinos objetivos e evolucao semanal.',
-    cta: 'Entre agora com meu codigo',
+    subtitle: 'Acompanhamento real, treinos objetivos e evolução semanal.',
+    cta: 'Entre agora com meu código',
   },
   {
     id: 'desafio',
     label: 'Desafio',
     title: 'Topa 30 dias de foco total?',
     subtitle: 'Plano alinhado ao seu objetivo com suporte no app.',
-    cta: 'Ative seu acesso com meu codigo',
+    cta: 'Ative seu acesso com meu código',
   },
 ];
 
@@ -412,7 +451,7 @@ const buildSoloAiEvaluationQuestions = (goalText?: string): EvaluationQuestion[]
     },
     {
       id: `mh-q-goal-${now}`,
-      pergunta: `O que mais esta dificultando sua evolucao em ${goal}?`,
+      pergunta: `O que mais está dificultando sua evolução em ${goal}?`,
       tipo: 'texto',
       obrigatoria: true,
     },
@@ -442,7 +481,7 @@ const resolveAiEvaluationNeed = (params: {
   if (!lastEvaluationAt || totalEvaluations <= 0) {
     return {
       needed: true,
-      reason: 'Primeira avaliacao recomendada para calibrar seu plano.',
+      reason: 'Primeira avaliação recomendada para calibrar seu plano.',
     };
   }
 
@@ -459,13 +498,13 @@ const resolveAiEvaluationNeed = (params: {
       needed: true,
       reason: acceleratedWindow
         ? 'Seu volume de treino esta alto, vale reavaliar para ajustar carga e foco.'
-        : 'Ja passou o intervalo recomendado, hora de uma nova avaliacao.',
+        : 'Já passou o intervalo recomendado, hora de uma nova avaliação.',
     };
   }
 
   return {
     needed: false,
-    reason: 'Pelos seus dados atuais, voce ainda nao precisa de nova avaliacao.',
+    reason: 'Pelos seus dados atuais, você ainda não precisa de nova avaliação.',
     nextWindowDays: Math.max(1, requiredDays - daysSinceLastEvaluation),
   };
 };
@@ -517,6 +556,7 @@ type SoloMealAnalysis = {
     fat: number;
   };
   notes: string;
+  source?: 'catalog' | 'ai';
 };
 
 type SoloMealEntry = {
@@ -628,6 +668,49 @@ const buildFoodImageUrl = (description: string) => {
     .join(',');
   const query = querySeed || 'healthy,food,meal';
   return `https://source.unsplash.com/featured/640x480/?${encodeURIComponent(query)}`;
+};
+
+const analyzeMealFromCatalogSelection = (
+  selectedItems: SoloFoodCatalogItem[]
+): SoloMealAnalysis => {
+  const foods = selectedItems
+    .slice(0, 12)
+    .map((item) => ({
+      name: item.name,
+      portion: '100 g',
+      kcal: Math.max(0, Math.round(Number(item.kcalPer100g || 0))),
+      protein: parseMacroValue(item.proteinPer100g),
+      carbs: parseMacroValue(item.carbsPer100g),
+      fat: parseMacroValue(item.fatPer100g),
+      imageUrl: item.imageUrl || buildFoodImageUrl(item.name),
+    }));
+
+  const totals = foods.reduce(
+    (acc, item) => ({
+      kcal: acc.kcal + item.kcal,
+      protein: parseMacroValue(acc.protein + item.protein),
+      carbs: parseMacroValue(acc.carbs + item.carbs),
+      fat: parseMacroValue(acc.fat + item.fat),
+    }),
+    { kcal: 0, protein: 0, carbs: 0, fat: 0 }
+  );
+
+  const notes =
+    foods.length <= 1
+      ? 'Estimativa calculada com base no item selecionado no catalogo.'
+      : `Estimativa calculada com base em ${foods.length} itens selecionados (100 g cada).`;
+
+  return {
+    foods,
+    totals: {
+      kcal: Math.max(0, Math.round(totals.kcal)),
+      protein: parseMacroValue(totals.protein),
+      carbs: parseMacroValue(totals.carbs),
+      fat: parseMacroValue(totals.fat),
+    },
+    notes,
+    source: 'catalog',
+  };
 };
 
 const getFoodCategoryIcon = (category: string) => {
@@ -769,10 +852,10 @@ const mapAiErrorMessage = (error: any, fallback: string) => {
       .trim()
       .replace(/^['"]|['"]$/g, '');
     const suffix = loaded.length >= 4 ? loaded.slice(-4) : '----';
-    return `A key carregada no app (final ${suffix}) foi rejeitada pelo OpenRouter. Se voce ja trocou a key, reinicie com "npx expo start -c". Em dev build, se persistir, refaca o build porque o eas.json pode estar com key antiga embutida.`;
+    return `A chave carregada no app (final ${suffix}) foi rejeitada pelo OpenRouter. Se você já trocou a chave, reinicie com "npx expo start -c". Em dev build, se persistir, refaça o build porque o eas.json pode estar com chave antiga embutida.`;
   }
   if (normalized.includes('faca login') || normalized.includes('conta nao encontrada')) {
-    return 'Sua sessao expirou. Entre novamente para usar os recursos de IA.';
+    return 'Sua sessão expirou. Entre novamente para usar os recursos de IA.';
   }
   return raw || fallback;
 };
@@ -833,16 +916,17 @@ const workoutMatchesWeekday = (diasDaSemana: string[] | undefined, date: Date) =
 export default function HomeScreen() {
   const { colors, spacing, typography } = useTheme();
   const { user, role } = useAuthStore();
+  const { isPersonal: hasPersonalAccess, isChecking: isCheckingPersonalAccess } =
+    useResolvedPersonalAccess();
   const { padding } = useResponsive();
   const dashboard = useDashboardData();
   const adminDashboard = useAdminDashboardData(role === 'admin');
   const [refreshing, setRefreshing] = useState(false);
 
   const isAdmin = role === 'admin';
-  const isPersonal = role === 'personal' || role === 'professor';
+  const isPersonal = hasPersonalAccess;
   const hasPersonal = hasValidPersonalCode(user?.codigoPersonal);
   const isSuspended = !!user?.acessoSuspenso;
-  const hasChatGptPlan = !!user?.planoChatGPT;
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
@@ -854,7 +938,11 @@ export default function HomeScreen() {
     setRefreshing(false);
   }, [adminDashboard, dashboard, isAdmin]);
 
-  if ((dashboard.loading && !dashboard.hasLoadedOnce && !isAdmin) || (adminDashboard.loading && isAdmin)) {
+  if (
+    (!isAdmin && isCheckingPersonalAccess) ||
+    (dashboard.loading && !dashboard.hasLoadedOnce && !isAdmin) ||
+    (adminDashboard.loading && isAdmin)
+  ) {
     return (
       <View style={[styles.loadingContainer, { backgroundColor: colors.primaryBackground }]}>
         <ActivityIndicator size="large" color={colors.customColor3} />
@@ -890,19 +978,6 @@ export default function HomeScreen() {
     );
   }
 
-  if (hasChatGptPlan) {
-    return (
-      <SoloAlunoHomeScreen
-        padding={padding}
-        refreshing={refreshing}
-        onRefresh={onRefresh}
-        treinos={dashboard.treinos}
-        avaliacoes={dashboard.avaliacoes}
-        noPersonalFlow={false}
-      />
-    );
-  }
-
   if (isSuspended) {
     return (
       <SuspendedHomeScreen
@@ -915,13 +990,10 @@ export default function HomeScreen() {
 
   if (!hasPersonal) {
     return (
-      <SoloAlunoHomeScreen
+      <NoPersonalHomeScreen
         padding={padding}
         refreshing={refreshing}
         onRefresh={onRefresh}
-        treinos={dashboard.treinos}
-        avaliacoes={dashboard.avaliacoes}
-        noPersonalFlow
       />
     );
   }
@@ -951,52 +1023,49 @@ interface AlunoHomeProps extends BaseHomeProps {
 }
 
 function AlunoHomeScreen({ padding, refreshing, onRefresh, treinos, avaliacoes, error }: AlunoHomeProps) {
+  const { t, i18n } = useTranslation();
   const { user } = useAuthStore();
-  const { colors, typography, spacing, borderRadius } = useTheme();
+  const { colors, typography, spacing, borderRadius, isDark } = useTheme();
   const aiAccess = useAiAccessStatus();
+  const cleanPalette = getCleanPalette(isDark);
+  const {
+    surface: CLEAN_SURFACE,
+    surfaceAlt: CLEAN_SURFACE_ALT,
+    surfaceSoft: CLEAN_SURFACE_SOFT,
+    border: CLEAN_BORDER,
+    text: CLEAN_TEXT,
+    textMuted: CLEAN_TEXT_MUTED,
+    textSoft: CLEAN_TEXT_SOFT,
+    surfaceGradient: CLEAN_SURFACE_GRADIENT,
+    surfaceAltGradient: CLEAN_SURFACE_ALT_GRADIENT,
+  } = cleanPalette;
 
-  const firstName = user?.displayName?.split(' ')[0] || 'Aluno';
+  const languageTag = getLanguageTag(i18n.resolvedLanguage);
+  const firstName = user?.displayName?.split(' ')[0] || t('profile.userFallback');
+  const today = new Date();
   const ultimaAvaliacao = avaliacoes.length > 0 ? avaliacoes[0] : null;
-  const normalizeWeekday = (value: string) =>
-    value
-      .normalize('NFD')
-      .replace(/[\u0300-\u036f]/g, '')
-      .trim()
-      .toLowerCase();
-  const getWeekdayKey = (date: Date) => {
-    const day = date.getDay();
-    const map = ['domingo', 'segunda', 'terca', 'quarta', 'quinta', 'sexta', 'sabado'];
-    return map[day] || '';
-  };
-  const todayKey = getWeekdayKey(new Date());
-  const isTreinoDoDia = (treino: any) => {
-    if (!treino?.diasDaSemana?.length) return false;
-    return treino.diasDaSemana.some((value: string) => {
-      const normalized = normalizeWeekday(value);
-      if (!normalized) return false;
-      if (normalized.includes(todayKey)) return true;
-      if (todayKey === 'terca' && normalized.includes('ter')) return true;
-      if (todayKey === 'quinta' && normalized.includes('qui')) return true;
-      if (todayKey === 'sabado' && normalized.includes('sab')) return true;
-      if (todayKey === 'domingo' && normalized.includes('dom')) return true;
-      if (todayKey === 'segunda' && normalized.includes('seg')) return true;
-      if (todayKey === 'quarta' && normalized.includes('qua')) return true;
-      if (todayKey === 'sexta' && normalized.includes('sex')) return true;
-      return false;
-    });
-  };
+  const isTreinoDoDia = (treino: any) => workoutMatchesWeekday(treino?.diasDaSemana, today);
   const isTreinoConcluidoHoje = (treino: any) => {
     if (!treino?.lastCompletedAt) return false;
     const completed = new Date(treino.lastCompletedAt);
-    const today = new Date();
     return (
       completed.getFullYear() === today.getFullYear() &&
       completed.getMonth() === today.getMonth() &&
       completed.getDate() === today.getDate()
     );
   };
+  const getTreinoStatus = (treino?: any) =>
+    getWorkoutStatusPresentation({
+      lastCompletedAt: treino?.lastCompletedAt,
+      lastSessionAt: treino?.lastSessionAt,
+      lastSessionStatus: treino?.lastSessionStatus,
+      lastSessionRemainingExercises: treino?.lastSessionRemainingExercises,
+    });
   const treinosDoDia = treinos.filter(isTreinoDoDia);
+  const treinosConcluidosHoje = treinos.filter(isTreinoConcluidoHoje).length;
   const treinoPrincipal = treinosDoDia[0] || treinos[0] || null;
+  const treinoPrincipalStatus = treinoPrincipal ? getTreinoStatus(treinoPrincipal) : null;
+  const treinoPrincipalHasWarning = treinoPrincipalStatus?.status === 'partial';
   const treinoConcluidoHoje = treinoPrincipal ? isTreinoConcluidoHoje(treinoPrincipal) : false;
   const hasPersonal = hasValidPersonalCode(user?.codigoPersonal);
   const hasIndividualPlan = Boolean(user?.planoChatGPT || aiAccess.premium);
@@ -1005,23 +1074,29 @@ function AlunoHomeScreen({ padding, refreshing, onRefresh, treinos, avaliacoes, 
   const [personalProfile, setPersonalProfile] = useState<PersonalProfile | null>(null);
   const [notificationBadge, setNotificationBadge] = useState(0);
 
-  useEffect(() => {
-    let active = true;
-    getBadgeCount()
-      .then((count) => {
-        if (active) {
-          setNotificationBadge(count);
-        }
-      })
-      .catch(() => {
-        if (active) {
-          setNotificationBadge(0);
-        }
-      });
-    return () => {
-      active = false;
-    };
-  }, []);
+  const refreshNotificationBadge = useCallback(async () => {
+    if (!user?.uid) {
+      setNotificationBadge(0);
+      await setBadgeCount(0);
+      return;
+    }
+
+    try {
+      const result = await countPendingNotificationsForUser(user.uid);
+      const total = Math.max(0, Number(result.data || 0));
+      setNotificationBadge(total);
+      await setBadgeCount(total);
+    } catch (_) {
+      setNotificationBadge(0);
+      await setBadgeCount(0);
+    }
+  }, [user?.uid]);
+
+  useFocusEffect(
+    useCallback(() => {
+      void refreshNotificationBadge();
+    }, [refreshNotificationBadge])
+  );
 
   useEffect(() => {
     let mounted = true;
@@ -1042,6 +1117,18 @@ function AlunoHomeScreen({ padding, refreshing, onRefresh, treinos, avaliacoes, 
     };
   }, [user?.codigoPersonal]);
 
+  const personalName = personalProfile?.displayName || user?.nameDoSeuPersonal || t('profile.yourPersonal');
+  const personalCode = personalProfile?.codigoPersonal ?? user?.codigoPersonal ?? '-';
+  const ultimaAvaliacaoDate = toDateSafe(ultimaAvaliacao?.createdAt || ultimaAvaliacao?.data);
+  const ultimaAvaliacaoLabel = ultimaAvaliacaoDate
+    ? new Intl.DateTimeFormat(languageTag, { day: '2-digit', month: '2-digit' }).format(ultimaAvaliacaoDate)
+    : t('home.noRecords');
+  const treinoStatusLabel = treinoPrincipal ? treinoPrincipalStatus?.label || t('home.noWorkout') : t('home.noWorkout');
+  const treinoStatusDescription = treinoPrincipal
+    ? treinoPrincipalStatus?.description || t('home.openWorkoutDetails')
+    : t('home.noWorkoutToday');
+  const workoutPreview = treinos.filter((item) => item.id !== treinoPrincipal?.id).slice(0, 3);
+
   const handleOpenPersonalChat = async () => {
     if (!user?.uid) return;
     if (!personalProfile?.uid) {
@@ -1059,142 +1146,284 @@ function AlunoHomeScreen({ padding, refreshing, onRefresh, treinos, avaliacoes, 
         type: 'direct',
       });
       router.push({
-        pathname: `/chat/${convo.id}`,
-        params: { name: personalProfile.displayName, avatar: personalProfile.photoUrl || '' },
+        pathname: '/chat/[id]',
+        params: { id: convo.id, name: personalProfile.displayName, avatar: personalProfile.photoUrl || '' },
       });
     } catch (_) {
       router.push('/(tabs)/chat' as any);
     }
   };
 
-  const functionTiles = [
+  const handleOpenFeaturedWorkout = () => {
+    if (!treinoPrincipal) {
+      router.push('/(tabs)/workouts' as any);
+      return;
+    }
+    if (treinoConcluidoHoje) {
+      router.push({
+        pathname: '/workout/[id]',
+        params: { id: treinoPrincipal.id },
+      } as any);
+      return;
+    }
+    router.push({
+      pathname: '/start-workout',
+      params: { workoutId: treinoPrincipal.id },
+    } as any);
+  };
+
+  const handleOpenWorkoutDetails = () => {
+    if (!treinoPrincipal) {
+      router.push('/(tabs)/workouts' as any);
+      return;
+    }
+    router.push({
+      pathname: '/workout/[id]',
+      params: { id: treinoPrincipal.id },
+    } as any);
+  };
+
+  const quickActions = [
+    {
+      id: 'chat-personal',
+      title: t('home.chatWithTrainerTitle'),
+      subtitle: personalName
+        ? t('home.chatWithTrainerSubtitleWithName', { name: personalName })
+        : t('home.chatWithTrainerSubtitleDefault'),
+      icon: 'chatbubble-ellipses-outline',
+      ctaIcon: 'arrow-forward',
+      accent: ['#60A5FA', '#2563EB'],
+      onPress: handleOpenPersonalChat,
+    },
     {
       id: 'assistente',
-      title: 'MH Assistente',
-      description: hasIndividualPlan ? 'Acesso completo ao assistente' : 'Duvidas rapidas e orientacoes',
-      icon: 'sparkles',
-      route: '/chat/ai',
-      badge: hasIndividualPlan ? undefined : aiRemaining,
+      title: t('home.assistantTitle'),
+      subtitle: t('home.assistantSubtitle', { count: aiRemaining, limit: aiDailyLimit }),
+      icon: 'sparkles-outline',
+      ctaIcon: 'arrow-forward',
+      accent: ['#A78BFA', '#4F46E5'],
+      onPress: () => router.push('/chat/ai' as any),
+      badgeLabel: !hasIndividualPlan ? `${aiRemaining}` : undefined,
+      badgeBg: 'rgba(167,139,250,0.22)',
+      badgeColor: '#5B21B6',
     },
-    { id: 'treinos', title: 'Meus treinos', description: `${treinos.length} treinos no app`, icon: 'barbell', route: '/(tabs)/workouts', badge: treinos.length },
-    { id: 'avaliacoes', title: 'Avaliacoes', description: 'Historico e comparacoes', icon: 'body', route: '/evaluations' },
-    { id: 'agenda-fit', title: 'MH Agenda Fit', description: 'Agende com seu personal', icon: 'calendar', route: '/mh-agenda-fit' },
-    { id: 'progresso', title: 'Meu progresso', description: 'Metas e evolucao', icon: 'trending-up', route: '/progress' },
-    { id: 'financeiro', title: 'Financeiro', description: 'Plano e pagamentos', icon: 'wallet', route: '/financeiro' },
-    { id: 'notificacoes', title: 'Notificacoes', description: 'Avisos e novidades', icon: 'notifications', route: '/notifications', badge: notificationBadge },
+    {
+      id: 'treinos',
+      title: t('workout.myWorkouts'),
+      subtitle: treinoPrincipal
+        ? treinoPrincipal.nome
+        : t('home.workoutsSubtitleCount', { count: treinos.length }),
+      icon: 'barbell-outline',
+      ctaIcon: 'arrow-forward',
+      accent: ['#22D3EE', '#0E7490'],
+      onPress: () => router.push('/(tabs)/workouts' as any),
+      badgeLabel: treinos.length > 0 ? `${treinos.length}` : undefined,
+      badgeBg: 'rgba(34,211,238,0.22)',
+      badgeColor: '#155E75',
+    },
+    {
+      id: 'avaliacoes',
+      title: t('navigation.evaluations'),
+      subtitle: ultimaAvaliacaoDate
+        ? t('home.evaluationsSubtitleWithDate', { date: ultimaAvaliacaoLabel })
+        : t('home.evaluationsSubtitleDefault'),
+      icon: 'analytics-outline',
+      ctaIcon: 'arrow-forward',
+      accent: ['#4ADE80', '#166534'],
+      onPress: () => router.push('/evaluations' as any),
+    },
+    {
+      id: 'agenda-fit',
+      title: t('home.agendaTitle'),
+      subtitle: t('home.agendaSubtitle'),
+      icon: 'calendar-outline',
+      ctaIcon: 'arrow-forward',
+      accent: ['#38BDF8', '#0284C7'],
+      onPress: () => router.push('/mh-agenda-fit' as any),
+    },
+    {
+      id: 'progresso',
+      title: t('navigation.progress'),
+      subtitle: t('home.progressSubtitle'),
+      icon: 'trending-up-outline',
+      ctaIcon: 'arrow-forward',
+      accent: ['#F59E0B', '#B45309'],
+      onPress: () => router.push('/progress' as any),
+    },
+    {
+      id: 'financeiro',
+      title: t('home.financeTitle'),
+      subtitle: t('home.financeSubtitle'),
+      icon: 'wallet-outline',
+      ctaIcon: 'arrow-forward',
+      accent: ['#FB7185', '#BE123C'],
+      onPress: () => router.push('/financeiro' as any),
+    },
+    {
+      id: 'notificacoes',
+      title: t('profile.notifications'),
+      subtitle:
+        notificationBadge > 0
+          ? t('home.notificationsSubtitlePending', { count: notificationBadge })
+          : t('home.notificationsSubtitleDefault'),
+      icon: 'notifications-outline',
+      ctaIcon: 'arrow-forward',
+      accent: ['#93C5FD', '#1D4ED8'],
+      onPress: () => router.push('/notifications' as any),
+      badgeLabel: notificationBadge > 0 ? (notificationBadge > 99 ? '99+' : `${notificationBadge}`) : undefined,
+      badgeBg: 'rgba(147,197,253,0.2)',
+      badgeColor: '#1E3A8A',
+    },
   ];
-  const ultimaAvaliacaoDate = toDateSafe(ultimaAvaliacao?.createdAt || ultimaAvaliacao?.data);
-  const ultimaAvaliacaoLabel = ultimaAvaliacaoDate ? format(ultimaAvaliacaoDate, 'dd/MM', { locale: ptBR }) : 'Sem registro';
-  const treinoStatusLabel = treinoConcluidoHoje ? 'Concluido hoje' : treinoPrincipal ? 'Pendente' : 'Sem treino';
 
   return (
     <ScrollView
       style={[styles.container, { backgroundColor: colors.primaryBackground }]}
-      contentContainerStyle={styles.scrollContent}
+      contentContainerStyle={[styles.scrollContent, { paddingBottom: spacing['3xl'] }]}
       contentInsetAdjustmentBehavior="never"
       showsVerticalScrollIndicator={false}
       refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
     >
-      <LinearGradient
-        colors={['rgba(10,55,96,0.5)', 'rgba(10,55,96,0.14)', 'rgba(10,55,96,0)']}
-        start={{ x: 0.5, y: 0 }}
-        end={{ x: 0.5, y: 1 }}
-        style={styles.headerGradient}
-      >
-        <SafeAreaView edges={['top']}>
-          <View
+      <SafeAreaView edges={['top']}>
+        <View style={[styles.section, { paddingHorizontal: padding, marginTop: 0 }]}>
+          <LinearGradient
+            colors={CLEAN_SURFACE_GRADIENT}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
             style={[
-              styles.headerContent,
+              styles.soloHeroCard,
               {
-                paddingHorizontal: padding,
-                paddingTop: spacing.lg,
-                paddingBottom: spacing.md,
+                borderRadius: borderRadius.lg,
+                padding: spacing.lg,
+                borderColor: CLEAN_BORDER,
               },
             ]}
           >
-            <View style={styles.headerRow}>
-              <View style={styles.headerLeft}>
-                <Text style={[{ color: colors.secondaryText }, typography.bodySmall]}>Bem-vindo de volta,</Text>
-                <Text style={[{ color: colors.primaryText, marginTop: spacing.xs }, typography.headlineMedium]}>
-                  {firstName}
-                </Text>
-                <Text style={[{ color: colors.secondaryText, marginTop: spacing.xs }, typography.bodyMedium]}>
-                  {treinoPrincipal ? 'Seu treino e acompanhamento estao prontos.' : 'Defina seu foco e avance no seu plano.'}
-                </Text>
-              </View>
-              <View style={styles.headerRight}>
+            <View style={styles.soloHeroTopRow}>
+              <Text style={[{ color: CLEAN_TEXT_MUTED }, typography.bodySmall]}>
+                {t('home.greeting', { name: firstName })}
+              </Text>
+              <View style={styles.soloHeroHeaderActions}>
                 <TouchableOpacity
-                  style={[styles.iconButton, { backgroundColor: colors.secondaryBackground, borderRadius: borderRadius.full }]}
-                  onPress={() => router.push('/notifications' as any)}
-                >
-                  <Ionicons name="notifications-outline" size={22} color={colors.primaryText} />
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={[styles.iconButton, { backgroundColor: colors.secondaryBackground, borderRadius: borderRadius.full, marginLeft: spacing.sm }]}
+                  style={[
+                    styles.soloHeroAvatarButton,
+                    {
+                      borderRadius: borderRadius.full,
+                      backgroundColor: CLEAN_SURFACE_ALT,
+                      borderColor: CLEAN_BORDER,
+                    },
+                  ]}
                   onPress={() => router.push('/profile/edit' as any)}
                 >
                   {user?.photoUrl ? (
                     <Image source={{ uri: user.photoUrl }} style={[styles.avatarImage, { borderRadius: borderRadius.full }]} />
                   ) : (
-                    <Ionicons name="person-circle-outline" size={28} color={colors.primaryText} />
+                    <Ionicons name="person-circle-outline" size={28} color={CLEAN_TEXT} />
                   )}
                 </TouchableOpacity>
               </View>
             </View>
 
-            <View
-              style={[
-                styles.alunoFocusCard,
-                {
-                  marginTop: spacing.lg,
-                  backgroundColor: colors.secondaryBackground,
-                  borderRadius: borderRadius.lg,
-                  borderColor: colors.border,
-                },
-              ]}
-            >
-              <View style={styles.alunoFocusHeader}>
-                <View style={styles.alunoFocusCopy}>
-                  <Text style={[{ color: colors.secondaryText }, typography.labelSmall]}>Plano do dia</Text>
-                  <Text style={[{ color: colors.primaryText, marginTop: spacing.xs }, typography.titleLarge]} numberOfLines={2}>
-                    {treinoPrincipal?.nome || 'Sem treino liberado'}
-                  </Text>
-                  <Text style={[{ color: colors.secondaryText, marginTop: spacing.xs }, typography.bodySmall]}>
-                    {treinoPrincipal ? 'Toque para abrir o treino e registrar progresso.' : 'Seu personal ainda nao enviou o treino de hoje.'}
-                  </Text>
-                </View>
-                <TouchableOpacity
-                  style={[styles.alunoFocusIconWrap, { backgroundColor: colors.primary + '16', borderRadius: borderRadius.full }]}
-                  onPress={() => (treinoPrincipal ? router.push(`/workout/${treinoPrincipal.id}` as any) : router.push('/(tabs)/workouts' as any))}
-                >
-                  <Ionicons name={treinoConcluidoHoje ? 'checkmark-circle' : 'barbell-outline'} size={24} color={treinoConcluidoHoje ? colors.success : colors.primary} />
-                </TouchableOpacity>
-              </View>
-
-              <View style={styles.alunoFocusStatsRow}>
-                <View style={[styles.alunoFocusStatCard, { borderColor: colors.border, borderRadius: borderRadius.md }]}>
-                  <Text style={[{ color: colors.secondaryText }, typography.labelSmall]}>Treino</Text>
-                  <Text style={[{ color: colors.primaryText, marginTop: 3 }, typography.labelMedium]} numberOfLines={1}>
-                    {treinoStatusLabel}
-                  </Text>
-                </View>
-                <View style={[styles.alunoFocusStatCard, { borderColor: colors.border, borderRadius: borderRadius.md }]}>
-                  <Text style={[{ color: colors.secondaryText }, typography.labelSmall]}>Personal</Text>
-                  <Text style={[{ color: colors.primaryText, marginTop: 3 }, typography.labelMedium]} numberOfLines={1}>
-                    {hasPersonal ? 'Conectado' : 'Sem personal'}
-                  </Text>
-                </View>
-                <View style={[styles.alunoFocusStatCard, { borderColor: colors.border, borderRadius: borderRadius.md }]}>
-                  <Text style={[{ color: colors.secondaryText }, typography.labelSmall]}>Avaliacao</Text>
-                  <Text style={[{ color: colors.primaryText, marginTop: 3 }, typography.labelMedium]} numberOfLines={1}>
-                    {ultimaAvaliacaoLabel}
-                  </Text>
-                </View>
-              </View>
+            <View style={[styles.soloHeroCopy, { marginTop: spacing.xs }]}>
+              <Text
+                style={[styles.soloHeroTitle, { color: CLEAN_TEXT }]}
+                android_hyphenationFrequency="none"
+                textBreakStrategy="simple"
+              >
+                {t('home.heroTitle')}
+              </Text>
+              <Text style={[{ color: CLEAN_TEXT_MUTED, marginTop: spacing.xs }, typography.bodySmall]}>
+                {treinoPrincipal
+                  ? t('home.heroSubtitleWithWorkout')
+                  : t('home.heroSubtitleWithoutWorkout')}
+              </Text>
             </View>
-          </View>
-        </SafeAreaView>
-      </LinearGradient>
+
+            <View style={[styles.soloHeroBadgeRow, { marginTop: spacing.md }]}>
+              <View style={[styles.soloHeroPlanPill, { borderColor: CLEAN_BORDER, backgroundColor: CLEAN_SURFACE_ALT }]}>
+                <Ionicons
+                  name={hasPersonal ? 'shield-checkmark-outline' : 'link-outline'}
+                  size={13}
+                  color={colors.primary}
+                />
+                <Text style={[styles.soloHeroPlanPillText, { color: CLEAN_TEXT }, typography.labelSmall]}>
+                  {hasPersonal ? t('home.personalConnected') : t('home.noPersonal')}
+                </Text>
+              </View>
+              <TouchableOpacity
+                style={[styles.soloHeroSubscriptionCta, { borderColor: CLEAN_BORDER, backgroundColor: CLEAN_SURFACE_ALT }]}
+                onPress={() => (hasPersonal ? handleOpenPersonalChat() : router.push('/personal/change-code' as any))}
+              >
+                <Ionicons
+                  name={hasPersonal ? 'chatbubble-ellipses-outline' : 'add-circle-outline'}
+                  size={14}
+                  color={CLEAN_TEXT}
+                />
+                <Text style={[styles.soloHeroSubscriptionCtaText, { color: CLEAN_TEXT }, typography.labelSmall]}>
+                  {hasPersonal ? t('home.openChat') : t('home.addCode')}
+                </Text>
+              </TouchableOpacity>
+            </View>
+
+            <View style={[styles.soloMetricsRow, { marginTop: spacing.md }]}>
+              <LinearGradient
+                colors={CLEAN_SURFACE_ALT_GRADIENT}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 1 }}
+                style={[styles.soloMetricCard, { borderRadius: borderRadius.md, borderColor: CLEAN_BORDER }]}
+              >
+                <View style={styles.soloMetricHeaderRow}>
+                  <View style={[styles.soloMetricIconWrap, { backgroundColor: `${colors.primary}12` }]}>
+                    <Ionicons name="sparkles-outline" size={14} color={colors.primary} />
+                  </View>
+                  <Text style={[styles.soloMetricTitle, { color: CLEAN_TEXT_MUTED }, typography.labelSmall]}>
+                    {t('home.credits')}
+                  </Text>
+                </View>
+                <Text style={[styles.soloMetricValue, { marginTop: spacing.xs, color: CLEAN_TEXT }, typography.titleMedium]}>
+                  {aiRemaining}/{aiDailyLimit}
+                </Text>
+              </LinearGradient>
+              <LinearGradient
+                colors={CLEAN_SURFACE_ALT_GRADIENT}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 1 }}
+                style={[styles.soloMetricCard, { borderRadius: borderRadius.md, borderColor: CLEAN_BORDER }]}
+              >
+                <View style={styles.soloMetricHeaderRow}>
+                  <View style={[styles.soloMetricIconWrap, { backgroundColor: `${colors.tertiary}12` }]}>
+                    <Ionicons name="barbell-outline" size={14} color={colors.tertiary} />
+                  </View>
+                  <Text style={[styles.soloMetricTitle, { color: CLEAN_TEXT_MUTED }, typography.labelSmall]}>
+                    {t('navigation.workouts')}
+                  </Text>
+                </View>
+                <Text style={[styles.soloMetricValue, { marginTop: spacing.xs, color: CLEAN_TEXT }, typography.titleMedium]}>
+                  {treinos.length}
+                </Text>
+              </LinearGradient>
+              <LinearGradient
+                colors={CLEAN_SURFACE_ALT_GRADIENT}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 1 }}
+                style={[styles.soloMetricCard, { borderRadius: borderRadius.md, borderColor: CLEAN_BORDER }]}
+              >
+                <View style={styles.soloMetricHeaderRow}>
+                  <View style={[styles.soloMetricIconWrap, { backgroundColor: `${colors.success}12` }]}>
+                    <Ionicons name="analytics-outline" size={14} color={colors.success} />
+                  </View>
+                  <Text style={[styles.soloMetricTitle, { color: CLEAN_TEXT_MUTED }, typography.labelSmall]}>
+                    {t('navigation.evaluations')}
+                  </Text>
+                </View>
+                <Text style={[styles.soloMetricValue, { marginTop: spacing.xs, color: CLEAN_TEXT }, typography.titleMedium]}>
+                  {avaliacoes.length}
+                </Text>
+              </LinearGradient>
+            </View>
+          </LinearGradient>
+        </View>
+      </SafeAreaView>
 
       {error && (
         <View style={[styles.errorBanner, { backgroundColor: colors.error + '20', margin: padding, padding: spacing.md, borderRadius: borderRadius.md }]}>
@@ -1203,169 +1432,76 @@ function AlunoHomeScreen({ padding, refreshing, onRefresh, treinos, avaliacoes, 
       )}
 
       <View style={[styles.section, { paddingHorizontal: padding }]}>
-        <View style={[styles.sectionCard, { backgroundColor: colors.secondaryBackground, borderRadius: borderRadius.lg, padding: spacing.lg }]}>
-          <View style={styles.sectionHeader}>
-            <Text style={[{ color: colors.primaryText }, typography.titleLarge]}>
-              Seu personal
-            </Text>
-            <Text style={[{ color: colors.secondaryText }, typography.bodySmall]}>Acompanhamento ativo</Text>
-          </View>
-          {hasPersonal ? (
-            <View>
-              <View style={styles.personalRow}>
-                <View style={[styles.personalAvatar, { backgroundColor: colors.primary + '22', borderRadius: borderRadius.full }]}>
-                  <Text style={[{ color: colors.primary }, typography.titleMedium]}>
-                    {(personalProfile?.displayName || user?.nameDoSeuPersonal || 'P')[0]?.toUpperCase() || 'P'}
-                  </Text>
-                </View>
-                <View style={styles.personalInfo}>
-                  <Text style={[{ color: colors.primaryText }, typography.titleMedium]}>
-                    {personalProfile?.displayName || user?.nameDoSeuPersonal || 'Seu personal'}
-                  </Text>
-                  <Text style={[{ color: colors.secondaryText, marginTop: spacing.xs }, typography.bodySmall]}>
-                    Atendimento ativo e acompanhamento em tempo real.
-                  </Text>
-                </View>
-              </View>
-
-              <View style={styles.alunoPersonalMetaRow}>
-                <View style={[styles.alunoPersonalMetaChip, { backgroundColor: colors.primary + '18', borderRadius: borderRadius.full }]}>
-                  <Ionicons name="key-outline" size={13} color={colors.primary} />
-                  <Text style={[{ color: colors.primary }, typography.labelSmall]}>
-                    Codigo {personalProfile?.codigoPersonal ?? user?.codigoPersonal ?? '-'}
-                  </Text>
-                </View>
-                <View style={[styles.alunoPersonalMetaChip, { backgroundColor: colors.success + '16', borderRadius: borderRadius.full }]}>
-                  <Ionicons name="checkmark-circle-outline" size={13} color={colors.success} />
-                  <Text style={[{ color: colors.success }, typography.labelSmall]}>Conectado</Text>
-                </View>
-              </View>
-
-              <TouchableOpacity
-                style={[styles.personalPrimaryButton, { backgroundColor: colors.primary, borderRadius: borderRadius.md }]}
-                onPress={handleOpenPersonalChat}
-              >
-                <Ionicons name="chatbubble-ellipses-outline" size={16} color={colors.info} />
-                <Text style={[{ color: colors.info }, typography.labelMedium]}>Abrir chat com personal</Text>
-              </TouchableOpacity>
-
-              <View style={styles.personalActionRow}>
-                <TouchableOpacity
-                  style={[styles.personalGhostButton, { borderColor: colors.border, borderRadius: borderRadius.md }]}
-                  onPress={() => router.push('/personal/change-code' as any)}
-                >
-                  <Text style={[{ color: colors.secondaryText }, typography.labelMedium]}>Alterar codigo</Text>
-                </TouchableOpacity>
-                {(personalProfile?.codigoPersonal || user?.codigoPersonal) && (
-                  <TouchableOpacity
-                    style={[styles.personalGhostButton, { borderColor: colors.border, borderRadius: borderRadius.md }]}
-                    onPress={() =>
-                      router.push(
-                        `/personal/profile?code=${personalProfile?.codigoPersonal ?? user?.codigoPersonal ?? ''}` as any
-                      )
-                    }
-                  >
-                    <Text style={[{ color: colors.primary }, typography.labelMedium]}>Ver perfil</Text>
-                  </TouchableOpacity>
-                )}
-              </View>
-            </View>
-          ) : (
-            <View style={styles.emptyState}>
-              <Text style={[{ color: colors.secondaryText, textAlign: 'center' }, typography.bodySmall]}>
-                Voce ainda nao adicionou nenhum personal.
-              </Text>
-              <TouchableOpacity
-                style={[styles.inlineButton, { backgroundColor: colors.primary, borderRadius: borderRadius.md, marginTop: spacing.md }]}
-                onPress={() => router.push('/personal/change-code' as any)}
-              >
-                <Text style={[{ color: colors.info }, typography.labelMedium]}>
-                  Adicionar codigo
-                </Text>
-              </TouchableOpacity>
-            </View>
-          )}
+        <View style={styles.soloQuickHeader}>
+          <Text style={[{ color: colors.primaryText }, typography.titleLarge]}>
+            {t('home.smartShortcuts')}
+          </Text>
+          <Text style={[{ color: colors.secondaryText, marginTop: 2 }, typography.bodySmall]}>
+            {t('home.smartShortcutsSubtitle')}
+          </Text>
         </View>
-      </View>
-
-      {!hasIndividualPlan && (
-        <View style={[styles.section, { paddingHorizontal: padding }]}>
-          <LinearGradient
-            colors={['#0A2242', '#154D96']}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 1 }}
-            style={[styles.alunoPromoBanner, { borderRadius: borderRadius.lg }]}
-          >
-            <View style={styles.alunoPromoHeader}>
-              <View style={[styles.alunoPromoTag, { backgroundColor: 'rgba(255,255,255,0.18)' }]}>
-                <Ionicons name="sparkles" size={12} color="#EAF4FF" />
-                <Text style={[styles.alunoPromoTagText, { color: '#EAF4FF' }]}>Plano individual</Text>
-              </View>
-              <Ionicons name="rocket-outline" size={20} color="#EAF4FF" />
-            </View>
-
-            <Text style={[{ color: '#F8FCFF', marginTop: spacing.sm }, typography.titleLarge]}>
-              Quer usar o app sem personal?
-            </Text>
-            <Text style={[{ color: 'rgba(238,246,255,0.92)', marginTop: spacing.xs }, typography.bodySmall]}>
-              Ative o plano individual por R$ 24,99/mes e tenha recursos premium no seu ritmo.
-            </Text>
-
-            <View style={styles.alunoPromoActions}>
-              <TouchableOpacity
-                style={[styles.alunoPromoButtonPrimary, { borderRadius: borderRadius.md }]}
-                onPress={() => router.push('/profile/subscription' as any)}
-              >
-                <Text style={[{ color: '#082D57' }, typography.labelMedium]}>Ver plano individual</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.alunoPromoButtonGhost, { borderRadius: borderRadius.md }]}
-                onPress={() => router.push('/chat/ai' as any)}
-              >
-                <Text style={[{ color: '#EAF4FF' }, typography.labelMedium]}>Testar MH Assistente</Text>
-              </TouchableOpacity>
-            </View>
-          </LinearGradient>
-        </View>
-      )}
-
-      <View style={[styles.section, { paddingHorizontal: padding }]}>
-        <Text style={[{ color: colors.primaryText, marginBottom: spacing.md }, typography.titleLarge]}>
-          Acessos rapidos
-        </Text>
         <ScrollView
           horizontal
+          nestedScrollEnabled
           showsHorizontalScrollIndicator={false}
-          contentContainerStyle={[styles.alunoQuickHorizontalScroll, { paddingRight: spacing.sm }]}
+          contentContainerStyle={styles.soloQuickGrid}
         >
-          {functionTiles.map((tile) => (
+          {quickActions.map((tile, index) => (
             <TouchableOpacity
               key={tile.id}
-              style={[
-                styles.alunoQuickSquareCard,
-                { backgroundColor: colors.secondaryBackground, borderRadius: borderRadius.md, borderColor: colors.border },
-              ]}
-              onPress={() => router.push(tile.route as any)}
-              activeOpacity={0.85}
+              style={[styles.soloQuickCard, index === quickActions.length - 1 ? styles.soloQuickCardLast : null]}
+              onPress={tile.onPress}
+              activeOpacity={0.9}
             >
-              {tile.badge !== undefined && tile.badge > 0 ? (
-                <View style={[styles.alunoQuickSquareBadge, { backgroundColor: colors.primary + '1F', borderRadius: borderRadius.full }]}>
-                  <Text style={[{ color: colors.primary }, typography.labelSmall]}>{tile.badge}</Text>
+              <View
+                style={[
+                  styles.soloQuickCardInner,
+                  {
+                    borderRadius: borderRadius.lg,
+                    borderColor: CLEAN_BORDER,
+                    backgroundColor: CLEAN_SURFACE,
+                  },
+                ]}
+              >
+                <View style={[styles.soloQuickAccentBar, { backgroundColor: tile.accent[0] }]} />
+                <View style={styles.soloQuickTopRow}>
+                  <View
+                    style={[
+                      styles.soloQuickIconWrap,
+                      {
+                        backgroundColor: `${tile.accent[0]}18`,
+                        borderColor: `${tile.accent[1]}30`,
+                      },
+                    ]}
+                  >
+                    <Ionicons name={tile.icon as any} size={18} color={tile.accent[1]} />
+                  </View>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                    {tile.badgeLabel ? (
+                      <View
+                        style={[
+                          styles.soloAiTag,
+                          {
+                            backgroundColor: tile.badgeBg || CLEAN_SURFACE_SOFT,
+                            borderWidth: 1,
+                            borderColor: `${tile.accent[1]}26`,
+                          },
+                        ]}
+                      >
+                        <Text style={[styles.soloAiTagText, { color: tile.badgeColor || tile.accent[1] }]}>
+                          {tile.badgeLabel}
+                        </Text>
+                      </View>
+                    ) : null}
+                    <Ionicons name={tile.ctaIcon as any} size={14} color={CLEAN_TEXT_SOFT} />
+                  </View>
                 </View>
-              ) : null}
-              <View style={[styles.alunoQuickSquareIcon, { backgroundColor: colors.primary + '14', borderRadius: borderRadius.full }]}>
-                <Ionicons name={tile.icon as any} size={20} color={colors.primary} />
-              </View>
-              <View style={styles.alunoQuickSquareCopy}>
-                <Text style={[{ color: colors.primaryText }, typography.labelMedium]} numberOfLines={2}>
+                <Text style={[styles.soloQuickLabel, { color: CLEAN_TEXT }, typography.labelMedium]}>
                   {tile.title}
                 </Text>
-                <Text style={[{ color: colors.secondaryText, marginTop: 4 }, typography.bodySmall]} numberOfLines={2}>
-                  {tile.description}
+                <Text style={[styles.soloQuickHint, { color: CLEAN_TEXT_MUTED }, typography.bodySmall]}>
+                  {tile.subtitle}
                 </Text>
-              </View>
-              <View style={styles.alunoQuickSquareArrow}>
-                <Ionicons name="chevron-forward" size={16} color={colors.secondaryText} />
               </View>
             </TouchableOpacity>
           ))}
@@ -1373,112 +1509,356 @@ function AlunoHomeScreen({ padding, refreshing, onRefresh, treinos, avaliacoes, 
       </View>
 
       <View style={[styles.section, { paddingHorizontal: padding }]}>
-        <View style={styles.sectionHeader}>
-          <Text style={[{ color: colors.primaryText }, typography.titleLarge]}>
-            Seus treinos
-          </Text>
-          <TouchableOpacity onPress={() => router.push('/(tabs)/workouts')}>
-            <Text style={[{ color: colors.primary }, typography.labelMedium]}>Ver todos</Text>
-          </TouchableOpacity>
-        </View>
-
-        {treinos.length === 0 ? (
-          <View style={[styles.emptyState, { backgroundColor: colors.secondaryBackground, borderRadius: borderRadius.lg, padding: spacing.xl }]}>
-            <Ionicons name="barbell-outline" size={48} color={colors.secondaryText} />
-            <Text style={[{ color: colors.secondaryText, marginTop: spacing.md, textAlign: 'center' }, typography.bodyMedium]}>
-              Nenhum treino disponível ainda. Aguarde seu personal enviar.
-            </Text>
-          </View>
-        ) : (
-          treinos.slice(0, 4).map((treino) => {
-            const concluidoHoje = isTreinoConcluidoHoje(treino);
-            return (
+        <LinearGradient
+          colors={CLEAN_SURFACE_GRADIENT}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={[styles.soloCalendarPremiumCard, { borderRadius: borderRadius.lg, padding: spacing.lg, borderColor: CLEAN_BORDER }]}
+        >
+          <View style={styles.sectionHeader}>
+            <View style={{ flex: 1 }}>
+              <View style={styles.soloPersonalTitleRow}>
+                <View style={[styles.soloPersonalTitleIcon, { backgroundColor: `${colors.primary}12` }]}>
+                  <Ionicons name="person-outline" size={15} color={colors.primary} />
+                </View>
+                <Text style={[{ color: CLEAN_TEXT }, typography.titleLarge]}>Seu personal</Text>
+              </View>
+              <Text style={[{ color: CLEAN_TEXT, marginTop: spacing.xs }, typography.titleMedium]}>
+                {personalName}
+              </Text>
+              <Text style={[styles.soloCalendarSubtitle, { color: CLEAN_TEXT_MUTED }, typography.bodySmall]}>
+                Acompanhamento ativo, chat rápido e agenda no mesmo lugar.
+              </Text>
+            </View>
+            {(personalProfile?.codigoPersonal || user?.codigoPersonal) ? (
               <TouchableOpacity
-                key={treino.id}
+                style={[styles.soloCalendarOpenButton, { borderRadius: borderRadius.full, borderColor: CLEAN_BORDER, backgroundColor: CLEAN_SURFACE_ALT }]}
+                onPress={() =>
+                  router.push(
+                    `/personal/profile?code=${personalProfile?.codigoPersonal ?? user?.codigoPersonal ?? ''}` as any
+                  )
+                }
+              >
+                <Ionicons name="person-outline" size={13} color={CLEAN_TEXT} />
+                <Text style={[styles.soloCalendarOpenButtonText, { color: CLEAN_TEXT }, typography.labelSmall]}>Ver perfil</Text>
+              </TouchableOpacity>
+            ) : null}
+          </View>
+          <View style={[styles.soloCalendarMetaRow, { marginTop: spacing.sm }]}>
+            <View style={[styles.soloCalendarMetaChip, { borderColor: CLEAN_BORDER, backgroundColor: CLEAN_SURFACE_ALT }]}>
+              <Text style={[styles.soloCalendarMetaLabel, { color: CLEAN_TEXT_MUTED }]}>Código</Text>
+              <Text style={[styles.soloCalendarMetaValue, { color: CLEAN_TEXT }]}>{String(personalCode)}</Text>
+            </View>
+            <View style={[styles.soloCalendarMetaChip, { borderColor: CLEAN_BORDER, backgroundColor: CLEAN_SURFACE_ALT }]}>
+              <Text style={[styles.soloCalendarMetaLabel, { color: CLEAN_TEXT_MUTED }]}>Status</Text>
+              <View style={styles.soloStatusValueRow}>
+                <View
+                  style={[
+                    styles.soloStatusDot,
+                    { backgroundColor: hasPersonal ? colors.success : colors.warning },
+                  ]}
+                />
+                <Text style={[styles.soloCalendarMetaValue, { color: CLEAN_TEXT }]}>{hasPersonal ? 'Conectado' : 'Pendente'}</Text>
+              </View>
+            </View>
+          </View>
+          <View style={[styles.soloSectionActions, { marginTop: spacing.md }]}>
+            <TouchableOpacity
+              style={[styles.soloPremiumActionButton, styles.soloDarkActionButton, { borderRadius: borderRadius.md, borderColor: `${colors.primary}28`, backgroundColor: `${colors.primary}10` }]}
+              onPress={handleOpenPersonalChat}
+            >
+              <Ionicons name="chatbubble-ellipses-outline" size={16} color={colors.primary} />
+              <Text style={[styles.soloPremiumActionText, { color: CLEAN_TEXT }]}>
+                Abrir chat
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.soloPremiumActionButton, styles.soloLightActionButton, { borderRadius: borderRadius.md, borderColor: CLEAN_BORDER, backgroundColor: CLEAN_SURFACE_ALT }]}
+              onPress={() => router.push('/personal/change-code' as any)}
+            >
+              <Ionicons name="create-outline" size={16} color={CLEAN_TEXT} />
+              <Text style={[styles.soloPremiumActionText, { color: CLEAN_TEXT }]}>
+                Alterar código
+              </Text>
+            </TouchableOpacity>
+          </View>
+        </LinearGradient>
+      </View>
+
+      <View style={[styles.section, { paddingHorizontal: padding }]}>
+        <LinearGradient
+          colors={CLEAN_SURFACE_GRADIENT}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={[styles.soloProgressPremiumCard, { borderRadius: borderRadius.lg, padding: spacing.lg, borderColor: CLEAN_BORDER }]}
+        >
+          <View style={styles.soloProgressPremiumHeader}>
+            <View style={{ flex: 1 }}>
+              <Text style={[{ color: CLEAN_TEXT }, typography.titleLarge]}>Treino em destaque</Text>
+              <Text style={[{ color: CLEAN_TEXT_MUTED, marginTop: spacing.xs }, typography.bodySmall]}>
+                {treinoPrincipal
+                  ? `${treinoPrincipal.nome}${treinoPrincipalHasWarning ? ' • retomar sessão' : ''}`
+                  : 'Nenhum treino liberado no momento.'}
+              </Text>
+            </View>
+            <View
+              style={[
+                styles.soloAiTag,
+                {
+                  backgroundColor: treinoConcluidoHoje
+                    ? '#E8F7EE'
+                    : treinoPrincipalHasWarning
+                      ? '#FFF8DD'
+                      : CLEAN_SURFACE_SOFT,
+                },
+              ]}
+            >
+              <Text
                 style={[
-                  styles.treinoCard,
+                  styles.soloAiTagText,
                   {
-                    backgroundColor: colors.secondaryBackground,
-                    borderRadius: borderRadius.lg,
-                    marginBottom: spacing.md,
-                    padding: spacing.md,
+                    color: treinoConcluidoHoje
+                      ? '#1F7A63'
+                      : treinoPrincipalHasWarning
+                        ? '#8A6500'
+                        : CLEAN_TEXT,
                   },
                 ]}
-                onPress={() => router.push(`/workout/${treino.id}` as any)}
               >
-                <View style={styles.treinoCardContent}>
-                  <View style={[styles.treinoIcon, { backgroundColor: colors.secondary + '20', borderRadius: borderRadius.full }]}>
-                    <Ionicons name="barbell-outline" size={22} color={colors.secondary} />
-                  </View>
-                  <View style={styles.treinoInfo}>
-                    <Text style={[{ color: colors.primaryText }, typography.titleMedium]}>
-                      {treino.nome}
-                    </Text>
-                    <View style={styles.treinoMeta}>
-                      <View style={[styles.badge, { backgroundColor: colors.primary + '20', borderRadius: borderRadius.sm, paddingHorizontal: spacing.sm, paddingVertical: 2 }]}>
-                        <Text style={[{ color: colors.primary }, typography.labelSmall]}>{treino.tipo}</Text>
-                      </View>
-                      {concluidoHoje && (
-                        <View style={[styles.badge, { backgroundColor: colors.success + '20', borderRadius: borderRadius.sm, paddingHorizontal: spacing.sm, paddingVertical: 2, marginLeft: spacing.sm }]}>
-                          <Text style={[{ color: colors.success }, typography.labelSmall]}>Concluído hoje</Text>
-                        </View>
-                      )}
-                      {treino.exercicios !== undefined && (
-                        <Text style={[{ color: colors.secondaryText, marginLeft: spacing.sm }, typography.bodySmall]}>
-                          {treino.exercicios} exercícios
-                        </Text>
-                      )}
-                      {treino.duracao && (
-                        <Text style={[{ color: colors.secondaryText, marginLeft: spacing.sm }, typography.bodySmall]}>
-                          {treino.duracao}
-                        </Text>
-                      )}
+                {treinoConcluidoHoje
+                  ? 'Concluído'
+                  : treinoPrincipalHasWarning
+                    ? 'Retomar'
+                    : treinosDoDia.length > 0
+                      ? 'Hoje'
+                      : treinoPrincipal
+                        ? 'Próximo'
+                        : 'Aguardando'}
+              </Text>
+            </View>
+          </View>
+          <View style={[styles.soloProgressPremiumStatsRow, { marginTop: spacing.md }]}>
+            <View style={[styles.soloProgressPremiumStatCard, { borderColor: CLEAN_BORDER, backgroundColor: CLEAN_SURFACE_ALT }]}>
+              <Text style={[styles.soloProgressPremiumStatValue, { color: CLEAN_TEXT }]}>{treinos.length}</Text>
+              <Text style={[styles.soloProgressPremiumStatLabel, { color: CLEAN_TEXT_MUTED }]}>No app</Text>
+            </View>
+            <View style={[styles.soloProgressPremiumStatCard, { borderColor: CLEAN_BORDER, backgroundColor: CLEAN_SURFACE_ALT }]}>
+              <Text style={[styles.soloProgressPremiumStatValue, { color: CLEAN_TEXT }]}>{treinosDoDia.length}</Text>
+              <Text style={[styles.soloProgressPremiumStatLabel, { color: CLEAN_TEXT_MUTED }]}>Hoje</Text>
+            </View>
+            <View style={[styles.soloProgressPremiumStatCard, { borderColor: CLEAN_BORDER, backgroundColor: CLEAN_SURFACE_ALT }]}>
+              <Text style={[styles.soloProgressPremiumStatValue, { color: CLEAN_TEXT }]} numberOfLines={1}>
+                {treinoStatusLabel}
+              </Text>
+              <Text style={[styles.soloProgressPremiumStatLabel, { color: CLEAN_TEXT_MUTED }]}>Status</Text>
+            </View>
+          </View>
+          <View
+            style={{
+              marginTop: spacing.md,
+              borderRadius: borderRadius.md,
+              borderWidth: 1,
+              borderColor: CLEAN_BORDER,
+              backgroundColor: CLEAN_SURFACE_ALT,
+              paddingHorizontal: 12,
+              paddingVertical: 10,
+            }}
+          >
+            <Text style={[{ color: CLEAN_TEXT_MUTED }, typography.bodySmall]}>
+              {treinoStatusDescription}
+            </Text>
+          </View>
+          <View style={[styles.soloSectionActions, { marginTop: spacing.md }]}>
+            <TouchableOpacity
+              style={[styles.soloPremiumActionButton, styles.soloDarkActionButton, { borderRadius: borderRadius.md, borderColor: CLEAN_BORDER, backgroundColor: CLEAN_SURFACE_ALT }]}
+              onPress={handleOpenWorkoutDetails}
+            >
+              <Ionicons name="eye-outline" size={16} color={CLEAN_TEXT} />
+              <Text style={[styles.soloPremiumActionText, { color: CLEAN_TEXT }]}>
+                {treinoPrincipal ? 'Abrir treino' : 'Ver todos'}
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.soloPremiumActionButton, styles.soloLightActionButton, { borderRadius: borderRadius.md, borderColor: CLEAN_BORDER, backgroundColor: CLEAN_SURFACE_ALT }]}
+              onPress={handleOpenFeaturedWorkout}
+            >
+              <Ionicons
+                name={treinoConcluidoHoje ? 'refresh-outline' : 'play-outline'}
+                size={16}
+                color={CLEAN_TEXT}
+              />
+              <Text style={[styles.soloPremiumActionText, { color: CLEAN_TEXT }]}>
+                {!treinoPrincipal ? 'Ver treinos' : treinoConcluidoHoje ? 'Rever treino' : 'Iniciar agora'}
+              </Text>
+            </TouchableOpacity>
+          </View>
+        </LinearGradient>
+
+        {workoutPreview.length > 0 && (
+          <View style={{ marginTop: spacing.md }}>
+            {workoutPreview.map((treino) => {
+              const treinoStatus = getTreinoStatus(treino);
+              return (
+                <TouchableOpacity
+                  key={treino.id}
+                  style={[
+                    styles.treinoCard,
+                    {
+                      backgroundColor: CLEAN_SURFACE,
+                      borderRadius: borderRadius.lg,
+                      marginBottom: spacing.md,
+                      padding: spacing.md,
+                      borderWidth: 1,
+                      borderColor: CLEAN_BORDER,
+                    },
+                  ]}
+                  onPress={() =>
+                    router.push({
+                      pathname: '/workout/[id]',
+                      params: { id: treino.id },
+                    } as any)
+                  }
+                >
+                  <View style={styles.treinoCardContent}>
+                    <View
+                      style={[
+                        styles.treinoIcon,
+                        {
+                          backgroundColor: `${colors.primary}16`,
+                          borderRadius: borderRadius.full,
+                        },
+                      ]}
+                    >
+                      <Ionicons name="barbell-outline" size={20} color={colors.primary} />
+                    </View>
+                    <View style={styles.treinoInfo}>
+                      <Text style={[{ color: CLEAN_TEXT, flexShrink: 1 }, typography.titleMedium]} numberOfLines={1}>
+                        {treino.nome}
+                      </Text>
+                      <Text style={[{ color: CLEAN_TEXT_MUTED, marginTop: spacing.xs }, typography.bodySmall]}>
+                        {treinoStatus.label}: {treinoStatus.description}
+                      </Text>
+                    </View>
+                    <View style={styles.treinoAction}>
+                      <Ionicons name="chevron-forward" size={18} color={CLEAN_TEXT_SOFT} />
                     </View>
                   </View>
-                  <View style={styles.treinoAction}>
-                    {concluidoHoje ? (
-                      <View style={[styles.completedBadge, { backgroundColor: colors.success + '20', borderRadius: borderRadius.full }]}>
-                        <Ionicons name="checkmark" size={20} color={colors.success} />
-                      </View>
-                    ) : (
-                      <TouchableOpacity
-                        style={[styles.startButton, { backgroundColor: colors.primary, borderRadius: borderRadius.md, paddingHorizontal: spacing.md, paddingVertical: spacing.sm }]}
-                        onPress={() => router.push(`/start-workout?id=${treino.id}` as any)}
-                      >
-                        <Text style={[{ color: colors.info }, typography.labelMedium]}>Iniciar</Text>
-                      </TouchableOpacity>
-                    )}
-                  </View>
-                </View>
-              </TouchableOpacity>
-            );
-          })
+                </TouchableOpacity>
+              );
+            })}
+          </View>
         )}
       </View>
 
       <View style={[styles.section, { paddingHorizontal: padding }]}>
-        <View style={[styles.sectionCard, { backgroundColor: colors.secondaryBackground, borderRadius: borderRadius.lg, padding: spacing.lg }]}>
-          <View style={styles.sectionTitleRow}>
-            <View>
-              <Text style={[{ color: colors.primaryText }, typography.titleLarge]}>
-                MH Agenda Fit
-              </Text>
-              <Text style={[{ color: colors.secondaryText, marginTop: spacing.xs }, typography.bodySmall]}>
-                Encontre personais e marque treinos.
+        <LinearGradient
+          colors={CLEAN_SURFACE_GRADIENT}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={[styles.soloProgressPremiumCard, { borderRadius: borderRadius.lg, padding: spacing.lg, borderColor: CLEAN_BORDER }]}
+        >
+          <View style={styles.soloProgressPremiumHeader}>
+            <View style={{ flex: 1 }}>
+              <Text style={[{ color: CLEAN_TEXT }, typography.titleLarge]}>Avaliações e progresso</Text>
+              <Text style={[{ color: CLEAN_TEXT_MUTED, marginTop: spacing.xs }, typography.bodySmall]}>
+                {ultimaAvaliacaoDate
+                  ? `Última avaliação em ${ultimaAvaliacaoLabel}. Continue acompanhando sua evolução.`
+                  : 'Seu histórico de acompanhamento aparece aqui conforme novas avaliações forem criadas.'}
               </Text>
             </View>
-            <View style={[styles.newBadge, { backgroundColor: colors.secondary, borderRadius: borderRadius.full }]}>
-              <Text style={[{ color: colors.info }, typography.labelSmall]}>Novo</Text>
+            {notificationBadge > 0 ? (
+              <TouchableOpacity
+                activeOpacity={0.8}
+                onPress={() => router.push('/evaluations' as any)}
+                style={[styles.soloAiPulseBadge, { borderColor: CLEAN_BORDER, backgroundColor: CLEAN_SURFACE_ALT }]}
+              >
+                <Ionicons name="notifications-outline" size={14} color={CLEAN_TEXT} />
+                <Text style={[styles.soloAiPulseText, { color: CLEAN_TEXT }]}>{notificationBadge} novo(s)</Text>
+              </TouchableOpacity>
+            ) : null}
+          </View>
+          <View style={[styles.soloProgressPremiumStatsRow, { marginTop: spacing.md }]}>
+            <View style={[styles.soloProgressPremiumStatCard, { borderColor: CLEAN_BORDER, backgroundColor: CLEAN_SURFACE_ALT }]}>
+              <Text style={[styles.soloProgressPremiumStatValue, { color: CLEAN_TEXT }]}>{avaliacoes.length}</Text>
+              <Text style={[styles.soloProgressPremiumStatLabel, { color: CLEAN_TEXT_MUTED }]}>Avaliações</Text>
+            </View>
+            <View style={[styles.soloProgressPremiumStatCard, { borderColor: CLEAN_BORDER, backgroundColor: CLEAN_SURFACE_ALT }]}>
+              <Text style={[styles.soloProgressPremiumStatValue, { color: CLEAN_TEXT }]}>{treinosConcluidosHoje}</Text>
+              <Text style={[styles.soloProgressPremiumStatLabel, { color: CLEAN_TEXT_MUTED }]}>Concluídos hoje</Text>
+            </View>
+            <View style={[styles.soloProgressPremiumStatCard, { borderColor: CLEAN_BORDER, backgroundColor: CLEAN_SURFACE_ALT }]}>
+              <Text style={[styles.soloProgressPremiumStatValue, { color: CLEAN_TEXT }]}>{notificationBadge}</Text>
+              <Text style={[styles.soloProgressPremiumStatLabel, { color: CLEAN_TEXT_MUTED }]}>Alertas</Text>
             </View>
           </View>
-          <TouchableOpacity
-            style={[styles.inlineButton, { backgroundColor: colors.primary, borderRadius: borderRadius.md, marginTop: spacing.md }]}
-            onPress={() => router.push('/mh-agenda-fit' as any)}
-          >
-            <Text style={[{ color: colors.info }, typography.labelMedium]}>Conhecer</Text>
-          </TouchableOpacity>
-        </View>
+          <View style={[styles.soloSectionActions, { marginTop: spacing.md }]}>
+            <TouchableOpacity
+              style={[styles.soloPremiumActionButton, styles.soloDarkActionButton, { borderRadius: borderRadius.md, borderColor: CLEAN_BORDER, backgroundColor: CLEAN_SURFACE_ALT }]}
+              onPress={() => router.push('/evaluations' as any)}
+            >
+              <Ionicons name="clipboard-outline" size={16} color={CLEAN_TEXT} />
+              <Text style={[styles.soloPremiumActionText, { color: CLEAN_TEXT }]}>
+                Ver avaliações
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.soloPremiumActionButton, styles.soloLightActionButton, { borderRadius: borderRadius.md, borderColor: CLEAN_BORDER, backgroundColor: CLEAN_SURFACE_ALT }]}
+              onPress={() => router.push('/progress' as any)}
+            >
+              <Ionicons name="trending-up-outline" size={16} color={CLEAN_TEXT} />
+              <Text style={[styles.soloPremiumActionText, { color: CLEAN_TEXT }]}>
+                Meu progresso
+              </Text>
+            </TouchableOpacity>
+          </View>
+        </LinearGradient>
       </View>
+
+      {!hasIndividualPlan && (
+        <View style={[styles.section, { paddingHorizontal: padding }]}>
+          <LinearGradient
+            colors={CLEAN_SURFACE_GRADIENT}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+            style={[styles.soloPremiumBanner, { borderRadius: borderRadius.lg, padding: spacing.lg, borderColor: CLEAN_BORDER }]}
+          >
+            <View style={styles.soloPlanBannerHeader}>
+              <View style={[styles.soloPlanBadge, { borderColor: CLEAN_BORDER, backgroundColor: CLEAN_SURFACE_ALT }]}>
+                <Ionicons name="diamond-outline" size={14} color={colors.primary} />
+                <Text style={[styles.soloPlanBadgeText, { color: CLEAN_TEXT }]}>Plano individual</Text>
+              </View>
+              <Text style={[styles.soloPlanPrice, { color: CLEAN_TEXT }, typography.titleMedium]}>R$ 24,99/mês</Text>
+            </View>
+            <Text style={[{ color: CLEAN_TEXT, marginTop: spacing.sm }, typography.titleLarge]}>
+              Premium para acelerar sua rotina
+            </Text>
+            <Text style={[{ color: CLEAN_TEXT_MUTED, marginTop: spacing.xs }, typography.bodySmall]}>
+              Libera assistente completo, analise nutricional avancada e mais autonomia mesmo fora do chat com personal.
+            </Text>
+            <View style={[styles.soloPlanFeatureList, { marginTop: spacing.md }]}>
+              <View style={styles.soloPlanFeatureItem}>
+                <Ionicons name="checkmark-circle" size={15} color={colors.primary} />
+                <Text style={[styles.soloPlanFeatureText, { color: CLEAN_TEXT_MUTED }]}>Treinos e avaliações com suporte de IA</Text>
+              </View>
+              <View style={styles.soloPlanFeatureItem}>
+                <Ionicons name="checkmark-circle" size={15} color={colors.primary} />
+                <Text style={[styles.soloPlanFeatureText, { color: CLEAN_TEXT_MUTED }]}>Mais créditos diários para consultas e ajustes</Text>
+              </View>
+              <View style={styles.soloPlanFeatureItem}>
+                <Ionicons name="checkmark-circle" size={15} color={colors.primary} />
+                <Text style={[styles.soloPlanFeatureText, { color: CLEAN_TEXT_MUTED }]}>Nutricao e rotina com mais autonomia no app</Text>
+              </View>
+            </View>
+            <TouchableOpacity
+              style={[styles.soloPlanCtaButton, { marginTop: spacing.md, borderRadius: borderRadius.md, backgroundColor: CLEAN_SURFACE_ALT, borderWidth: 1, borderColor: CLEAN_BORDER }]}
+              onPress={() => router.push('/profile/subscription' as any)}
+            >
+              <Ionicons name="rocket-outline" size={16} color={CLEAN_TEXT} />
+              <Text style={[styles.soloPlanCtaText, { color: CLEAN_TEXT }, typography.labelMedium]}>Ativar plano individual</Text>
+            </TouchableOpacity>
+          </LinearGradient>
+        </View>
+      )}
 
     </ScrollView>
   );
@@ -1491,12 +1871,58 @@ interface PersonalHomeProps extends BaseHomeProps {
 }
 
 function PersonalHomeScreen({ padding, refreshing, onRefresh, alunos, stats, error }: PersonalHomeProps) {
-  const { colors, typography, spacing, borderRadius } = useTheme();
-  const { user } = useAuthStore();
+  const { colors: themeColors, typography, spacing, borderRadius, isDark } = useTheme();
+  const colors = useMemo(
+    () => ({
+      ...themeColors,
+      primary: isDark ? '#87B4C7' : '#5D92A8',
+      secondary: isDark ? '#6D94A8' : '#769AAE',
+      tertiary: isDark ? '#96A9C4' : '#8EA6C0',
+      alternate: isDark ? '#19222D' : '#EDF3F7',
+      primaryText: isDark ? '#F4F7FB' : '#13212B',
+      secondaryText: isDark ? '#9BAEBF' : '#60717E',
+      text: isDark ? '#F4F7FB' : '#13212B',
+      textSecondary: isDark ? '#9BAEBF' : '#60717E',
+      textMuted: isDark ? '#7E92A4' : '#7B8B96',
+      primaryBackground: isDark ? '#0C1218' : '#F5F8FA',
+      secondaryBackground: isDark ? '#141D26' : '#FFFFFF',
+      background: isDark ? '#0C1218' : '#F5F8FA',
+      accent1: isDark ? '#4D87B4C7' : '#4D5D92A8',
+      accent2: isDark ? '#4D6D94A8' : '#4D769AAE',
+      accent3: isDark ? '#4D96A9C4' : '#4D8EA6C0',
+      success: isDark ? '#7BA58B' : '#608D73',
+      warning: isDark ? '#C69759' : '#B78346',
+      error: isDark ? '#D06E61' : '#C45E54',
+      info: isDark ? '#0C1218' : '#FFFFFF',
+      customColor3: isDark ? '#6D94A8' : '#769AAE',
+      customColor4: isDark ? '#87B4C7' : '#5D92A8',
+      border: isDark ? '#253240' : '#D7E2E8',
+      card: isDark ? '#141D26' : '#FFFFFF',
+      surface: isDark ? '#1A2430' : '#EEF3F7',
+      gradient: {
+        primary: isDark ? ['#97C0D1', '#739BAF'] : ['#7EAABF', '#5D92A8'],
+        secondary: isDark ? ['#1A2430', '#141D26'] : ['#F5F8FA', '#FFFFFF'],
+      },
+    }),
+    [isDark, themeColors]
+  );
+  const { user, updateUser } = useAuthStore();
+  const [personalCode, setPersonalCode] = useState('');
+  const [notificationBadge, setNotificationBadge] = useState(0);
+  const [upcomingEvaluations, setUpcomingEvaluations] = useState<Array<{
+    id: string;
+    studentId: string;
+    nome: string;
+    tipo: string;
+    horario: string;
+    photoUrl?: string;
+    personalPhotoUrl?: string;
+  }>>([]);
 
   const now = new Date();
   const totalAlunos = stats?.totalAlunos ?? alunos.length;
   const alunosAtivos = stats?.alunosAtivos ?? alunos.filter((aluno) => aluno.status === 'ativo').length;
+  const alunosInativos = Math.max(0, totalAlunos - alunosAtivos);
   const treinosRecentes = alunos.filter((aluno) => {
     if (!aluno?.ultimoTreino) return false;
     const lastTraining = new Date(aluno.ultimoTreino);
@@ -1508,15 +1934,127 @@ function PersonalHomeScreen({ padding, refreshing, onRefresh, alunos, stats, err
   const evolucao = totalAlunos > 0 ? Math.round((alunosComTreino / totalAlunos) * 100) : 0;
   const firstName = user?.displayName?.split(' ')[0] || 'Personal';
   const recentAlunos = alunos.slice(0, 5);
-  const [upcomingEvaluations, setUpcomingEvaluations] = useState<Array<{
-    id: string;
-    studentId: string;
-    nome: string;
-    tipo: string;
-    horario: string;
-    photoUrl?: string;
-    personalPhotoUrl?: string;
-  }>>([]);
+  const inviteLink = useMemo(
+    () =>
+      buildPersonalInviteLink(
+        process.env.EXPO_PUBLIC_APP_INVITE_URL || DEFAULT_PERSONAL_INVITE_BASE,
+        personalCode
+      ),
+    [personalCode]
+  );
+  const personalLandingUrl = String(process.env.EXPO_PUBLIC_WEB_LANDING_URL || '')
+    .trim()
+    .replace(/\/$/, '');
+  const personalInviteCardText = useMemo(() => {
+    if (!personalCode) {
+      return 'Gerando seu código de personal. Se não aparecer em alguns segundos, abra Perfil e volte para atualizar.';
+    }
+
+    if (inviteLink) {
+      return inviteLink;
+    }
+
+    if (personalLandingUrl) {
+      return personalLandingUrl;
+    }
+
+    return 'Use esse código no cadastro ou no perfil do app.';
+  }, [inviteLink, personalCode, personalLandingUrl]);
+  const personalInviteMessage = useMemo(() => {
+    if (!personalCode) return '';
+
+    const lines = [
+      'Treine comigo no MH Personal Trainer.',
+      `Use meu código: ${personalCode}.`,
+    ];
+
+    if (inviteLink) {
+      lines.push(inviteLink);
+    } else if (personalLandingUrl) {
+      lines.push(`Acesse: ${personalLandingUrl}`);
+    } else {
+      lines.push('Use esse código no cadastro ou no perfil do app.');
+    }
+
+    return lines.join('\n');
+  }, [inviteLink, personalCode, personalLandingUrl]);
+  const personalHeaderGradient = isDark
+    ? (['#172331', '#101820'] as const)
+    : (['#FFFFFF', '#EEF7FA'] as const);
+  const personalInviteGradient = isDark
+    ? (['#141D26', '#111A23'] as const)
+    : (['#FFFFFF', '#F8FBFD'] as const);
+
+  const refreshNotificationBadge = useCallback(async () => {
+    if (!user?.uid) {
+      setNotificationBadge(0);
+      await setBadgeCount(0);
+      return;
+    }
+
+    try {
+      const result = await countPendingNotificationsForUser(user.uid);
+      const total = Math.max(0, Number(result.data || 0));
+      setNotificationBadge(total);
+      await setBadgeCount(total);
+    } catch (_) {
+      setNotificationBadge(0);
+      await setBadgeCount(0);
+    }
+  }, [user?.uid]);
+
+  useFocusEffect(
+    useCallback(() => {
+      void refreshNotificationBadge();
+    }, [refreshNotificationBadge])
+  );
+
+  useEffect(() => {
+    if (!user?.uid) {
+      setPersonalCode('');
+      return;
+    }
+
+    let active = true;
+    firestoreService.ensurePersonalCode(user.uid)
+      .then((code) => {
+        if (!active) return;
+        const resolved = String(code ?? user?.codigoPersonal ?? '').trim();
+        setPersonalCode(resolved && resolved !== '0' ? resolved : '');
+        const parsed = Number(resolved);
+        if (resolved && resolved !== '0' && Number.isFinite(parsed) && parsed > 0) {
+          updateUser({
+            professorAccount: true,
+            codigoPersonal: parsed,
+          });
+        }
+      })
+      .catch(() => {
+        if (!active) return;
+        const fallback = String(user?.codigoPersonal ?? '').trim();
+        setPersonalCode(fallback && fallback !== '0' ? fallback : '');
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [updateUser, user?.codigoPersonal, user?.uid]);
+
+  const handleShareInviteLink = useCallback(async () => {
+    if (!personalInviteMessage) {
+      showAlert('Convite do personal', 'Seu código ainda não está disponível para compartilhar.');
+      return;
+    }
+    try {
+      await Share.share({
+        title: 'Convite do personal',
+        message: personalInviteMessage,
+        url: inviteLink || personalLandingUrl || undefined,
+      });
+    } catch (err: any) {
+      showAlert('Convite do personal', err?.message || 'Não foi possível compartilhar agora.');
+    }
+  }, [inviteLink, personalInviteMessage, personalLandingUrl]);
 
   const formatUpcomingDate = (date: Date) => {
     const today = new Date();
@@ -1613,20 +2151,106 @@ function PersonalHomeScreen({ padding, refreshing, onRefresh, alunos, stats, err
       refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
     >
       <SafeAreaView edges={['top']}>
-        <View style={[styles.section, { paddingHorizontal: padding, marginTop: 0 }]}>
-          <View style={[styles.sectionCard, { backgroundColor: colors.secondaryBackground, borderRadius: borderRadius.lg, padding: spacing.lg }]}>
+        <View style={[styles.section, { paddingHorizontal: padding, marginTop: spacing.sm }]}>
+          <LinearGradient
+            colors={personalHeaderGradient}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+            style={[
+              styles.personalHeaderCard,
+              {
+                borderColor: colors.border,
+                borderRadius: borderRadius.lg,
+                shadowColor: isDark ? '#000000' : '#6D94A8',
+              },
+            ]}
+          >
             <View style={styles.headerRow}>
               <View style={styles.headerLeft}>
-                <Text style={[{ color: colors.primaryText }, typography.headlineMedium]}>
-                  Ola, {firstName}
+                <View style={[styles.personalHeaderKicker, { backgroundColor: colors.primary + '16' }]}>
+                  <Ionicons name="barbell-outline" size={13} color={colors.primary} />
+                  <Text style={[styles.personalHeaderKickerText, { color: colors.primary }]}>
+                    Personal trainer
+                  </Text>
+                </View>
+                <Text style={[styles.personalHeaderTitle, { color: colors.primaryText }, typography.headlineMedium]}>
+                  Olá, {firstName}
                 </Text>
                 <Text style={[{ color: colors.secondaryText, marginTop: spacing.xs }, typography.bodySmall]}>
                   Painel do personal trainer
                 </Text>
+                <View style={styles.personalHeaderMetrics}>
+                  <View
+                    style={[
+                      styles.personalHeaderMetric,
+                      {
+                        backgroundColor: colors.primary + '10',
+                        borderColor: colors.primary + '26',
+                      },
+                    ]}
+                  >
+                    <Text style={[styles.personalHeaderMetricValue, { color: colors.primaryText }]}>
+                      {alunosAtivos}/{totalAlunos}
+                    </Text>
+                    <Text style={[styles.personalHeaderMetricLabel, { color: colors.secondaryText }]}>ativos</Text>
+                  </View>
+                  <View
+                    style={[
+                      styles.personalHeaderMetric,
+                      {
+                        backgroundColor: colors.success + '12',
+                        borderColor: colors.success + '28',
+                      },
+                    ]}
+                  >
+                    <Text style={[styles.personalHeaderMetricValue, { color: colors.primaryText }]}>
+                      {frequencia}%
+                    </Text>
+                    <Text style={[styles.personalHeaderMetricLabel, { color: colors.secondaryText }]}>semana</Text>
+                  </View>
+                </View>
               </View>
               <View style={styles.headerRight}>
                 <TouchableOpacity
-                  style={[styles.iconButton, { backgroundColor: colors.primaryBackground, borderRadius: borderRadius.full }]}
+                  style={[
+                    styles.iconButton,
+                    styles.personalHeaderIconButton,
+                    {
+                      backgroundColor: colors.secondaryBackground,
+                      borderColor: colors.border,
+                      borderRadius: borderRadius.full,
+                    },
+                  ]}
+                  onPress={() => router.push('/notifications' as any)}
+                >
+                  <Ionicons name="notifications-outline" size={22} color={colors.primaryText} />
+                  {notificationBadge > 0 ? (
+                    <View
+                      style={[
+                        styles.badgeDot,
+                        {
+                          backgroundColor: colors.error || colors.primary,
+                          borderRadius: borderRadius.full,
+                        },
+                      ]}
+                    >
+                      <Text style={[styles.badgeText, { color: '#fff' }]}>
+                        {notificationBadge > 99 ? '99+' : notificationBadge}
+                      </Text>
+                    </View>
+                  ) : null}
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[
+                    styles.iconButton,
+                    styles.personalHeaderIconButton,
+                    {
+                      backgroundColor: colors.secondaryBackground,
+                      borderColor: colors.border,
+                      borderRadius: borderRadius.full,
+                      marginLeft: spacing.sm,
+                    },
+                  ]}
                   onPress={() => router.push('/profile/personal-edit' as any)}
                 >
                   {user?.photoUrl ? (
@@ -1637,9 +2261,120 @@ function PersonalHomeScreen({ padding, refreshing, onRefresh, alunos, stats, err
                 </TouchableOpacity>
               </View>
             </View>
-          </View>
+          </LinearGradient>
         </View>
       </SafeAreaView>
+
+      <View style={[styles.section, { paddingHorizontal: padding }]}>
+        <LinearGradient
+          colors={personalInviteGradient}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={[
+            styles.sectionCard,
+            styles.personalDashboardCard,
+            styles.personalInviteCard,
+            {
+              borderColor: colors.border,
+              borderRadius: borderRadius.lg,
+              shadowColor: isDark ? '#000000' : '#6D94A8',
+            },
+          ]}
+        >
+          <View style={styles.personalInviteHeader}>
+            <View style={[styles.personalInviteHeaderIcon, { backgroundColor: colors.primary + '16' }]}>
+              <Ionicons name="link-outline" size={22} color={colors.primary} />
+            </View>
+            <View style={styles.personalInviteHeaderText}>
+              <Text style={[{ color: colors.primaryText }, typography.titleLarge]}>Link do personal</Text>
+              <Text style={[{ color: colors.secondaryText, marginTop: spacing.xs }, typography.bodySmall]}>
+                Compartilhe com novos alunos para eles entrarem no app usando seu código.
+              </Text>
+            </View>
+            <TouchableOpacity
+              style={[
+                styles.iconButton,
+                styles.personalInviteShareButton,
+                {
+                  backgroundColor: colors.primary + '12',
+                  borderColor: colors.primary + '24',
+                  borderRadius: borderRadius.full,
+                },
+              ]}
+              onPress={handleShareInviteLink}
+            >
+              <Ionicons name="share-social-outline" size={20} color={colors.primary} />
+            </TouchableOpacity>
+          </View>
+
+          <View
+            style={[
+              styles.personalInviteCodeCard,
+              {
+                backgroundColor: isDark ? colors.primaryBackground : '#F4F8FB',
+                borderColor: colors.primary + '26',
+                borderRadius: borderRadius.md,
+              },
+            ]}
+          >
+            <View style={styles.personalInviteCodeTopRow}>
+              <Text style={[styles.personalInviteCodeLabel, { color: colors.secondaryText }]}>Código do personal</Text>
+              <View style={[styles.personalInviteStatusPill, { backgroundColor: colors.success + '14' }]}>
+                <Ionicons name="checkmark-circle-outline" size={13} color={colors.success} />
+                <Text style={[styles.personalInviteStatusText, { color: colors.success }]}>Ativo</Text>
+              </View>
+            </View>
+            <Text style={[styles.personalInviteCodeValue, { color: colors.primaryText }]}>
+              {personalCode || '--'}
+            </Text>
+            <View
+              style={[
+                styles.personalInviteLinkRow,
+                {
+                  backgroundColor: colors.secondaryBackground,
+                  borderColor: colors.border,
+                  borderRadius: borderRadius.sm,
+                },
+              ]}
+            >
+              <Ionicons name="globe-outline" size={15} color={colors.primary} />
+              <Text style={[styles.personalInviteLinkText, { color: colors.secondaryText }]} numberOfLines={2}>
+                {personalInviteCardText}
+              </Text>
+            </View>
+          </View>
+
+          <View style={styles.personalInviteActionRow}>
+            <TouchableOpacity
+              style={[
+                styles.personalInviteActionButton,
+                styles.personalInvitePrimaryButton,
+                { backgroundColor: colors.primary, borderRadius: borderRadius.md },
+              ]}
+              onPress={handleShareInviteLink}
+            >
+              <Ionicons name="send-outline" size={16} color={colors.info} />
+              <Text style={[styles.personalInviteActionText, { color: colors.info }]}>Compartilhar</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[
+                styles.personalInviteActionButton,
+                styles.personalInviteSecondaryButton,
+                {
+                  backgroundColor: colors.secondaryBackground,
+                  borderColor: colors.border,
+                  borderRadius: borderRadius.md,
+                },
+              ]}
+              onPress={() => router.push({ pathname: '/personal/profile', params: { uid: user?.uid || '' } } as any)}
+              disabled={!user?.uid}
+            >
+              <Ionicons name="person-outline" size={16} color={colors.primaryText} />
+              <Text style={[styles.personalInviteSecondaryText, { color: colors.primaryText }]}>Ver perfil</Text>
+            </TouchableOpacity>
+          </View>
+        </LinearGradient>
+      </View>
 
       {error && (
         <View style={[styles.errorBanner, { backgroundColor: colors.error + '20', margin: padding, padding: spacing.md, borderRadius: borderRadius.md }]}>
@@ -1649,27 +2384,64 @@ function PersonalHomeScreen({ padding, refreshing, onRefresh, alunos, stats, err
 
       <View style={[styles.section, { paddingHorizontal: padding }]}>
         <TouchableOpacity
-          style={[styles.sectionCard, { backgroundColor: colors.secondaryBackground, borderRadius: borderRadius.lg, padding: spacing.lg }]}
+          style={[
+            styles.sectionCard,
+            styles.personalDashboardCard,
+            styles.personalSummaryCard,
+            {
+              backgroundColor: colors.secondaryBackground,
+              borderColor: colors.border,
+              borderRadius: borderRadius.lg,
+              shadowColor: isDark ? '#000000' : '#6D94A8',
+            },
+          ]}
           onPress={() => router.push('/personal/summary' as any)}
         >
-          <View style={styles.sectionHeader}>
-            <Text style={[{ color: colors.primaryText }, typography.titleLarge]}>Resumo</Text>
-            <Text style={[{ color: colors.primary }, typography.labelMedium]}>Abrir</Text>
-          </View>
-          <View style={[styles.summaryStatsRow, { marginTop: spacing.md }]}>
-            <View style={styles.summaryStat}>
-              <Text style={[{ color: colors.primary }, typography.headlineMedium]}>{totalAlunos}</Text>
-              <Text style={[{ color: colors.secondaryText }, typography.labelSmall]}>Total alunos</Text>
-            </View>
-            <View style={styles.summaryStat}>
-              <Text style={[{ color: colors.success }, typography.headlineMedium]}>{alunosAtivos}</Text>
-              <Text style={[{ color: colors.secondaryText }, typography.labelSmall]}>Ativos</Text>
-            </View>
-            <View style={styles.summaryStat}>
-              <Text style={[{ color: colors.tertiary }, typography.headlineMedium]}>
-                {Math.max(0, totalAlunos - alunosAtivos)}
+          <View style={[styles.sectionHeader, styles.personalSummaryHeader]}>
+            <View style={{ flex: 1 }}>
+              <Text style={[{ color: colors.primaryText }, typography.titleLarge]}>Resumo</Text>
+              <Text style={[{ color: colors.secondaryText, marginTop: 2 }, typography.bodySmall]}>
+                Visão geral dos alunos
               </Text>
-              <Text style={[{ color: colors.secondaryText }, typography.labelSmall]}>Inativos</Text>
+            </View>
+            <View style={[styles.personalOpenPill, { backgroundColor: colors.primary + '12' }]}>
+              <Text style={[styles.personalOpenPillText, { color: colors.primary }, typography.labelMedium]}>Abrir</Text>
+              <Ionicons name="chevron-forward" size={15} color={colors.primary} />
+            </View>
+          </View>
+          <View style={[styles.summaryStatsRow, styles.personalSummaryStatsRow, { marginTop: spacing.md }]}>
+            <View
+              style={[
+                styles.summaryStat,
+                styles.personalSummaryStatCard,
+                { backgroundColor: colors.primary + '10', borderColor: colors.primary + '24' },
+              ]}
+            >
+              <Ionicons name="people-outline" size={18} color={colors.primary} />
+              <Text style={[styles.personalSummaryStatValue, { color: colors.primaryText }]}>{totalAlunos}</Text>
+              <Text style={[styles.personalSummaryStatLabel, { color: colors.secondaryText }]}>Total alunos</Text>
+            </View>
+            <View
+              style={[
+                styles.summaryStat,
+                styles.personalSummaryStatCard,
+                { backgroundColor: colors.success + '10', borderColor: colors.success + '24' },
+              ]}
+            >
+              <Ionicons name="checkmark-circle-outline" size={18} color={colors.success} />
+              <Text style={[styles.personalSummaryStatValue, { color: colors.primaryText }]}>{alunosAtivos}</Text>
+              <Text style={[styles.personalSummaryStatLabel, { color: colors.secondaryText }]}>Ativos</Text>
+            </View>
+            <View
+              style={[
+                styles.summaryStat,
+                styles.personalSummaryStatCard,
+                { backgroundColor: colors.tertiary + '12', borderColor: colors.tertiary + '26' },
+              ]}
+            >
+              <Ionicons name="pause-circle-outline" size={18} color={colors.tertiary} />
+              <Text style={[styles.personalSummaryStatValue, { color: colors.primaryText }]}>{alunosInativos}</Text>
+              <Text style={[styles.personalSummaryStatLabel, { color: colors.secondaryText }]}>Inativos</Text>
             </View>
           </View>
         </TouchableOpacity>
@@ -1678,31 +2450,64 @@ function PersonalHomeScreen({ padding, refreshing, onRefresh, alunos, stats, err
       <View style={[styles.section, { paddingHorizontal: padding }]}>
         <View style={styles.actionRow}>
           <TouchableOpacity
-            style={[styles.actionSquare, { backgroundColor: colors.secondaryBackground, borderRadius: borderRadius.lg }]}
+            style={[
+              styles.actionSquare,
+              styles.personalActionSquare,
+              {
+                backgroundColor: colors.secondaryBackground,
+                borderColor: colors.border,
+                borderRadius: borderRadius.lg,
+              },
+            ]}
             onPress={() => router.push('/(tabs)/students' as any)}
           >
-            <Ionicons name="people-outline" size={26} color={colors.primary} />
-            <Text style={[{ color: colors.primaryText, marginTop: spacing.sm, textAlign: 'center' }, typography.labelSmall]}>
+            <View style={[styles.personalActionIconWrap, { backgroundColor: colors.primary + '14' }]}>
+              <Ionicons name="people-outline" size={24} color={colors.primary} />
+            </View>
+            <Text style={[styles.personalActionLabel, { color: colors.primaryText }, typography.labelSmall]}>
               Alunos
             </Text>
+            <Ionicons name="chevron-forward" size={14} color={colors.secondaryText} style={styles.personalActionChevron} />
           </TouchableOpacity>
           <TouchableOpacity
-            style={[styles.actionSquare, { backgroundColor: colors.secondaryBackground, borderRadius: borderRadius.lg }]}
+            style={[
+              styles.actionSquare,
+              styles.personalActionSquare,
+              {
+                backgroundColor: colors.secondaryBackground,
+                borderColor: colors.border,
+                borderRadius: borderRadius.lg,
+              },
+            ]}
             onPress={() => router.push('/evaluations/create' as any)}
           >
-            <Ionicons name="clipboard-outline" size={26} color={colors.primary} />
-            <Text style={[{ color: colors.primaryText, marginTop: spacing.sm, textAlign: 'center' }, typography.labelSmall]}>
-              Nova avaliacao
+            <View style={[styles.personalActionIconWrap, { backgroundColor: colors.primary + '14' }]}>
+              <Ionicons name="clipboard-outline" size={24} color={colors.primary} />
+            </View>
+            <Text style={[styles.personalActionLabel, { color: colors.primaryText }, typography.labelSmall]}>
+              Nova avaliação
             </Text>
+            <Ionicons name="chevron-forward" size={14} color={colors.secondaryText} style={styles.personalActionChevron} />
           </TouchableOpacity>
           <TouchableOpacity
-            style={[styles.actionSquare, { backgroundColor: colors.secondaryBackground, borderRadius: borderRadius.lg }]}
+            style={[
+              styles.actionSquare,
+              styles.personalActionSquare,
+              {
+                backgroundColor: colors.secondaryBackground,
+                borderColor: colors.border,
+                borderRadius: borderRadius.lg,
+              },
+            ]}
             onPress={() => router.push('/profile/subscription' as any)}
           >
-            <Ionicons name="cash-outline" size={26} color={colors.primary} />
-            <Text style={[{ color: colors.primaryText, marginTop: spacing.sm, textAlign: 'center' }, typography.labelSmall]}>
+            <View style={[styles.personalActionIconWrap, { backgroundColor: colors.primary + '14' }]}>
+              <Ionicons name="cash-outline" size={24} color={colors.primary} />
+            </View>
+            <Text style={[styles.personalActionLabel, { color: colors.primaryText }, typography.labelSmall]}>
               Assinatura
             </Text>
+            <Ionicons name="chevron-forward" size={14} color={colors.secondaryText} style={styles.personalActionChevron} />
           </TouchableOpacity>
         </View>
       </View>
@@ -1717,43 +2522,100 @@ function PersonalHomeScreen({ padding, refreshing, onRefresh, alunos, stats, err
           </TouchableOpacity>
         </View>
         {recentAlunos.length === 0 ? (
-          <View style={[styles.emptyState, { backgroundColor: colors.secondaryBackground, borderRadius: borderRadius.lg, padding: spacing.xl }]}>
+          <View
+            style={[
+              styles.emptyState,
+              styles.personalEmptyState,
+              {
+                backgroundColor: colors.secondaryBackground,
+                borderColor: colors.border,
+                borderRadius: borderRadius.lg,
+                padding: spacing.xl,
+              },
+            ]}
+          >
             <Ionicons name="people-outline" size={44} color={colors.secondaryText} />
             <Text style={[{ color: colors.secondaryText, marginTop: spacing.sm, textAlign: 'center' }, typography.bodySmall]}>
               Nenhum aluno cadastrado ainda.
             </Text>
           </View>
         ) : (
-          recentAlunos.map((aluno) => (
-            <TouchableOpacity
-              key={aluno.id}
-              style={[styles.alunoCard, { backgroundColor: colors.secondaryBackground, borderRadius: borderRadius.lg, padding: spacing.md, marginBottom: spacing.md }]}
-              onPress={() => router.push(`/student/${aluno.id}` as any)}
-            >
-              <View style={styles.alunoCardContent}>
-                <AvatarStack
-                  primarySource={aluno.photoUrl}
-                  primaryName={aluno.nome}
-                  secondarySource={aluno.personalPhotoUrl}
-                  secondaryName={aluno.nome}
-                  sizePx={50}
-                />
-                <View style={styles.alunoInfoBlock}>
-                  <Text style={[{ color: colors.primaryText }, typography.titleMedium]}>{aluno.nome}</Text>
-                  <Text style={[{ color: colors.secondaryText, marginTop: spacing.xs }, typography.bodySmall]}>
-                    Status: {aluno.status || 'ativo'}
-                  </Text>
+          recentAlunos.map((aluno) => {
+            const alunoStatus = String(aluno.status || 'ativo');
+            const alunoAtivo = alunoStatus.toLowerCase() === 'ativo';
+
+            return (
+              <TouchableOpacity
+                key={aluno.id}
+                style={[
+                  styles.alunoCard,
+                  styles.personalStudentCard,
+                  {
+                    backgroundColor: colors.secondaryBackground,
+                    borderColor: colors.border,
+                    borderRadius: borderRadius.lg,
+                    shadowColor: isDark ? '#000000' : '#6D94A8',
+                    marginBottom: spacing.md,
+                  },
+                ]}
+                onPress={() => router.push(`/student/${aluno.id}` as any)}
+              >
+                <View style={styles.alunoCardContent}>
+                  <AvatarStack
+                    primarySource={aluno.photoUrl}
+                    primaryName={aluno.nome}
+                    secondarySource={aluno.personalPhotoUrl}
+                    secondaryName={aluno.nome}
+                    sizePx={50}
+                    accentColor={colors.primary}
+                    borderColor={colors.border}
+                    overlayBorderColor={colors.primaryBackground}
+                  />
+                  <View style={styles.alunoInfoBlock}>
+                    <View style={styles.personalStudentTitleRow}>
+                      <Text
+                        style={[styles.personalStudentName, { color: colors.primaryText }, typography.titleMedium]}
+                        numberOfLines={1}
+                      >
+                        {aluno.nome}
+                      </Text>
+                      <View
+                        style={[
+                          styles.personalStudentStatusChip,
+                          {
+                            backgroundColor: (alunoAtivo ? colors.success : colors.tertiary) + '14',
+                          },
+                        ]}
+                      >
+                        <Text
+                          style={[
+                            styles.personalStudentStatusText,
+                            { color: alunoAtivo ? colors.success : colors.tertiary },
+                          ]}
+                        >
+                          {alunoStatus}
+                        </Text>
+                      </View>
+                    </View>
+                    <View style={styles.personalStudentMetaRow}>
+                      <Ionicons name="fitness-outline" size={14} color={colors.primary} />
+                      <Text style={[styles.personalStudentMetaText, { color: colors.secondaryText }]}>
+                        {Number(aluno.treinosConcluidos || 0)} treinos concluídos
+                      </Text>
+                    </View>
+                  </View>
+                  <Ionicons name="chevron-forward" size={18} color={colors.secondaryText} />
                 </View>
-              </View>
-            </TouchableOpacity>
-          ))
+              </TouchableOpacity>
+            );
+          })
         )}
       </View>
 
       <View style={[styles.section, { paddingHorizontal: padding }]}>
         <View style={[styles.sectionHeader, { marginBottom: spacing.md }]}>
           <Text style={[{ color: colors.primaryText }, typography.titleLarge]}>
-            Proximas avaliacoes
+            Próximas avaliações
           </Text>
           <TouchableOpacity onPress={() => router.push('/evaluations' as any)}>
             <Text style={[{ color: colors.primary }, typography.labelMedium]}>Ver todas</Text>
@@ -1778,13 +2640,13 @@ function PersonalHomeScreen({ padding, refreshing, onRefresh, alunos, stats, err
             <View style={styles.emptyState}>
               <Ionicons name="clipboard-outline" size={40} color={colors.secondaryText} />
               <Text style={[{ color: colors.secondaryText, marginTop: spacing.sm, textAlign: 'center' }, typography.bodySmall]}>
-                Nenhuma avaliacao agendada no momento.
+                Nenhuma avaliação agendada no momento.
               </Text>
               <TouchableOpacity
                 style={[styles.inlineButton, { backgroundColor: colors.primary, borderRadius: borderRadius.md, marginTop: spacing.md }]}
                 onPress={() => router.push('/evaluations/create' as any)}
               >
-                <Text style={[{ color: colors.info }, typography.labelMedium]}>Criar avaliacao</Text>
+                <Text style={[{ color: colors.info }, typography.labelMedium]}>Criar avaliação</Text>
               </TouchableOpacity>
             </View>
           ) : (
@@ -1822,6 +2684,9 @@ function PersonalHomeScreen({ padding, refreshing, onRefresh, alunos, stats, err
                       secondarySource={avaliacao.personalPhotoUrl}
                       secondaryName={avaliacao.nome}
                       sizePx={50}
+                      accentColor={colors.primary}
+                      borderColor={colors.border}
+                      overlayBorderColor={colors.primaryBackground}
                     />
                     <View style={styles.evaluationInfo}>
                       <Text style={[{ color: colors.primaryText }, typography.titleMedium]}>{avaliacao.nome}</Text>
@@ -1849,7 +2714,7 @@ function PersonalHomeScreen({ padding, refreshing, onRefresh, alunos, stats, err
                       onPress={() => router.push(`/evaluations/create?studentId=${avaliacao.studentId}` as any)}
                     >
                       <Ionicons name="add-circle-outline" size={14} color={colors.primary} />
-                      <Text style={[styles.evaluationActionText, { color: colors.primary }]}>Nova avaliacao</Text>
+                      <Text style={[styles.evaluationActionText, { color: colors.primary }]}>Nova avaliação</Text>
                     </TouchableOpacity>
                   </View>
                 </View>
@@ -1896,6 +2761,34 @@ function AdminHomeScreen({ padding, refreshing, onRefresh, overview, error }: Ad
     { id: '3', title: 'Gerenciar alunos', icon: 'school', color: colors.success, route: '/admin/manage-students' },
     { id: '4', title: 'Notificações', icon: 'notifications', color: colors.warning, route: '/notifications' },
   ];
+
+  const handleRecentUserPress = (user: AdminUserSummary) => {
+    if (user.role === 'aluno') {
+      router.push(`/admin/student/${user.id}` as any);
+      return;
+    }
+
+    if (user.role === 'personal') {
+      const codigoPersonal = String(user.codigoPersonal || '').trim();
+      router.push(
+        codigoPersonal
+          ? ({
+              pathname: '/personal/profile',
+              params: { code: codigoPersonal },
+            } as any)
+          : ({
+              pathname: '/personal/profile',
+              params: { uid: user.id },
+            } as any)
+      );
+      return;
+    }
+
+    showAlert(
+      'Perfil indisponivel',
+      'Ainda nao existe uma tela de visualizacao para perfis admin.'
+    );
+  };
 
   return (
     <ScrollView
@@ -1956,7 +2849,7 @@ function AdminHomeScreen({ padding, refreshing, onRefresh, overview, error }: Ad
 
       <View style={[styles.section, { paddingHorizontal: padding }]}>
         <Text style={[{ color: colors.primaryText, marginBottom: spacing.md }, typography.titleLarge]}>
-          Acoes rapidas
+          Ações rápidas
         </Text>
         <View style={[styles.actionsGrid, { gap: spacing.md }]}>
           {quickActions.map((action) => (
@@ -1988,20 +2881,27 @@ function AdminHomeScreen({ padding, refreshing, onRefresh, overview, error }: Ad
           Usuarios recentes
         </Text>
         {overview?.recentUsers?.length ? (
-          overview.recentUsers.slice(0, 6).map((user: any) => (
-            <Card key={user.id} style={{ marginBottom: spacing.md }}>
+          overview.recentUsers.slice(0, 6).map((user: AdminUserSummary) => (
+            <Card
+              key={user.id}
+              style={{ marginBottom: spacing.md }}
+              onPress={() => handleRecentUserPress(user)}
+            >
               <View style={styles.recentUserRow}>
-                <View>
+                <View style={styles.recentUserInfo}>
                   <Text style={[{ color: colors.primaryText }, typography.titleMedium]}>{user.name}</Text>
                   <Text style={[{ color: colors.secondaryText }, typography.bodySmall]}>{user.email}</Text>
                 </View>
-                <View style={styles.recentUserMeta}>
-                  <Text style={[{ color: colors.secondaryText }, typography.labelSmall]}>{user.role}</Text>
-                  {user.createdAt && (
-                    <Text style={[{ color: colors.secondaryText }, typography.labelSmall]}>
-                      {format(user.createdAt, 'dd/MM/yyyy', { locale: ptBR })}
-                    </Text>
-                  )}
+                <View style={styles.recentUserRight}>
+                  <View style={styles.recentUserMeta}>
+                    <Text style={[{ color: colors.secondaryText }, typography.labelSmall]}>{user.role}</Text>
+                    {user.createdAt && (
+                      <Text style={[{ color: colors.secondaryText }, typography.labelSmall]}>
+                        {format(user.createdAt, 'dd/MM/yyyy', { locale: ptBR })}
+                      </Text>
+                    )}
+                  </View>
+                  <Ionicons name="chevron-forward" size={18} color={colors.secondaryText} />
                 </View>
               </View>
             </Card>
@@ -2184,16 +3084,16 @@ function NoPersonalHomeScreen({ padding, refreshing, onRefresh }: BaseHomeProps)
         <Card>
           <Text style={[{ color: colors.primaryText }, typography.titleMedium]}>Como liberar o acesso</Text>
           <Text style={[{ color: colors.secondaryText, marginTop: spacing.sm }, typography.bodySmall]}>
-            1. Peca o codigo do seu personal.
+            1. Peça o código do seu personal.
           </Text>
           <Text style={[{ color: colors.secondaryText, marginTop: spacing.xs }, typography.bodySmall]}>
-            2. Adicione o codigo no seu perfil.
+            2. Adicione o código no seu perfil.
           </Text>
           <Text style={[{ color: colors.secondaryText, marginTop: spacing.xs }, typography.bodySmall]}>
             3. Aguarde a confirmacao no app.
           </Text>
           <Button
-            title="Adicionar codigo"
+            title="Adicionar código"
             onPress={() => router.push('/personal/change-code' as any)}
             size="large"
             style={{ marginTop: spacing.lg }}
@@ -2211,10 +3111,22 @@ interface SoloAlunoHomeProps extends BaseHomeProps {
 }
 
 function SoloAlunoHomeScreen({ padding, refreshing, onRefresh, noPersonalFlow, treinos, avaliacoes }: SoloAlunoHomeProps) {
-  const { colors, typography, spacing, borderRadius } = useTheme();
+  const { colors, typography, spacing, borderRadius, isDark } = useTheme();
   const { user } = useAuthStore();
   const pathname = usePathname();
   const aiAccess = useAiAccessStatus();
+  const cleanPalette = getCleanPalette(isDark);
+  const {
+    surface: CLEAN_SURFACE,
+    surfaceAlt: CLEAN_SURFACE_ALT,
+    surfaceSoft: CLEAN_SURFACE_SOFT,
+    border: CLEAN_BORDER,
+    text: CLEAN_TEXT,
+    textMuted: CLEAN_TEXT_MUTED,
+    textSoft: CLEAN_TEXT_SOFT,
+    surfaceGradient: CLEAN_SURFACE_GRADIENT,
+    surfaceAltGradient: CLEAN_SURFACE_ALT_GRADIENT,
+  } = cleanPalette;
 
   const [waterCups, setWaterCups] = useState(0);
   const [kcalGoal, setKcalGoal] = useState(SOLO_DAILY_KCAL_GOAL);
@@ -2299,7 +3211,6 @@ function SoloAlunoHomeScreen({ padding, refreshing, onRefresh, noPersonalFlow, t
         userRecord.subscribeId
       )
   );
-  const hasOpenRouterConfigured = Boolean(process.env.EXPO_PUBLIC_OPENROUTER_API_KEY?.trim());
   const aiDailyLimit = aiAccess.dailyLimit || FREE_DAILY_AI_CREDITS;
   const aiRemaining = aiAccess.loading ? aiDailyLimit : aiAccess.remaining ?? aiDailyLimit;
   const personalizedTargets = useMemo(
@@ -2380,6 +3291,8 @@ function SoloAlunoHomeScreen({ padding, refreshing, onRefresh, noPersonalFlow, t
       }, 0),
     [selectedCatalogItems]
   );
+  const cleanSurfaceGradient = [CLEAN_SURFACE, CLEAN_SURFACE, CLEAN_SURFACE] as const;
+  const cleanSurfaceAltGradient = [CLEAN_SURFACE_ALT, CLEAN_SURFACE_ALT, CLEAN_SURFACE_ALT] as const;
   const calendarDays = useMemo(() => {
     return Array.from({ length: SOLO_CALENDAR_DAYS }, (_, offset) => {
       const day = new Date();
@@ -2881,7 +3794,7 @@ function SoloAlunoHomeScreen({ padding, refreshing, onRefresh, noPersonalFlow, t
         router.push('/schedule' as any);
       }
     } catch (error: any) {
-      showAlert('Agenda IA', error?.message || 'Nao foi possivel agendar essa sugestao agora.');
+      showAlert('Agenda IA', error?.message || 'Não foi possível agendar essa sugestão agora.');
     } finally {
       consumeAiNoticeQueue(current.id);
     }
@@ -2899,12 +3812,12 @@ function SoloAlunoHomeScreen({ padding, refreshing, onRefresh, noPersonalFlow, t
 
     if (pendingEvaluationRecord?.id) {
       showAlert(
-        'Avaliacao IA',
-        'Voce ja tem uma avaliacao pendente para realizar.',
+        'Avaliação IA',
+        'Você já tem uma avaliação pendente para realizar.',
         [
           { text: 'Depois', style: 'cancel' },
           {
-            text: 'Abrir avaliacao',
+            text: 'Abrir avaliação',
             onPress: () =>
               router.push({
                 pathname: '/evaluations/[id]',
@@ -2930,7 +3843,7 @@ function SoloAlunoHomeScreen({ padding, refreshing, onRefresh, noPersonalFlow, t
         ? `Nova recomendacao estimada em ${evaluationNeed.nextWindowDays} dia(s).`
         : '';
       showAlert(
-        'Avaliacao IA',
+        'Avaliação IA',
         `${evaluationNeed.reason}${nextWindowText ? ` ${nextWindowText}` : ''}`
       );
       return;
@@ -2941,9 +3854,9 @@ function SoloAlunoHomeScreen({ padding, refreshing, onRefresh, noPersonalFlow, t
       const now = new Date();
       const todayKey = toDateKey(now);
       const latestMeal = meals[0];
-      const defaultTitle = 'Avaliacao IA de progresso';
+      const defaultTitle = 'Avaliação IA de progresso';
       const defaultSummary =
-        'A IA preparou sua avaliacao personalizada para ajustar treino, carga e foco da semana.';
+        'A IA preparou sua avaliação personalizada para ajustar treino, carga e foco da semana.';
       const defaultQuestions = buildSoloAiEvaluationQuestions(
         goalInput.trim() || user?.objetivoNoApp || ''
       );
@@ -2954,8 +3867,8 @@ function SoloAlunoHomeScreen({ padding, refreshing, onRefresh, noPersonalFlow, t
 
       try {
         const prompt = [
-          'Voce e um avaliador fisico esportivo do app MH Personal.',
-          'Crie uma avaliacao curta e objetiva para o aluno com base nos dados abaixo.',
+          'Você é um avaliador físico esportivo do app MH Personal.',
+          'Crie uma avaliação curta e objetiva para o aluno com base nos dados abaixo.',
           'Retorne apenas JSON valido no formato:',
           '{"title":"...","summary":"...","questions":[{"pergunta":"...","tipo":"texto|escala|sim_nao|multipla_escolha","opcoes":["..."],"obrigatoria":true}]}',
           'Regras:',
@@ -2970,10 +3883,10 @@ function SoloAlunoHomeScreen({ padding, refreshing, onRefresh, noPersonalFlow, t
           `Kcal hoje: ${kcalConsumed}/${kcalGoal}`,
           `Agua hoje: ${waterCups}/${waterGoal} copos`,
           `Treinos concluidos ultimos 7 dias: ${completedWorkoutsThisWeek}`,
-          `Avaliacoes existentes: ${totalEvaluations}`,
+          `Avaliações existentes: ${totalEvaluations}`,
           `Motivo da recomendacao: ${evaluationNeed.reason}`,
-          `Ultima refeicao: ${latestMeal?.description || 'nao registrada'}`,
-          `Objetivo principal: ${goalInput || user?.objetivoNoApp || 'nao informado'}`,
+          `Última refeição: ${latestMeal?.description || 'não registrada'}`,
+          `Objetivo principal: ${goalInput || user?.objetivoNoApp || 'não informado'}`,
         ].join('\n');
         const raw = await generateText(prompt);
         const parsed = extractFirstJsonObject(raw) as any;
@@ -3026,12 +3939,12 @@ function SoloAlunoHomeScreen({ padding, refreshing, onRefresh, noPersonalFlow, t
         prazoResposta: new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000),
         resultado: summary,
         recomendacoes: [
-          'Realize esta avaliacao em ambiente calmo e com foco.',
+          'Realize esta avaliação em ambiente calmo e com foco.',
           'Responda com sinceridade para a IA ajustar seu plano com precisao.',
         ],
       });
       if (personalizedEvaluation.error || !personalizedEvaluation.data?.id) {
-        throw new Error(personalizedEvaluation.error || 'Nao foi possivel criar a avaliacao.');
+        throw new Error(personalizedEvaluation.error || 'Não foi possível criar a avaliação.');
       }
 
       const db = getFirebaseDb();
@@ -3060,8 +3973,8 @@ function SoloAlunoHomeScreen({ padding, refreshing, onRefresh, noPersonalFlow, t
 
       await fetchAiPlannerData();
       showAlert(
-        'Avaliacao IA pronta',
-        'Sua avaliacao personalizada foi criada. Voce pode realizar agora.',
+        'Avaliação IA pronta',
+        'Sua avaliação personalizada foi criada. Você pode realizá-la agora.',
         [
           { text: 'Depois', style: 'cancel' },
           {
@@ -3079,7 +3992,7 @@ function SoloAlunoHomeScreen({ padding, refreshing, onRefresh, noPersonalFlow, t
         ]
       );
     } catch (error: any) {
-      showAlert('Avaliacao IA', error?.message || 'Nao foi possivel gerar avaliacao agora.');
+      showAlert('Avaliação IA', error?.message || 'Não foi possível gerar a avaliação agora.');
     } finally {
       setAiEvaluationGenerating(false);
     }
@@ -3162,7 +4075,7 @@ function SoloAlunoHomeScreen({ padding, refreshing, onRefresh, noPersonalFlow, t
             id: `done-${treino?.id || index}-${completedKey}`,
             type: 'treino',
             title: treinoName,
-            subtitle: 'Treino concluido',
+            subtitle: 'Treino concluído',
             dateKey: completedKey,
             source: 'base',
             workoutId: treino?.id,
@@ -3179,8 +4092,8 @@ function SoloAlunoHomeScreen({ padding, refreshing, onRefresh, noPersonalFlow, t
       events.push({
         id: `eval-${avaliacao?.id || index}-${dayKey}`,
         type: 'avaliacao',
-        title: `Avaliacao ${String(avaliacao?.tipo || '').trim() || ''}`.trim(),
-        subtitle: 'Avaliacao registrada',
+        title: `Avaliação ${String(avaliacao?.tipo || '').trim() || ''}`.trim(),
+        subtitle: 'Avaliação registrada',
         dateKey: dayKey,
         source: 'base',
         evaluationId: avaliacao?.id,
@@ -3280,8 +4193,8 @@ function SoloAlunoHomeScreen({ padding, refreshing, onRefresh, noPersonalFlow, t
         }
         if (event.source === 'ai') {
           showAlert(
-            'Avaliacao IA',
-            'Essa sugestao ainda nao possui avaliacao pronta para realizar. Gere uma nova avaliacao IA no card de progresso.'
+            'Avaliação IA',
+            'Essa sugestão ainda não possui uma avaliação pronta para realizar. Gere uma nova avaliação IA no card de progresso.'
           );
           return;
         }
@@ -3294,7 +4207,7 @@ function SoloAlunoHomeScreen({ padding, refreshing, onRefresh, noPersonalFlow, t
   const quickActions = [
     {
       id: 'calendar',
-      title: 'Calendario',
+      title: 'Calendário',
       subtitle: 'Ver agenda da semana',
       icon: 'calendar-outline',
       ctaIcon: 'arrow-forward',
@@ -3321,17 +4234,17 @@ function SoloAlunoHomeScreen({ padding, refreshing, onRefresh, noPersonalFlow, t
     },
     {
       id: 'evaluation',
-      title: 'Avaliacoes',
-      subtitle: 'Historico e progresso',
+      title: 'Avaliações',
+      subtitle: 'Histórico e progresso',
       icon: 'analytics-outline',
       ctaIcon: 'arrow-forward',
-      accent: ['#7DD3FC', '#1D4ED8'],
+      accent: [DARK_MODE_ACCENT_ALT, DARK_MODE_ACCENT_DEEP],
       onPress: () => router.push('/evaluations' as any),
     },
     {
       id: 'food',
       title: 'Comida',
-      subtitle: 'Registrar refeicao',
+      subtitle: 'Registrar refeição',
       icon: 'restaurant-outline',
       ctaIcon: 'arrow-forward',
       accent: ['#FDBA74', '#EA580C'],
@@ -3343,7 +4256,7 @@ function SoloAlunoHomeScreen({ padding, refreshing, onRefresh, noPersonalFlow, t
       subtitle: `Hidratacao ${waterCups}/${waterGoal}`,
       icon: 'water-outline',
       ctaIcon: 'add',
-      accent: ['#67E8F9', '#0EA5E9'],
+      accent: [DARK_MODE_ACCENT, DARK_MODE_ACCENT_DEEP],
       onPress: () => setWaterCups((prev) => Math.min(24, prev + 1)),
     },
   ] as const;
@@ -3371,11 +4284,11 @@ function SoloAlunoHomeScreen({ padding, refreshing, onRefresh, noPersonalFlow, t
   const analyzeMealWithAi = async (description: string): Promise<SoloMealAnalysis> => {
     const weight = parseWeightKg(weightInput) ?? parseWeightKg(user?.peso) ?? undefined;
     const height = parseHeightCm(heightInput) ?? parseHeightCm(user?.altura) ?? undefined;
-    const goal = goalInput.trim() || user?.objetivoNoApp || 'evolucao geral';
+    const goal = goalInput.trim() || user?.objetivoNoApp || 'evolução geral';
 
     const prompt = [
-      'Voce e um nutricionista esportivo do app MH Personal.',
-      'Analise a refeicao e retorne apenas JSON valido.',
+      'Você é um nutricionista esportivo do app MH Personal.',
+      'Analise a refeição e retorne apenas JSON válido.',
       'Formato esperado:',
       '{',
       '  "foods":[{"name":"", "portion":"", "kcal":0, "protein":0, "carbs":0, "fat":0}],',
@@ -3383,21 +4296,21 @@ function SoloAlunoHomeScreen({ padding, refreshing, onRefresh, noPersonalFlow, t
       '  "notes":"resumo curto para o aluno"',
       '}',
       'Regras:',
-      '- Liste os alimentos/produtos identificados na refeicao com porcao estimada.',
+      '- Liste os alimentos/produtos identificados na refeição com porção estimada.',
       '- Use valores realistas por item.',
       '- Totals devem ser a soma dos itens.',
       '- Responda somente JSON.',
       '',
-      `Aluno peso: ${weight || 'nao informado'} kg`,
-      `Aluno altura: ${height || 'nao informado'} cm`,
+      `Aluno peso: ${weight || 'não informado'} kg`,
+      `Aluno altura: ${height || 'não informado'} cm`,
       `Meta do aluno: ${goal}`,
-      `Refeicao: ${description}`,
+      `Refeição: ${description}`,
     ].join('\n');
 
     const raw = await generateText(prompt);
     const parsed = extractFirstJsonObject(raw) as any;
     if (!parsed) {
-      throw new Error('A IA nao conseguiu analisar essa refeicao.');
+      throw new Error('A IA não conseguiu analisar essa refeição.');
     }
 
     const foodsRaw: any[] = Array.isArray(parsed.foods) ? parsed.foods : [];
@@ -3430,6 +4343,7 @@ function SoloAlunoHomeScreen({ padding, refreshing, onRefresh, noPersonalFlow, t
       foods,
       totals,
       notes: String(parsed?.notes || '').trim(),
+      source: 'ai',
     };
   };
 
@@ -3522,7 +4436,7 @@ function SoloAlunoHomeScreen({ padding, refreshing, onRefresh, noPersonalFlow, t
     )}&search_simple=1&action=process&json=1&page_size=120&fields=product_name,product_name_pt,brands,categories,categories_pt,countries,countries_tags,lang,lc,nutriments,image_front_url,image_url`;
     const response = await fetch(url);
     if (!response.ok) {
-      throw new Error('Nao foi possivel consultar produtos agora.');
+      throw new Error('Não foi possível consultar os produtos agora.');
     }
     const payload = await response.json();
     const products: any[] = Array.isArray(payload?.products) ? payload.products : [];
@@ -3622,7 +4536,7 @@ function SoloAlunoHomeScreen({ padding, refreshing, onRefresh, noPersonalFlow, t
       setFoodCatalogUpdatedAt(new Date());
       lastFoodSearchRequestRef.current = normalizedRequest;
     } catch (error: any) {
-      showAlert('Busca de alimentos', error?.message || 'Nao foi possivel buscar produtos agora.');
+      showAlert('Busca de alimentos', error?.message || 'Não foi possível buscar os produtos agora.');
     } finally {
       setFoodAiSearchLoading(false);
     }
@@ -3668,7 +4582,7 @@ function SoloAlunoHomeScreen({ padding, refreshing, onRefresh, noPersonalFlow, t
       setBodyCheckinOpen(false);
       showAlert('Check-in corporal', 'Dados atualizados com sucesso.');
     } catch (error: any) {
-      showAlert('Check-in corporal', error?.message || 'Nao foi possivel salvar agora.');
+      showAlert('Check-in corporal', error?.message || 'Não foi possível salvar agora.');
     } finally {
       setBodyCheckinLoading(false);
     }
@@ -3685,23 +4599,16 @@ function SoloAlunoHomeScreen({ padding, refreshing, onRefresh, noPersonalFlow, t
   }, [nutritionFormOpen, foodSearchTerm, handleSearchFoodWithAi]);
 
   const handleAddMeal = async () => {
-    if (!hasOpenRouterConfigured) {
-      showAlert(
-        'Refeicao',
-        'OpenRouter nao configurado. Defina EXPO_PUBLIC_OPENROUTER_API_KEY no .env do app React Native e reinicie o Expo.'
-      );
-      return;
-    }
     const composedDescription = selectedCatalogItems.map((item) => item.name).join(', ');
 
     if (!composedDescription) {
-      showAlert('Refeicao', 'Selecione pelo menos 1 produto para registrar sua refeicao.');
+      showAlert('Refeição', 'Selecione pelo menos 1 produto para registrar sua refeição.');
       return;
     }
 
     setMealLoading(true);
     try {
-      const analysis = await analyzeMealWithAi(composedDescription);
+      const analysis = analyzeMealFromCatalogSelection(selectedCatalogItems);
       const totalKcal = analysis.totals.kcal;
       const scaling = 1;
       const shortDescription = selectedCatalogItems
@@ -3726,7 +4633,7 @@ function SoloAlunoHomeScreen({ padding, refreshing, onRefresh, noPersonalFlow, t
         })),
         imageUrl: buildFoodImageUrl(composedDescription),
         notes: analysis.notes,
-        estimatedByAi: true,
+        estimatedByAi: analysis.source === 'ai',
         createdAt: new Date().toISOString(),
       };
       setMeals((prev) => [entry, ...prev].slice(0, 25));
@@ -3734,31 +4641,34 @@ function SoloAlunoHomeScreen({ padding, refreshing, onRefresh, noPersonalFlow, t
         ...item,
         popularity: Math.max(2, Number(item.popularity || 0) + 2),
       }));
-      const aiFoodsForLearning: SoloFoodCatalogItem[] = (analysis.foods || []).map((item, index) => {
-        const protein = parseMacroValue(item.protein);
-        const carbs = parseMacroValue(item.carbs);
-        const fat = parseMacroValue(item.fat);
-        const dominantMacro = Math.max(protein, carbs, fat);
-        const category =
-          dominantMacro === protein
-            ? 'proteinas'
-            : dominantMacro === carbs
-              ? 'carboidratos'
-              : 'gorduras';
-        return {
-          id: buildFoodItemId(item.name || `alimento-${index + 1}`, `meal-ai-${index}`),
-          name: item.name || `Alimento ${index + 1}`,
-          category,
-          kcalPer100g: Math.max(0, Math.round(Number(item.kcal || 0))),
-          proteinPer100g: protein,
-          carbsPer100g: carbs,
-          fatPer100g: fat,
-          imageUrl: item.imageUrl || buildFoodImageUrl(item.name || `alimento-${index + 1}`),
-          popularity: 2,
-          source: 'ai',
-          lastSeenAt: new Date().toISOString(),
-        };
-      });
+      const aiFoodsForLearning: SoloFoodCatalogItem[] =
+        analysis.source === 'ai'
+          ? (analysis.foods || []).map((item, index) => {
+              const protein = parseMacroValue(item.protein);
+              const carbs = parseMacroValue(item.carbs);
+              const fat = parseMacroValue(item.fat);
+              const dominantMacro = Math.max(protein, carbs, fat);
+              const category =
+                dominantMacro === protein
+                  ? 'proteinas'
+                  : dominantMacro === carbs
+                    ? 'carboidratos'
+                    : 'gorduras';
+              return {
+                id: buildFoodItemId(item.name || `alimento-${index + 1}`, `meal-ai-${index}`),
+                name: item.name || `Alimento ${index + 1}`,
+                category,
+                kcalPer100g: Math.max(0, Math.round(Number(item.kcal || 0))),
+                proteinPer100g: protein,
+                carbsPer100g: carbs,
+                fatPer100g: fat,
+                imageUrl: item.imageUrl || buildFoodImageUrl(item.name || `alimento-${index + 1}`),
+                popularity: 2,
+                source: 'ai',
+                lastSeenAt: new Date().toISOString(),
+              };
+            })
+          : [];
       const usedFoodsForLearning = mergeFoodCatalogItems(
         selectedFoodsForLearning,
         aiFoodsForLearning,
@@ -3775,7 +4685,7 @@ function SoloAlunoHomeScreen({ padding, refreshing, onRefresh, noPersonalFlow, t
       setSelectedCatalogItems([]);
       setNutritionFormOpen(false);
     } catch (error: any) {
-      showAlert('Refeicao', mapAiErrorMessage(error, 'Nao foi possivel registrar essa refeicao.'));
+      showAlert('Refeição', error?.message || 'Não foi possível registrar essa refeição.');
     } finally {
       setMealLoading(false);
     }
@@ -3792,117 +4702,129 @@ function SoloAlunoHomeScreen({ padding, refreshing, onRefresh, noPersonalFlow, t
       <SafeAreaView edges={['top']}>
         <View style={[styles.section, { paddingHorizontal: padding, marginTop: 0 }]}>
           <LinearGradient
-            colors={['#050F1C', '#0D2740', '#1A5A86']}
+            colors={cleanSurfaceGradient}
             start={{ x: 0, y: 0 }}
             end={{ x: 1, y: 1 }}
-            style={[styles.soloHeroCard, { borderRadius: borderRadius.lg, padding: spacing.lg }]}
+            style={[
+              styles.soloHeroCard,
+              {
+                borderRadius: borderRadius.lg,
+                padding: spacing.lg,
+                borderColor: CLEAN_BORDER,
+              },
+            ]}
           >
-            <View style={styles.soloHeroGlowPrimary} />
-            <View style={styles.soloHeroGlowSecondary} />
             <View style={styles.soloHeroHeaderRow}>
               <View style={styles.soloHeroCopy}>
-                <Text style={[{ color: 'rgba(255,255,255,0.86)' }, typography.bodySmall]}>
+                <Text style={[{ color: CLEAN_TEXT_MUTED }, typography.bodySmall]}>
                   Ola, {firstName}
                 </Text>
-                <Text style={[{ color: '#fff', marginTop: spacing.xs }, typography.displaySmall]}>
+                <Text style={[{ color: CLEAN_TEXT, marginTop: spacing.xs }, typography.displaySmall]}>
                   Seu hub de performance
                 </Text>
-                <Text style={[{ color: 'rgba(255,255,255,0.9)', marginTop: spacing.xs }, typography.bodySmall]}>
+                <Text style={[{ color: CLEAN_TEXT_MUTED, marginTop: spacing.xs }, typography.bodySmall]}>
                   {hasIndividualPlan
                     ? 'IA premium ativa com plano ajustado automaticamente.'
                     : 'Treino, nutricao e rotina centralizados em um unico lugar.'}
                 </Text>
               </View>
               <TouchableOpacity
-                style={[styles.soloHeroAvatarButton, { borderRadius: borderRadius.full }]}
+                style={[
+                  styles.soloHeroAvatarButton,
+                  {
+                    borderRadius: borderRadius.full,
+                    backgroundColor: CLEAN_SURFACE_ALT,
+                    borderColor: CLEAN_BORDER,
+                  },
+                ]}
                 onPress={() => router.push('/profile/edit' as any)}
               >
                 {user?.photoUrl ? (
                   <Image source={{ uri: user.photoUrl }} style={[styles.avatarImage, { borderRadius: borderRadius.full }]} />
                 ) : (
-                  <Ionicons name="person-circle-outline" size={28} color="#fff" />
+                  <Ionicons name="person-circle-outline" size={28} color={CLEAN_TEXT} />
                 )}
               </TouchableOpacity>
             </View>
 
             <View style={[styles.soloHeroBadgeRow, { marginTop: spacing.md }]}>
-              <View style={styles.soloHeroPlanPill}>
+              <View style={[styles.soloHeroPlanPill, { borderColor: CLEAN_BORDER, backgroundColor: CLEAN_SURFACE_ALT }]}>
                 <Ionicons
                   name={hasIndividualPlan ? 'diamond-outline' : 'flash-outline'}
                   size={13}
-                  color="#CBEAFF"
+                  color={colors.primary}
                 />
-                <Text style={[styles.soloHeroPlanPillText, typography.labelSmall]}>
+                <Text style={[styles.soloHeroPlanPillText, { color: CLEAN_TEXT }, typography.labelSmall]}>
                   {hasIndividualPlan ? 'Plano premium ativo' : 'Plano livre ativo'}
                 </Text>
               </View>
               <TouchableOpacity
-                style={styles.soloHeroSubscriptionCta}
+                style={[styles.soloHeroSubscriptionCta, { borderColor: CLEAN_BORDER, backgroundColor: CLEAN_SURFACE_ALT }]}
                 onPress={() => router.push('/profile/subscription' as any)}
               >
-                <Text style={[styles.soloHeroSubscriptionCtaText, typography.labelSmall]}>
+                <Text style={[styles.soloHeroSubscriptionCtaText, { color: CLEAN_TEXT }, typography.labelSmall]}>
                   {hasIndividualPlan ? 'Gerenciar assinatura' : 'Ativar premium'}
                 </Text>
               </TouchableOpacity>
             </View>
 
-            <View style={[styles.soloHeroSubscriptionSummary, { marginTop: spacing.sm }]}>
-              <Ionicons name="sparkles-outline" size={13} color="#BCE9FF" />
-              <Text style={[styles.soloHeroSubscriptionHint, typography.bodySmall]}>
+            <View style={[styles.soloHeroSubscriptionSummary, { marginTop: spacing.sm, borderColor: CLEAN_BORDER, backgroundColor: CLEAN_SURFACE_ALT }]}>
+              <Ionicons name="sparkles-outline" size={13} color={colors.primary} />
+              <Text style={[styles.soloHeroSubscriptionHint, { color: CLEAN_TEXT_MUTED }, typography.bodySmall]}>
                 {hasIndividualPlan
                   ? hasSubscriptionMeta
                     ? `Status ${subscriptionStatusLabel} • Renovacao ${subscriptionRenewalLabel} • ${subscriptionAmountLabel}`
                     : 'Premium ativo com assistente completo e ajustes automaticos.'
-                  : 'Ative o premium para ampliar IA, agenda inteligente e analise continua.'}
+                  : 'Ative o Premium para ampliar IA, agenda inteligente e análise contínua.'}
               </Text>
             </View>
 
             <View style={[styles.soloMetricsRow, { marginTop: spacing.md }]}>
               <LinearGradient
-                colors={['rgba(95,181,255,0.22)', 'rgba(8,23,41,0.62)']}
+                colors={cleanSurfaceAltGradient}
                 start={{ x: 0, y: 0 }}
                 end={{ x: 1, y: 1 }}
-                style={[styles.soloMetricCard, { borderRadius: borderRadius.md }]}
+                style={[styles.soloMetricCard, { borderRadius: borderRadius.md, borderColor: CLEAN_BORDER }]}
               >
                 <View style={styles.soloMetricHeaderRow}>
                   <View style={styles.soloMetricIconWrap}>
-                    <Ionicons name="sparkles-outline" size={14} color="#9ED8FF" />
+                    <Ionicons name="sparkles-outline" size={14} color={colors.primary} />
                   </View>
-                  <Text style={[styles.soloMetricTitle, typography.labelSmall]}>Creditos</Text>
+                  <Text style={[styles.soloMetricTitle, { color: CLEAN_TEXT_MUTED }, typography.labelSmall]}>Creditos</Text>
                 </View>
-                <Text style={[styles.soloMetricValue, { marginTop: spacing.xs }, typography.titleMedium]}>
+                <Text style={[styles.soloMetricValue, { marginTop: spacing.xs, color: CLEAN_TEXT }, typography.titleMedium]}>
                   {aiRemaining}/{aiDailyLimit}
                 </Text>
               </LinearGradient>
               <LinearGradient
-                colors={['rgba(255,157,104,0.22)', 'rgba(46,17,7,0.55)']}
+                colors={cleanSurfaceAltGradient}
                 start={{ x: 0, y: 0 }}
                 end={{ x: 1, y: 1 }}
-                style={[styles.soloMetricCard, { borderRadius: borderRadius.md }]}
+                style={[styles.soloMetricCard, { borderRadius: borderRadius.md, borderColor: CLEAN_BORDER }]}
               >
                 <View style={styles.soloMetricHeaderRow}>
                   <View style={styles.soloMetricIconWrap}>
-                    <Ionicons name="flame-outline" size={14} color="#FFD0B2" />
+                    <Ionicons name="flame-outline" size={14} color={colors.tertiary} />
                   </View>
-                  <Text style={[styles.soloMetricTitle, typography.labelSmall]}>Energia</Text>
+                  <Text style={[styles.soloMetricTitle, { color: CLEAN_TEXT_MUTED }, typography.labelSmall]}>Energia</Text>
                 </View>
-                <Text style={[styles.soloMetricValue, { marginTop: spacing.xs }, typography.titleMedium]}>
+                <Text style={[styles.soloMetricValue, { marginTop: spacing.xs, color: CLEAN_TEXT }, typography.titleMedium]}>
                   {kcalConsumed}
                 </Text>
               </LinearGradient>
               <LinearGradient
-                colors={['rgba(102,239,255,0.2)', 'rgba(6,31,52,0.6)']}
+                colors={cleanSurfaceAltGradient}
                 start={{ x: 0, y: 0 }}
                 end={{ x: 1, y: 1 }}
-                style={[styles.soloMetricCard, { borderRadius: borderRadius.md }]}
+                style={[styles.soloMetricCard, { borderRadius: borderRadius.md, borderColor: CLEAN_BORDER }]}
               >
                 <View style={styles.soloMetricHeaderRow}>
                   <View style={styles.soloMetricIconWrap}>
-                    <Ionicons name="water-outline" size={14} color="#8FE8FF" />
+                    <Ionicons name="water-outline" size={14} color={colors.primary} />
                   </View>
-                  <Text style={[styles.soloMetricTitle, typography.labelSmall]}>Agua</Text>
+                  <Text style={[styles.soloMetricTitle, { color: CLEAN_TEXT_MUTED }, typography.labelSmall]}>Agua</Text>
                 </View>
-                <Text style={[styles.soloMetricValue, { marginTop: spacing.xs }, typography.titleMedium]}>
+                <Text style={[styles.soloMetricValue, { marginTop: spacing.xs, color: CLEAN_TEXT }, typography.titleMedium]}>
                   {waterCups}/{waterGoal}
                 </Text>
               </LinearGradient>
@@ -3915,14 +4837,19 @@ function SoloAlunoHomeScreen({ padding, refreshing, onRefresh, noPersonalFlow, t
         <View style={styles.soloQuickHeader}>
           <Text style={[{ color: colors.primaryText }, typography.titleLarge]}>Atalhos inteligentes</Text>
           <Text style={[{ color: colors.secondaryText, marginTop: 2 }, typography.bodySmall]}>
-            Acoes essenciais com visual mais limpo e rapido.
+            Ações essenciais com visual mais limpo e rápido.
           </Text>
         </View>
-        <View style={styles.soloQuickGrid}>
-          {quickActions.map((item) => (
+        <ScrollView
+          horizontal
+          nestedScrollEnabled
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.soloQuickGrid}
+        >
+          {quickActions.map((item, index) => (
             <TouchableOpacity
               key={item.id}
-              style={styles.soloQuickCard}
+              style={[styles.soloQuickCard, index === quickActions.length - 1 ? styles.soloQuickCardLast : null]}
               onPress={item.onPress}
               activeOpacity={0.9}
             >
@@ -3931,75 +4858,83 @@ function SoloAlunoHomeScreen({ padding, refreshing, onRefresh, noPersonalFlow, t
                     styles.soloQuickCardInner,
                     {
                       borderRadius: borderRadius.lg,
-                      borderColor: colors.border,
-                      backgroundColor: '#0A1320',
+                      borderColor: CLEAN_BORDER,
+                      backgroundColor: CLEAN_SURFACE,
                     },
                   ]}
                 >
-                <LinearGradient
-                  colors={item.accent as unknown as [string, string]}
-                  start={{ x: 0, y: 0 }}
-                  end={{ x: 1, y: 0 }}
-                  style={styles.soloQuickAccentBar}
-                />
                 <View style={styles.soloQuickTopRow}>
                   <View
                     style={[
                       styles.soloQuickIconWrap,
                       {
-                        backgroundColor: `${item.accent[0]}1F`,
-                        borderColor: `${item.accent[0]}66`,
+                        backgroundColor: `${item.accent[0]}18`,
+                        borderColor: `${item.accent[1]}30`,
                       },
                     ]}
                   >
-                    <Ionicons name={item.icon as any} size={18} color={item.accent[0]} />
+                    <Ionicons name={item.icon as any} size={18} color={item.accent[1]} />
                   </View>
-                  <Ionicons name={item.ctaIcon as any} size={14} color="rgba(225,242,255,0.74)" />
+                  <Ionicons name={item.ctaIcon as any} size={14} color={CLEAN_TEXT_SOFT} />
                 </View>
-                <Text style={[styles.soloQuickLabel, { color: '#EAF6FF' }, typography.labelMedium]}>
+                <Text style={[styles.soloQuickLabel, { color: CLEAN_TEXT }, typography.labelMedium]}>
                   {item.title}
                 </Text>
-                <Text style={[styles.soloQuickHint, { color: 'rgba(225,242,255,0.78)' }, typography.bodySmall]}>
+                <Text style={[styles.soloQuickHint, { color: CLEAN_TEXT_MUTED }, typography.bodySmall]}>
                   {item.subtitle}
                 </Text>
               </View>
             </TouchableOpacity>
           ))}
-        </View>
+        </ScrollView>
       </View>
 
       <View style={[styles.section, { paddingHorizontal: padding }]}>
         <LinearGradient
-          colors={['#0A1424', '#10263F', '#173A5D']}
+          colors={cleanSurfaceGradient}
           start={{ x: 0, y: 0 }}
           end={{ x: 1, y: 1 }}
-          style={[styles.soloCalendarPremiumCard, { borderRadius: borderRadius.lg, padding: spacing.lg }]}
+          style={[
+            styles.soloCalendarPremiumCard,
+            {
+              borderRadius: borderRadius.lg,
+              padding: spacing.lg,
+              borderColor: CLEAN_BORDER,
+            },
+          ]}
         >
           <View style={styles.sectionHeader}>
             <View style={{ flex: 1 }}>
-              <Text style={[{ color: '#F4FAFF' }, typography.titleLarge]}>
-                Calendario da semana
+              <Text style={[{ color: CLEAN_TEXT }, typography.titleLarge]}>
+                Calendário da semana
               </Text>
-              <Text style={[styles.soloCalendarSubtitle, typography.bodySmall]}>
-                Selecione o dia para ver treinos e avaliacoes sugeridas.
+              <Text style={[styles.soloCalendarSubtitle, { color: CLEAN_TEXT_MUTED }, typography.bodySmall]}>
+                Selecione o dia para ver treinos e avaliações sugeridas.
               </Text>
             </View>
             <TouchableOpacity
-              style={[styles.soloCalendarOpenButton, { borderRadius: borderRadius.full }]}
+              style={[
+                styles.soloCalendarOpenButton,
+                {
+                  borderRadius: borderRadius.full,
+                  borderColor: CLEAN_BORDER,
+                  backgroundColor: CLEAN_SURFACE_ALT,
+                },
+              ]}
               onPress={handleOpenAgenda}
             >
-              <Ionicons name="calendar-outline" size={13} color="#AEE4FF" />
-              <Text style={[styles.soloCalendarOpenButtonText, typography.labelSmall]}>Agenda</Text>
+              <Ionicons name="calendar-outline" size={13} color={CLEAN_TEXT} />
+              <Text style={[styles.soloCalendarOpenButtonText, { color: CLEAN_TEXT }, typography.labelSmall]}>Agenda</Text>
             </TouchableOpacity>
           </View>
           <View style={[styles.soloCalendarMetaRow, { marginTop: spacing.sm }]}>
-            <View style={styles.soloCalendarMetaChip}>
-              <Text style={styles.soloCalendarMetaLabel}>Eventos 7d</Text>
-              <Text style={styles.soloCalendarMetaValue}>{weeklyEventsCount}</Text>
+            <View style={[styles.soloCalendarMetaChip, { borderColor: CLEAN_BORDER, backgroundColor: CLEAN_SURFACE_ALT }]}>
+              <Text style={[styles.soloCalendarMetaLabel, { color: CLEAN_TEXT_MUTED }]}>Eventos 7d</Text>
+              <Text style={[styles.soloCalendarMetaValue, { color: CLEAN_TEXT }]}>{weeklyEventsCount}</Text>
             </View>
-            <View style={styles.soloCalendarMetaChip}>
-              <Text style={styles.soloCalendarMetaLabel}>Dia selecionado</Text>
-              <Text style={styles.soloCalendarMetaValue}>{selectedDayEvents.length} item(ns)</Text>
+            <View style={[styles.soloCalendarMetaChip, { borderColor: CLEAN_BORDER, backgroundColor: CLEAN_SURFACE_ALT }]}>
+              <Text style={[styles.soloCalendarMetaLabel, { color: CLEAN_TEXT_MUTED }]}>Dia selecionado</Text>
+              <Text style={[styles.soloCalendarMetaValue, { color: CLEAN_TEXT }]}>{selectedDayEvents.length} item(ns)</Text>
             </View>
           </View>
           <View style={[styles.soloCalendarRow, { marginTop: spacing.md }]}>
@@ -4009,10 +4944,10 @@ function SoloAlunoHomeScreen({ padding, refreshing, onRefresh, noPersonalFlow, t
                 style={[
                   styles.soloDayChip,
                   {
-                    backgroundColor: selectedDateKey === item.key ? 'rgba(129,223,255,0.24)' : 'rgba(6,15,28,0.45)',
+                    backgroundColor: selectedDateKey === item.key ? CLEAN_SURFACE_SOFT : CLEAN_SURFACE,
                     borderRadius: borderRadius.md,
                     borderWidth: 1,
-                    borderColor: selectedDateKey === item.key ? 'rgba(129,223,255,0.7)' : 'rgba(193,228,255,0.16)',
+                    borderColor: CLEAN_BORDER,
                   },
                 ]}
                 onPress={() => setSelectedDateKey(item.key)}
@@ -4020,7 +4955,7 @@ function SoloAlunoHomeScreen({ padding, refreshing, onRefresh, noPersonalFlow, t
                 <Text
                   style={[
                     styles.soloDayLabel,
-                    { color: selectedDateKey === item.key ? '#E8F7FF' : 'rgba(207,231,248,0.78)' },
+                    { color: selectedDateKey === item.key ? CLEAN_TEXT : CLEAN_TEXT_SOFT },
                   ]}
                 >
                   {item.label}
@@ -4028,7 +4963,7 @@ function SoloAlunoHomeScreen({ padding, refreshing, onRefresh, noPersonalFlow, t
                 <Text
                   style={[
                     styles.soloDayNumber,
-                    { color: selectedDateKey === item.key ? '#FFFFFF' : '#DFF0FF' },
+                    { color: CLEAN_TEXT },
                   ]}
                 >
                   {item.day}
@@ -4040,15 +4975,15 @@ function SoloAlunoHomeScreen({ padding, refreshing, onRefresh, noPersonalFlow, t
                       {
                         backgroundColor:
                           selectedDateKey === item.key
-                            ? 'rgba(255,255,255,0.24)'
-                            : 'rgba(124,218,255,0.2)',
+                            ? `${colors.primary}12`
+                            : CLEAN_SURFACE_ALT,
                       },
                     ]}
                   >
                     <Text
                       style={[
                         styles.soloDayCountText,
-                        { color: selectedDateKey === item.key ? '#FFFFFF' : '#8FE6FF' },
+                        { color: colors.primary },
                       ]}
                     >
                       {eventsByDay[item.key]?.length || 0}
@@ -4064,28 +4999,28 @@ function SoloAlunoHomeScreen({ padding, refreshing, onRefresh, noPersonalFlow, t
               {
                 marginTop: spacing.md,
                 borderRadius: borderRadius.md,
-                backgroundColor: 'rgba(5,14,24,0.56)',
-                borderColor: 'rgba(192,229,255,0.18)',
+                backgroundColor: CLEAN_SURFACE_ALT,
+                borderColor: CLEAN_BORDER,
               },
             ]}
           >
-            <Text style={[{ color: '#F4FAFF' }, typography.titleMedium]}>
+            <Text style={[{ color: CLEAN_TEXT }, typography.titleMedium]}>
               Agenda de {selectedDayLabel}
             </Text>
             {aiPlannerLoading ? (
-              <Text style={[{ color: 'rgba(206,229,245,0.76)', marginTop: spacing.xs }, typography.labelSmall]}>
+              <Text style={[{ color: CLEAN_TEXT_MUTED, marginTop: spacing.xs }, typography.labelSmall]}>
                 Atualizando sugestoes da IA...
               </Text>
             ) : null}
             {selectedDayEvents.length === 0 ? (
-              <Text style={[{ color: 'rgba(206,229,245,0.76)', marginTop: spacing.sm }, typography.bodySmall]}>
+              <Text style={[{ color: CLEAN_TEXT_MUTED, marginTop: spacing.sm }, typography.bodySmall]}>
                 Nenhum item para este dia.
               </Text>
             ) : (
               selectedDayEvents.slice(0, 7).map((event) => (
                 <TouchableOpacity
                   key={event.id}
-                  style={[styles.soloDayAgendaItem, { borderBottomColor: 'rgba(193,228,255,0.16)' }]}
+                  style={[styles.soloDayAgendaItem, { borderBottomColor: colors.border }]}
                   onPress={() => handleCalendarEventPress(event)}
                   activeOpacity={0.82}
                 >
@@ -4113,7 +5048,7 @@ function SoloAlunoHomeScreen({ padding, refreshing, onRefresh, noPersonalFlow, t
                       size={14}
                       color={
                         event.type === 'treino'
-                          ? '#7DDAFF'
+                          ? DARK_MODE_ACCENT
                           : event.type === 'fatura'
                             ? '#FF9898'
                             : '#A8B3FF'
@@ -4121,23 +5056,23 @@ function SoloAlunoHomeScreen({ padding, refreshing, onRefresh, noPersonalFlow, t
                     />
                   </View>
                   <View style={styles.soloDayAgendaMeta}>
-                    <Text style={[{ color: '#F0FAFF' }, typography.bodySmall]} numberOfLines={1}>
+                    <Text style={[{ color: CLEAN_TEXT }, typography.bodySmall]} numberOfLines={1}>
                       {event.title}
                     </Text>
-                    <Text style={[{ color: 'rgba(208,231,247,0.8)' }, typography.labelSmall]} numberOfLines={2}>
+                    <Text style={[{ color: CLEAN_TEXT_MUTED }, typography.labelSmall]} numberOfLines={2}>
                       {event.subtitle}
                     </Text>
                   </View>
                   {event.source === 'ai' ? (
-                    <View style={[styles.soloAiTag, { backgroundColor: 'rgba(124,218,255,0.16)' }]}>
-                      <Text style={[styles.soloAiTagText, { color: '#8FE6FF' }]}>IA</Text>
+                    <View style={[styles.soloAiTag, { backgroundColor: CLEAN_SURFACE_SOFT }]}>
+                      <Text style={[styles.soloAiTagText, { color: CLEAN_TEXT }]}>IA</Text>
                     </View>
                   ) : event.type === 'fatura' ? (
-                    <View style={[styles.soloAiTag, { backgroundColor: 'rgba(255,154,154,0.18)' }]}>
-                      <Text style={[styles.soloAiTagText, { color: '#FFB7B7' }]}>Fatura</Text>
+                    <View style={[styles.soloAiTag, { backgroundColor: CLEAN_SURFACE_SOFT }]}>
+                      <Text style={[styles.soloAiTagText, { color: CLEAN_TEXT_SOFT }]}>Fatura</Text>
                     </View>
                   ) : null}
-                  <Ionicons name="chevron-forward" size={14} color="rgba(219,238,252,0.68)" />
+                  <Ionicons name="chevron-forward" size={14} color={CLEAN_TEXT_SOFT} />
                 </TouchableOpacity>
               ))
             )}
@@ -4147,95 +5082,105 @@ function SoloAlunoHomeScreen({ padding, refreshing, onRefresh, noPersonalFlow, t
 
       <View style={[styles.section, { paddingHorizontal: padding }]}>
         <LinearGradient
-          colors={['#0A111D', '#101D31', '#172945']}
+          colors={cleanSurfaceGradient}
           start={{ x: 0, y: 0 }}
           end={{ x: 1, y: 1 }}
-          style={[styles.soloNutritionShell, { borderRadius: borderRadius.lg, padding: spacing.lg }]}
+          style={[
+            styles.soloNutritionShell,
+            {
+              borderRadius: borderRadius.lg,
+              padding: spacing.lg,
+              borderColor: CLEAN_BORDER,
+            },
+          ]}
         >
           <View style={styles.soloNutritionHeaderRow}>
             <View style={{ flex: 1 }}>
-              <Text style={[{ color: '#F4FAFF' }, typography.titleLarge]}>Nutricao inteligente</Text>
-              <Text style={[{ color: 'rgba(218,235,248,0.8)', marginTop: spacing.xs }, typography.bodySmall]}>
+              <Text style={[{ color: CLEAN_TEXT }, typography.titleLarge]}>Nutricao inteligente</Text>
+              <Text style={[{ color: CLEAN_TEXT_MUTED, marginTop: spacing.xs }, typography.bodySmall]}>
                 Rotina diaria com agua, energia, check-in corporal e refeicoes.
               </Text>
             </View>
-            <View style={styles.soloNutritionHeaderBadge}>
-              <Ionicons name="sparkles-outline" size={12} color="#8FDBFF" />
-              <Text style={styles.soloNutritionHeaderBadgeText}>IA ativa</Text>
+            <View style={[styles.soloNutritionHeaderBadge, { borderColor: CLEAN_BORDER, backgroundColor: CLEAN_SURFACE_ALT }]}>
+              <Ionicons name="sparkles-outline" size={12} color={colors.primary} />
+              <Text style={[styles.soloNutritionHeaderBadgeText, { color: CLEAN_TEXT }]}>IA ativa</Text>
             </View>
           </View>
 
           <LinearGradient
-            colors={['#0E1C2D', '#163552', '#1D4F76']}
+            colors={cleanSurfaceGradient}
             start={{ x: 0, y: 0 }}
             end={{ x: 1, y: 1 }}
-            style={[styles.soloStepsCard, { borderRadius: borderRadius.lg, marginTop: spacing.md }]}
+            style={[
+              styles.soloStepsCard,
+              {
+                borderRadius: borderRadius.lg,
+                marginTop: spacing.md,
+                borderColor: CLEAN_BORDER,
+              },
+            ]}
           >
-            <LinearGradient
-              colors={['#7DD3FC', '#0EA5E9']}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 0 }}
-              style={styles.soloPanelAccentBar}
-            />
             <View style={styles.soloStepsHeader}>
               <View>
-                <Text style={[{ color: '#EAF6FF' }, typography.labelMedium]}>Corrida e caminhada</Text>
-                <Text style={[{ color: '#FFFFFF', marginTop: spacing.xs }, typography.titleMedium]}>
+                <Text style={[{ color: CLEAN_TEXT_SOFT }, typography.labelMedium]}>Corrida e caminhada</Text>
+                <Text style={[{ color: CLEAN_TEXT, marginTop: spacing.xs }, typography.titleMedium]}>
                   {stepsToday.toLocaleString('pt-BR')} passos
                 </Text>
               </View>
-              <View style={styles.soloStepsStatusWrap}>
-                <Ionicons name={pedometerAvailable ? 'walk-outline' : 'alert-circle-outline'} size={14} color="#9FD7FF" />
-                <Text style={styles.soloStepsStatusText}>
-                  {pedometerAvailable ? 'Tempo real' : 'Sensor indisponivel'}
+              <View style={[styles.soloStepsStatusWrap, { borderColor: CLEAN_BORDER, backgroundColor: CLEAN_SURFACE_ALT }]}>
+                <Ionicons name={pedometerAvailable ? 'walk-outline' : 'alert-circle-outline'} size={14} color={CLEAN_TEXT_SOFT} />
+                <Text style={[styles.soloStepsStatusText, { color: CLEAN_TEXT_SOFT }]}>
+                  {pedometerAvailable ? 'Tempo real' : 'Sensor indisponível'}
                 </Text>
               </View>
             </View>
 
-            <View style={[styles.soloProgressTrack, { marginTop: spacing.sm, backgroundColor: 'rgba(255,255,255,0.2)' }]}>
-              <View style={[styles.soloProgressFill, { width: `${stepsProgress}%`, backgroundColor: '#67D6FF' }]} />
+            <View style={[styles.soloProgressTrack, { marginTop: spacing.sm, backgroundColor: CLEAN_SURFACE_SOFT }]}>
+              <View style={[styles.soloProgressFill, { width: `${stepsProgress}%`, backgroundColor: DARK_MODE_ACCENT }]} />
             </View>
 
             <View style={styles.soloStepsMetaRow}>
-              <View style={styles.soloStepsMetaChip}>
-                <Text style={styles.soloStepsMetaLabel}>Meta</Text>
-                <Text style={styles.soloStepsMetaValue}>{stepsGoal.toLocaleString('pt-BR')}</Text>
+              <View style={[styles.soloStepsMetaChip, { borderColor: CLEAN_BORDER, backgroundColor: CLEAN_SURFACE_ALT }]}>
+                <Text style={[styles.soloStepsMetaLabel, { color: CLEAN_TEXT_MUTED }]}>Meta</Text>
+                <Text style={[styles.soloStepsMetaValue, { color: CLEAN_TEXT }]}>{stepsGoal.toLocaleString('pt-BR')}</Text>
               </View>
-              <View style={styles.soloStepsMetaChip}>
-                <Text style={styles.soloStepsMetaLabel}>Distancia</Text>
-                <Text style={styles.soloStepsMetaValue}>{walkingDistanceKm} km</Text>
+              <View style={[styles.soloStepsMetaChip, { borderColor: CLEAN_BORDER, backgroundColor: CLEAN_SURFACE_ALT }]}>
+                <Text style={[styles.soloStepsMetaLabel, { color: CLEAN_TEXT_MUTED }]}>Distancia</Text>
+                <Text style={[styles.soloStepsMetaValue, { color: CLEAN_TEXT }]}>{walkingDistanceKm} km</Text>
               </View>
-              <View style={styles.soloStepsMetaChip}>
-                <Text style={styles.soloStepsMetaLabel}>Gasto</Text>
-                <Text style={styles.soloStepsMetaValue}>{walkingCalories} kcal</Text>
+              <View style={[styles.soloStepsMetaChip, { borderColor: CLEAN_BORDER, backgroundColor: CLEAN_SURFACE_ALT }]}>
+                <Text style={[styles.soloStepsMetaLabel, { color: CLEAN_TEXT_MUTED }]}>Gasto</Text>
+                <Text style={[styles.soloStepsMetaValue, { color: CLEAN_TEXT }]}>{walkingCalories} kcal</Text>
               </View>
             </View>
           </LinearGradient>
 
           <LinearGradient
-            colors={['#0B2949', '#13426E', '#1F6CB8']}
+            colors={cleanSurfaceGradient}
             start={{ x: 0, y: 0 }}
             end={{ x: 1, y: 1 }}
-            style={[styles.soloHydrationCard, { borderRadius: borderRadius.lg, marginTop: spacing.md }]}
+            style={[
+              styles.soloHydrationCard,
+              {
+                borderRadius: borderRadius.lg,
+                marginTop: spacing.md,
+                borderWidth: 1,
+                borderColor: CLEAN_BORDER,
+              },
+            ]}
           >
-            <LinearGradient
-              colors={['#7DD3FC', '#38BDF8']}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 0 }}
-              style={styles.soloPanelAccentBar}
-            />
             <View style={styles.soloHydrationHeader}>
-              <Text style={[{ color: '#E2F3FF' }, typography.labelMedium]}>Meta de hidratacao</Text>
-              <Text style={[{ color: '#FFFFFF' }, typography.titleMedium]}>
+              <Text style={[{ color: CLEAN_TEXT_SOFT }, typography.labelMedium]}>Meta de hidratacao</Text>
+              <Text style={[{ color: CLEAN_TEXT }, typography.titleMedium]}>
                 {waterCups}/{waterGoal} copos
               </Text>
             </View>
             <View style={styles.soloHydrationBody}>
               <View style={styles.soloBottleArtwork}>
-                <View style={styles.soloBottleCap} />
-                <View style={styles.soloBottleNeck} />
-                <View style={styles.soloBottleBody}>
-                  <View style={styles.soloBottleGloss} />
+                <View style={[styles.soloBottleCap, { backgroundColor: CLEAN_SURFACE_SOFT }]} />
+                <View style={[styles.soloBottleNeck, { backgroundColor: CLEAN_SURFACE_SOFT }]} />
+                <View style={[styles.soloBottleBody, { borderColor: CLEAN_BORDER, backgroundColor: CLEAN_SURFACE_ALT }]}>
+                  <View style={[styles.soloBottleGloss, { backgroundColor: CLEAN_SURFACE_SOFT }]} />
                   <LinearGradient
                     colors={['#22D3EE', '#2563EB']}
                     start={{ x: 0.5, y: 0 }}
@@ -4246,29 +5191,45 @@ function SoloAlunoHomeScreen({ padding, refreshing, onRefresh, noPersonalFlow, t
                     ]}
                   />
                   <View style={styles.soloBottleIconWrap}>
-                    <Ionicons name="water" size={18} color="#E0F2FE" />
+                    <Ionicons name="water" size={18} color={CLEAN_TEXT} />
                   </View>
                 </View>
               </View>
               <View style={styles.soloHydrationContent}>
-                <Text style={[{ color: '#E2F3FF' }, typography.bodySmall]}>
+                <Text style={[{ color: CLEAN_TEXT_MUTED }, typography.bodySmall]}>
                   {waterProgress}% da meta diaria
                 </Text>
-                <View style={[styles.soloProgressTrack, { marginTop: spacing.sm, backgroundColor: 'rgba(255,255,255,0.2)' }]}>
-                  <View style={[styles.soloProgressFill, { width: `${waterProgress}%`, backgroundColor: '#67D6FF' }]} />
+                <View style={[styles.soloProgressTrack, { marginTop: spacing.sm, backgroundColor: CLEAN_SURFACE_SOFT }]}>
+                  <View style={[styles.soloProgressFill, { width: `${waterProgress}%`, backgroundColor: DARK_MODE_ACCENT }]} />
                 </View>
                 <View style={[styles.soloHydrationButtons, { marginTop: spacing.md }]}>
                   <TouchableOpacity
-                    style={[styles.soloHydrationButton, { backgroundColor: 'rgba(255,255,255,0.18)', borderRadius: borderRadius.md }]}
+                    style={[
+                      styles.soloHydrationButton,
+                      {
+                        backgroundColor: CLEAN_SURFACE_ALT,
+                        borderRadius: borderRadius.md,
+                        borderWidth: 1,
+                        borderColor: CLEAN_BORDER,
+                      },
+                    ]}
                     onPress={() => setWaterCups((prev) => Math.max(0, prev - 1))}
                   >
-                    <Ionicons name="remove" size={18} color="#fff" />
+                    <Ionicons name="remove" size={18} color={CLEAN_TEXT} />
                   </TouchableOpacity>
                   <TouchableOpacity
-                    style={[styles.soloHydrationButton, { backgroundColor: 'rgba(255,255,255,0.22)', borderRadius: borderRadius.md }]}
+                    style={[
+                      styles.soloHydrationButton,
+                      {
+                        backgroundColor: CLEAN_SURFACE_ALT,
+                        borderRadius: borderRadius.md,
+                        borderWidth: 1,
+                        borderColor: CLEAN_BORDER,
+                      },
+                    ]}
                     onPress={() => setWaterCups((prev) => Math.min(24, prev + 1))}
                   >
-                    <Ionicons name="add" size={18} color="#fff" />
+                    <Ionicons name="add" size={18} color={CLEAN_TEXT} />
                   </TouchableOpacity>
                 </View>
               </View>
@@ -4281,10 +5242,10 @@ function SoloAlunoHomeScreen({ padding, refreshing, onRefresh, noPersonalFlow, t
                     key={`water-dot-${index}`}
                     style={[
                       styles.soloHydrationDot,
-                      { backgroundColor: active ? 'rgba(103,214,255,0.24)' : 'rgba(255,255,255,0.12)' },
+                      { backgroundColor: active ? `${colors.primary}16` : CLEAN_SURFACE_SOFT },
                     ]}
                   >
-                    <Ionicons name="water" size={12} color={active ? '#67D6FF' : 'rgba(255,255,255,0.6)'} />
+                    <Ionicons name="water" size={12} color={active ? colors.primary : CLEAN_TEXT_SOFT} />
                   </View>
                 );
               })}
@@ -4292,48 +5253,49 @@ function SoloAlunoHomeScreen({ padding, refreshing, onRefresh, noPersonalFlow, t
           </LinearGradient>
 
           <LinearGradient
-            colors={['#32120F', '#5A2016', '#A33A25']}
+            colors={cleanSurfaceGradient}
             start={{ x: 0, y: 0 }}
             end={{ x: 1, y: 1 }}
-            style={[styles.soloKcalPremiumCard, { borderRadius: borderRadius.lg, marginTop: spacing.md }]}
+            style={[
+              styles.soloKcalPremiumCard,
+              {
+                borderRadius: borderRadius.lg,
+                marginTop: spacing.md,
+                borderColor: CLEAN_BORDER,
+              },
+            ]}
           >
-            <LinearGradient
-              colors={['#FDBA74', '#FB923C']}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 0 }}
-              style={styles.soloPanelAccentBar}
-            />
             <View style={styles.soloKcalHeader}>
-              <Text style={[{ color: '#FFEFE9' }, typography.labelMedium]}>Meta de energia</Text>
-              <Text style={[{ color: '#FFFFFF' }, typography.titleMedium]}>
+              <Text style={[{ color: CLEAN_TEXT_SOFT }, typography.labelMedium]}>Meta de energia</Text>
+              <Text style={[{ color: CLEAN_TEXT }, typography.titleMedium]}>
                 {kcalConsumed}/{kcalGoal} kcal
               </Text>
             </View>
             <View style={styles.soloKcalBody}>
               <View style={styles.soloKcalArtwork}>
-                <View style={styles.soloKcalDishRing}>
+                <View style={[styles.soloKcalDishRing, { borderColor: CLEAN_BORDER, backgroundColor: CLEAN_SURFACE_ALT }]}>
                   <LinearGradient
                     colors={['#FB923C', '#F97316', '#DC2626']}
                     start={{ x: 0.5, y: 0 }}
                     end={{ x: 0.5, y: 1 }}
                     style={[styles.soloKcalDishFill, { height: `${Math.max(kcalProgress, kcalConsumed > 0 ? 12 : 0)}%` }]}
                   />
-                  <View style={styles.soloKcalDishGloss} />
-                  <Ionicons name="restaurant" size={24} color="#FFE5D5" style={styles.soloKcalFoodIcon} />
+                  <View style={[styles.soloKcalDishGloss, { backgroundColor: CLEAN_SURFACE_SOFT }]} />
+                  <Ionicons name="restaurant" size={24} color={colors.tertiary} style={styles.soloKcalFoodIcon} />
                 </View>
-                <Text style={styles.soloKcalDishPercent}>{kcalProgress}%</Text>
+                <Text style={[styles.soloKcalDishPercent, { color: CLEAN_TEXT_SOFT }]}>{kcalProgress}%</Text>
               </View>
               <View style={styles.soloKcalContent}>
-                <Text style={[{ color: '#FFE6DC' }, typography.bodySmall]}>
+                <Text style={[{ color: CLEAN_TEXT_MUTED }, typography.bodySmall]}>
                   {Math.max(0, kcalGoal - kcalConsumed)} kcal restantes hoje
                 </Text>
-                <View style={[styles.soloProgressTrack, { marginTop: spacing.sm, backgroundColor: 'rgba(255,255,255,0.2)' }]}>
-                  <View style={[styles.soloProgressFill, { width: `${kcalProgress}%`, backgroundColor: '#FDBA74' }]} />
+                <View style={[styles.soloProgressTrack, { marginTop: spacing.sm, backgroundColor: CLEAN_SURFACE_SOFT }]}>
+                  <View style={[styles.soloProgressFill, { width: `${kcalProgress}%`, backgroundColor: colors.tertiary }]} />
                 </View>
                 <View style={styles.soloKcalMacroLegendRow}>
-                  <Text style={styles.soloKcalMacroLegendItem}>P {proteinConsumed.toFixed(1)}g</Text>
-                  <Text style={styles.soloKcalMacroLegendItem}>C {carbsConsumed.toFixed(1)}g</Text>
-                  <Text style={styles.soloKcalMacroLegendItem}>G {fatConsumed.toFixed(1)}g</Text>
+                  <Text style={[styles.soloKcalMacroLegendItem, { backgroundColor: CLEAN_SURFACE_ALT, color: CLEAN_TEXT_MUTED }]}>P {proteinConsumed.toFixed(1)}g</Text>
+                  <Text style={[styles.soloKcalMacroLegendItem, { backgroundColor: CLEAN_SURFACE_ALT, color: CLEAN_TEXT_MUTED }]}>C {carbsConsumed.toFixed(1)}g</Text>
+                  <Text style={[styles.soloKcalMacroLegendItem, { backgroundColor: CLEAN_SURFACE_ALT, color: CLEAN_TEXT_MUTED }]}>G {fatConsumed.toFixed(1)}g</Text>
                 </View>
               </View>
             </View>
@@ -4341,16 +5303,32 @@ function SoloAlunoHomeScreen({ padding, refreshing, onRefresh, noPersonalFlow, t
 
           <View style={[styles.soloSectionActions, { marginTop: spacing.md }]}>
             <TouchableOpacity
-              style={[styles.soloPremiumActionButton, styles.soloActionPrimaryButton, { borderRadius: borderRadius.md }]}
+              style={[
+                styles.soloPremiumActionButton,
+                styles.soloActionPrimaryButton,
+                {
+                  borderRadius: borderRadius.md,
+                  borderColor: CLEAN_BORDER,
+                  backgroundColor: CLEAN_SURFACE_ALT,
+                },
+              ]}
               onPress={() => setNutritionFormOpen(true)}
             >
-              <Ionicons name="restaurant-outline" size={18} color="#FFEDE4" />
-              <Text style={[styles.soloPremiumActionText, { color: '#FFEDE4' }]}>
-                Nova refeicao
+              <Ionicons name="restaurant-outline" size={18} color={CLEAN_TEXT} />
+              <Text style={[styles.soloPremiumActionText, { color: CLEAN_TEXT }]}>
+                Nova refeição
               </Text>
             </TouchableOpacity>
             <TouchableOpacity
-              style={[styles.soloPremiumActionButton, styles.soloActionSecondaryButton, { borderRadius: borderRadius.md }]}
+              style={[
+                styles.soloPremiumActionButton,
+                styles.soloActionSecondaryButton,
+                {
+                  borderRadius: borderRadius.md,
+                  borderColor: CLEAN_BORDER,
+                  backgroundColor: CLEAN_SURFACE_ALT,
+                },
+              ]}
               onPress={() => {
                 setNutritionFormOpen(true);
                 if (foodSearchTerm.trim().length >= 2) {
@@ -4360,64 +5338,74 @@ function SoloAlunoHomeScreen({ padding, refreshing, onRefresh, noPersonalFlow, t
               disabled={foodAiSearchLoading || foodCatalogLoading}
             >
               {foodAiSearchLoading || foodCatalogLoading ? (
-                <ActivityIndicator size="small" color="#FFEDE4" />
+                <ActivityIndicator size="small" color={CLEAN_TEXT} />
               ) : (
                 <>
-                  <Ionicons name="search-outline" size={18} color="#FFEDE4" />
-                  <Text style={[styles.soloPremiumActionText, { color: '#FFEDE4' }]}>Buscar alimentos</Text>
+                  <Ionicons name="search-outline" size={18} color={CLEAN_TEXT} />
+                  <Text style={[styles.soloPremiumActionText, { color: CLEAN_TEXT }]}>Buscar alimentos</Text>
                 </>
               )}
             </TouchableOpacity>
           </View>
 
           <LinearGradient
-            colors={['#0F1E2E', '#14314C', '#1A4566']}
+            colors={cleanSurfaceGradient}
             start={{ x: 0, y: 0 }}
             end={{ x: 1, y: 1 }}
-            style={[styles.soloBodyCheckinSummaryCard, { borderRadius: borderRadius.lg, marginTop: spacing.md }]}
+            style={[
+              styles.soloBodyCheckinSummaryCard,
+              {
+                borderRadius: borderRadius.lg,
+                marginTop: spacing.md,
+                borderColor: CLEAN_BORDER,
+              },
+            ]}
           >
-            <LinearGradient
-              colors={['#7DD3FC', '#60A5FA']}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 0 }}
-              style={styles.soloPanelAccentBar}
-            />
             <View style={styles.soloBodyCheckinSummaryHeader}>
-              <View style={styles.soloBodyCheckinIconWrap}>
-                <Ionicons name="pulse-outline" size={16} color="#AEE2FF" />
+              <View style={[styles.soloBodyCheckinIconWrap, { borderColor: CLEAN_BORDER, backgroundColor: CLEAN_SURFACE_ALT }]}>
+                <Ionicons name="pulse-outline" size={16} color={colors.primary} />
               </View>
               <View style={{ flex: 1 }}>
-                <Text style={[{ color: '#F2FAFF' }, typography.titleMedium]}>Check-in corporal IA</Text>
-                <Text style={[{ color: 'rgba(222,240,255,0.86)', marginTop: spacing.xs }, typography.bodySmall]}>
-                  Atualize peso, altura e objetivo principal para a IA recalibrar treino e avaliacao.
+                <Text style={[{ color: CLEAN_TEXT }, typography.titleMedium]}>Check-in corporal IA</Text>
+                <Text style={[{ color: CLEAN_TEXT_MUTED, marginTop: spacing.xs }, typography.bodySmall]}>
+                  Atualize peso, altura e objetivo principal para a IA recalibrar treino e avaliação.
                 </Text>
               </View>
             </View>
             <View style={[styles.soloBodyCheckinMetaRow, { marginTop: spacing.sm }]}>
-              <View style={styles.soloBodyCheckinMetaChip}>
-                <Text style={styles.soloBodyCheckinMetaLabel}>Peso</Text>
-                <Text style={styles.soloBodyCheckinMetaValue}>{weightInput || '--'} kg</Text>
+              <View style={[styles.soloBodyCheckinMetaChip, { borderColor: CLEAN_BORDER, backgroundColor: CLEAN_SURFACE_ALT }]}>
+                <Text style={[styles.soloBodyCheckinMetaLabel, { color: CLEAN_TEXT_MUTED }]}>Peso</Text>
+                <Text style={[styles.soloBodyCheckinMetaValue, { color: CLEAN_TEXT }]}>{weightInput || '--'} kg</Text>
               </View>
-              <View style={styles.soloBodyCheckinMetaChip}>
-                <Text style={styles.soloBodyCheckinMetaLabel}>Altura</Text>
-                <Text style={styles.soloBodyCheckinMetaValue}>{heightInput || '--'} cm</Text>
+              <View style={[styles.soloBodyCheckinMetaChip, { borderColor: CLEAN_BORDER, backgroundColor: CLEAN_SURFACE_ALT }]}>
+                <Text style={[styles.soloBodyCheckinMetaLabel, { color: CLEAN_TEXT_MUTED }]}>Altura</Text>
+                <Text style={[styles.soloBodyCheckinMetaValue, { color: CLEAN_TEXT }]}>{heightInput || '--'} cm</Text>
               </View>
-              <View style={styles.soloBodyCheckinMetaChip}>
-                <Text style={styles.soloBodyCheckinMetaLabel}>Meta principal</Text>
-                <Text style={styles.soloBodyCheckinMetaValue} numberOfLines={1}>
+              <View style={[styles.soloBodyCheckinMetaChip, { borderColor: CLEAN_BORDER, backgroundColor: CLEAN_SURFACE_ALT }]}>
+                <Text style={[styles.soloBodyCheckinMetaLabel, { color: CLEAN_TEXT_MUTED }]}>Meta principal</Text>
+                <Text style={[styles.soloBodyCheckinMetaValue, { color: CLEAN_TEXT }]} numberOfLines={1}>
                   {goalInput || 'Definir'}
                 </Text>
               </View>
             </View>
             <TouchableOpacity
-              style={[styles.soloBodyCheckinOpenButton, { borderRadius: borderRadius.md, marginTop: spacing.sm }]}
+              style={[
+                styles.soloBodyCheckinOpenButton,
+                {
+                  borderRadius: borderRadius.md,
+                  marginTop: spacing.sm,
+                  backgroundColor: CLEAN_SURFACE_ALT,
+                  borderWidth: 1,
+                  borderColor: CLEAN_BORDER,
+                },
+              ]}
               onPress={() => {
                 setGoalPickerOpen(false);
                 setBodyCheckinOpen(true);
               }}
             >
-              <Ionicons name="create-outline" size={15} color="#06213B" />
-              <Text style={[styles.soloBodyCheckinOpenButtonText, typography.labelMedium]}>
+              <Ionicons name="create-outline" size={15} color={CLEAN_TEXT} />
+              <Text style={[styles.soloBodyCheckinOpenButtonText, { color: CLEAN_TEXT }, typography.labelMedium]}>
                 Abrir check-in
               </Text>
             </TouchableOpacity>
@@ -4427,51 +5415,58 @@ function SoloAlunoHomeScreen({ padding, refreshing, onRefresh, noPersonalFlow, t
 
       <View style={[styles.section, { paddingHorizontal: padding }]}>
         <LinearGradient
-          colors={['#0B1426', '#112846', '#163C65']}
+          colors={cleanSurfaceGradient}
           start={{ x: 0, y: 0 }}
           end={{ x: 1, y: 1 }}
-          style={[styles.soloProgressPremiumCard, { borderRadius: borderRadius.lg, padding: spacing.lg }]}
+          style={[
+            styles.soloProgressPremiumCard,
+            {
+              borderRadius: borderRadius.lg,
+              padding: spacing.lg,
+              borderColor: CLEAN_BORDER,
+            },
+          ]}
         >
           <View style={styles.soloProgressPremiumHeader}>
             <View style={{ flex: 1 }}>
-              <Text style={[{ color: '#F4FAFF' }, typography.titleLarge]}>Avaliacoes e progresso</Text>
-              <Text style={[{ color: 'rgba(228,242,255,0.84)', marginTop: spacing.xs }, typography.bodySmall]}>
-                A IA revisa seu progresso toda semana e apos treinos concluidos para ajustar seu plano.
+              <Text style={[{ color: CLEAN_TEXT }, typography.titleLarge]}>Avaliações e progresso</Text>
+              <Text style={[{ color: CLEAN_TEXT_MUTED, marginTop: spacing.xs }, typography.bodySmall]}>
+                A IA revisa seu progresso toda semana e após treinos concluídos para ajustar seu plano.
               </Text>
             </View>
-            <View style={styles.soloAiPulseBadge}>
-              <Ionicons name="sparkles-outline" size={14} color="#6FD6FF" />
-              <Text style={styles.soloAiPulseText}>{aiUnreadSuggestionsCount} novo(s)</Text>
+            <View style={[styles.soloAiPulseBadge, { borderColor: CLEAN_BORDER, backgroundColor: CLEAN_SURFACE_ALT }]}>
+              <Ionicons name="sparkles-outline" size={14} color={colors.primary} />
+              <Text style={[styles.soloAiPulseText, { color: CLEAN_TEXT }]}>{aiUnreadSuggestionsCount} novo(s)</Text>
             </View>
           </View>
 
           <View style={[styles.soloProgressPremiumStatsRow, { marginTop: spacing.md }]}>
-            <View style={styles.soloProgressPremiumStatCard}>
-              <Text style={styles.soloProgressPremiumStatValue}>{completedWorkoutsThisWeek}</Text>
-              <Text style={styles.soloProgressPremiumStatLabel}>Treinos 7d</Text>
+            <View style={[styles.soloProgressPremiumStatCard, { borderColor: CLEAN_BORDER, backgroundColor: CLEAN_SURFACE_ALT }]}>
+              <Text style={[styles.soloProgressPremiumStatValue, { color: CLEAN_TEXT }]}>{completedWorkoutsThisWeek}</Text>
+              <Text style={[styles.soloProgressPremiumStatLabel, { color: CLEAN_TEXT_MUTED }]}>Treinos 7d</Text>
             </View>
-            <View style={styles.soloProgressPremiumStatCard}>
-              <Text style={styles.soloProgressPremiumStatValue}>{totalEvaluations}</Text>
-              <Text style={styles.soloProgressPremiumStatLabel}>Avaliacoes</Text>
+            <View style={[styles.soloProgressPremiumStatCard, { borderColor: CLEAN_BORDER, backgroundColor: CLEAN_SURFACE_ALT }]}>
+              <Text style={[styles.soloProgressPremiumStatValue, { color: CLEAN_TEXT }]}>{totalEvaluations}</Text>
+              <Text style={[styles.soloProgressPremiumStatLabel, { color: CLEAN_TEXT_MUTED }]}>Avaliações</Text>
             </View>
-            <View style={styles.soloProgressPremiumStatCard}>
-              <Text style={styles.soloProgressPremiumStatValue}>{aiPlanner.suggestions.length}</Text>
-              <Text style={styles.soloProgressPremiumStatLabel}>Ajustes IA</Text>
+            <View style={[styles.soloProgressPremiumStatCard, { borderColor: CLEAN_BORDER, backgroundColor: CLEAN_SURFACE_ALT }]}>
+              <Text style={[styles.soloProgressPremiumStatValue, { color: CLEAN_TEXT }]}>{aiPlanner.suggestions.length}</Text>
+              <Text style={[styles.soloProgressPremiumStatLabel, { color: CLEAN_TEXT_MUTED }]}>Ajustes IA</Text>
             </View>
           </View>
 
-          <View style={[styles.soloAiStatusCard, { marginTop: spacing.md }]}>
+          <View style={[styles.soloAiStatusCard, { marginTop: spacing.md, borderColor: CLEAN_BORDER, backgroundColor: CLEAN_SURFACE_ALT }]}>
             <View style={styles.soloAiStatusRow}>
-              <Ionicons name="time-outline" size={15} color="#7DD3FC" />
-              <Text style={[styles.soloAiStatusText, { color: '#DFF2FF' }]}>
-                Ultima analise: {lastAiReviewDate ? format(lastAiReviewDate, 'dd/MM HH:mm', { locale: ptBR }) : 'pendente'}
+              <Ionicons name="time-outline" size={15} color={colors.primary} />
+              <Text style={[styles.soloAiStatusText, { color: CLEAN_TEXT }]}>
+                Última análise: {lastAiReviewDate ? format(lastAiReviewDate, 'dd/MM HH:mm', { locale: ptBR }) : 'pendente'}
               </Text>
             </View>
             <View style={[styles.soloAiStatusRow, { marginTop: 6 }]}>
-              <Ionicons name="flash-outline" size={15} color="#FDE68A" />
-              <Text style={[styles.soloAiStatusText, { color: '#DFF2FF' }]} numberOfLines={2}>
+              <Ionicons name="flash-outline" size={15} color={colors.tertiary} />
+              <Text style={[styles.soloAiStatusText, { color: CLEAN_TEXT }]} numberOfLines={2}>
                 {nextAiSuggestion
-                  ? `Proximo ajuste: ${nextAiSuggestion.title}`
+                  ? `Próximo ajuste: ${nextAiSuggestion.title}`
                   : 'Sem ajustes pendentes no momento.'}
               </Text>
             </View>
@@ -4479,25 +5474,25 @@ function SoloAlunoHomeScreen({ padding, refreshing, onRefresh, noPersonalFlow, t
 
           <View style={[styles.soloSectionActions, { marginTop: spacing.md }]}>
             <TouchableOpacity
-              style={[styles.soloPremiumActionButton, styles.soloDarkActionButton]}
+              style={[styles.soloPremiumActionButton, styles.soloDarkActionButton, { borderColor: CLEAN_BORDER, backgroundColor: CLEAN_SURFACE_ALT }]}
               onPress={() => void handleGenerateAiEvaluation()}
               disabled={aiEvaluationGenerating}
             >
               {aiEvaluationGenerating ? (
-                <ActivityIndicator size="small" color="#EAF6FF" />
+                <ActivityIndicator size="small" color={CLEAN_TEXT} />
               ) : (
                 <>
-                  <Ionicons name="sparkles-outline" size={17} color="#EAF6FF" />
-                  <Text style={[styles.soloPremiumActionText, { color: '#EAF6FF' }]}>Gerar avaliacao IA</Text>
+                  <Ionicons name="sparkles-outline" size={17} color={CLEAN_TEXT} />
+                  <Text style={[styles.soloPremiumActionText, { color: CLEAN_TEXT }]}>Gerar avaliação IA</Text>
                 </>
               )}
             </TouchableOpacity>
             <TouchableOpacity
-              style={[styles.soloPremiumActionButton, styles.soloLightActionButton]}
+              style={[styles.soloPremiumActionButton, styles.soloLightActionButton, { borderColor: CLEAN_BORDER, backgroundColor: CLEAN_SURFACE_ALT }]}
               onPress={handleOpenProgress}
             >
-              <Ionicons name="trending-up-outline" size={17} color="#06213B" />
-              <Text style={[styles.soloPremiumActionText, { color: '#06213B' }]}>Ver progresso</Text>
+              <Ionicons name="trending-up-outline" size={17} color={CLEAN_TEXT} />
+              <Text style={[styles.soloPremiumActionText, { color: CLEAN_TEXT }]}>Ver progresso</Text>
             </TouchableOpacity>
           </View>
         </LinearGradient>
@@ -4506,44 +5501,60 @@ function SoloAlunoHomeScreen({ padding, refreshing, onRefresh, noPersonalFlow, t
       {!hasIndividualPlan && (
         <View style={[styles.section, { paddingHorizontal: padding }]}>
           <LinearGradient
-            colors={['#111827', '#1B3153', '#2769A7']}
+            colors={cleanSurfaceGradient}
             start={{ x: 0, y: 0 }}
             end={{ x: 1, y: 1 }}
-            style={[styles.soloPremiumBanner, { borderRadius: borderRadius.lg, padding: spacing.lg }]}
+            style={[
+              styles.soloPremiumBanner,
+              {
+                borderRadius: borderRadius.lg,
+                padding: spacing.lg,
+                borderColor: CLEAN_BORDER,
+              },
+            ]}
           >
             <View style={styles.soloPlanBannerHeader}>
-              <View style={styles.soloPlanBadge}>
-                <Ionicons name="diamond-outline" size={14} color="#FDE68A" />
-                <Text style={styles.soloPlanBadgeText}>Plano individual</Text>
+              <View style={[styles.soloPlanBadge, { borderColor: CLEAN_BORDER, backgroundColor: CLEAN_SURFACE_ALT }]}>
+                <Ionicons name="diamond-outline" size={14} color={colors.primary} />
+                <Text style={[styles.soloPlanBadgeText, { color: CLEAN_TEXT }]}>Plano individual</Text>
               </View>
-              <Text style={[styles.soloPlanPrice, typography.titleMedium]}>R$ 24,99/mes</Text>
+              <Text style={[styles.soloPlanPrice, { color: CLEAN_TEXT }, typography.titleMedium]}>R$ 24,99/mês</Text>
             </View>
-            <Text style={[{ color: '#F7FCFF', marginTop: spacing.sm }, typography.titleLarge]}>
-              Assinatura premium sem personal
+            <Text style={[{ color: CLEAN_TEXT, marginTop: spacing.sm }, typography.titleLarge]}>
+              Assinatura Premium sem personal
             </Text>
-            <Text style={[{ color: 'rgba(236,245,255,0.86)', marginTop: spacing.xs }, typography.bodySmall]}>
-              Libera assistente completo, analise nutricional avancada e 8 creditos diarios de IA.
+            <Text style={[{ color: CLEAN_TEXT_MUTED, marginTop: spacing.xs }, typography.bodySmall]}>
+              Libera assistente completo, análise nutricional avançada e 8 créditos diários de IA.
             </Text>
             <View style={[styles.soloPlanFeatureList, { marginTop: spacing.md }]}>
               <View style={styles.soloPlanFeatureItem}>
-                <Ionicons name="checkmark-circle" size={15} color="#93C5FD" />
-                <Text style={styles.soloPlanFeatureText}>Treinos e avaliacoes gerados automaticamente</Text>
+                <Ionicons name="checkmark-circle" size={15} color={colors.primary} />
+                <Text style={[styles.soloPlanFeatureText, { color: CLEAN_TEXT_MUTED }]}>Treinos e avaliações gerados automaticamente</Text>
               </View>
               <View style={styles.soloPlanFeatureItem}>
-                <Ionicons name="checkmark-circle" size={15} color="#93C5FD" />
-                <Text style={styles.soloPlanFeatureText}>Catalogo de alimentos expandido com IA</Text>
+                <Ionicons name="checkmark-circle" size={15} color={colors.primary} />
+                <Text style={[styles.soloPlanFeatureText, { color: CLEAN_TEXT_MUTED }]}>Catálogo de alimentos expandido com IA</Text>
               </View>
               <View style={styles.soloPlanFeatureItem}>
-                <Ionicons name="checkmark-circle" size={15} color="#93C5FD" />
-                <Text style={styles.soloPlanFeatureText}>Ajuste semanal baseado no seu progresso</Text>
+                <Ionicons name="checkmark-circle" size={15} color={colors.primary} />
+                <Text style={[styles.soloPlanFeatureText, { color: CLEAN_TEXT_MUTED }]}>Ajuste semanal baseado no seu progresso</Text>
               </View>
             </View>
             <TouchableOpacity
-              style={[styles.soloPlanCtaButton, { marginTop: spacing.md, borderRadius: borderRadius.md }]}
+              style={[
+                styles.soloPlanCtaButton,
+                {
+                  marginTop: spacing.md,
+                  borderRadius: borderRadius.md,
+                  backgroundColor: CLEAN_SURFACE_ALT,
+                  borderWidth: 1,
+                  borderColor: CLEAN_BORDER,
+                },
+              ]}
               onPress={() => router.push('/profile/subscription' as any)}
             >
-              <Ionicons name="rocket-outline" size={16} color="#072037" />
-              <Text style={[styles.soloPlanCtaText, typography.labelMedium]}>Ativar plano individual</Text>
+              <Ionicons name="rocket-outline" size={16} color={CLEAN_TEXT} />
+              <Text style={[styles.soloPlanCtaText, { color: CLEAN_TEXT }, typography.labelMedium]}>Ativar plano individual</Text>
             </TouchableOpacity>
           </LinearGradient>
         </View>
@@ -4552,40 +5563,62 @@ function SoloAlunoHomeScreen({ padding, refreshing, onRefresh, noPersonalFlow, t
       {noPersonalFlow && (
         <View style={[styles.section, { paddingHorizontal: padding, paddingBottom: spacing['2xl'] }]}>
           <LinearGradient
-            colors={['#1A1212', '#33201C', '#8C4B35']}
+            colors={cleanSurfaceGradient}
             start={{ x: 0, y: 0 }}
             end={{ x: 1, y: 1 }}
-            style={[styles.soloCoachBanner, { borderRadius: borderRadius.lg, padding: spacing.lg }]}
+            style={[
+              styles.soloCoachBanner,
+              {
+                borderRadius: borderRadius.lg,
+                padding: spacing.lg,
+                borderColor: CLEAN_BORDER,
+              },
+            ]}
           >
             <View style={styles.soloCoachBannerHeader}>
-              <View style={styles.soloCoachIconWrap}>
-                <Ionicons name="calendar-outline" size={18} color="#FFD2BF" />
+              <View style={[styles.soloCoachIconWrap, { borderColor: CLEAN_BORDER, backgroundColor: CLEAN_SURFACE_ALT }]}>
+                <Ionicons name="calendar-outline" size={18} color={colors.primary} />
               </View>
-              <Text style={[{ color: '#FFF6F2', flex: 1 }, typography.titleMedium]}>
+              <Text style={[{ color: CLEAN_TEXT, flex: 1 }, typography.titleMedium]}>
                 MH Agenda Fit para contato profissional
               </Text>
             </View>
-            <Text style={[{ color: 'rgba(255,231,221,0.9)', marginTop: spacing.xs }, typography.bodySmall]}>
-              Encontre profissionais disponiveis na sua regiao, converse e agende acompanhamento presencial ou online.
+            <Text style={[{ color: CLEAN_TEXT_MUTED, marginTop: spacing.xs }, typography.bodySmall]}>
+              Encontre profissionais disponíveis na sua região, converse e agende acompanhamento presencial ou online.
             </Text>
             <View style={[styles.soloCoachFeatureList, { marginTop: spacing.sm }]}>
-              <Text style={styles.soloCoachFeatureText}>Busca por cidade, estado e especialidade</Text>
-              <Text style={styles.soloCoachFeatureText}>Contato rapido com profissionais ativos</Text>
+              <Text style={[styles.soloCoachFeatureText, { color: CLEAN_TEXT_MUTED }]}>Busca por cidade, estado e especialidade</Text>
+              <Text style={[styles.soloCoachFeatureText, { color: CLEAN_TEXT_MUTED }]}>Contato rápido com profissionais ativos</Text>
             </View>
             <View style={[styles.soloCoachActionRow, { marginTop: spacing.md }]}>
               <TouchableOpacity
-                style={[styles.soloCoachCtaButton, { borderRadius: borderRadius.md }]}
+                style={[
+                  styles.soloCoachCtaButton,
+                  {
+                    borderRadius: borderRadius.md,
+                    backgroundColor: CLEAN_SURFACE_ALT,
+                    borderWidth: 1,
+                    borderColor: CLEAN_BORDER,
+                  },
+                ]}
                 onPress={() => router.push('/mh-agenda-fit' as any)}
               >
-                <Ionicons name="calendar-clear-outline" size={15} color="#422117" />
-                <Text style={[styles.soloCoachCtaText, typography.labelMedium]}>Abrir MH Agenda Fit</Text>
+                <Ionicons name="calendar-clear-outline" size={15} color={CLEAN_TEXT} />
+                <Text style={[styles.soloCoachCtaText, { color: CLEAN_TEXT }, typography.labelMedium]}>Abrir MH Agenda Fit</Text>
               </TouchableOpacity>
               <TouchableOpacity
-                style={[styles.soloCoachSecondaryButton, { borderRadius: borderRadius.md }]}
+                style={[
+                  styles.soloCoachSecondaryButton,
+                  {
+                    borderRadius: borderRadius.md,
+                    borderColor: CLEAN_BORDER,
+                    backgroundColor: CLEAN_SURFACE_ALT,
+                  },
+                ]}
                 onPress={() => router.push('/personal/change-code' as any)}
               >
-                <Ionicons name="key-outline" size={15} color="#FFE6DA" />
-                <Text style={[styles.soloCoachSecondaryText, typography.labelMedium]}>Adicionar codigo</Text>
+                <Ionicons name="key-outline" size={15} color={CLEAN_TEXT} />
+                <Text style={[styles.soloCoachSecondaryText, { color: CLEAN_TEXT }, typography.labelMedium]}>Adicionar código</Text>
               </TouchableOpacity>
             </View>
           </LinearGradient>
@@ -4614,27 +5647,27 @@ function SoloAlunoHomeScreen({ padding, refreshing, onRefresh, noPersonalFlow, t
             }}
           />
           <LinearGradient
-            colors={['#081526', '#0E223A', '#153457']}
+            colors={cleanSurfaceGradient}
             start={{ x: 0, y: 0 }}
             end={{ x: 1, y: 1 }}
-            style={[styles.soloBodySheetCard, { borderColor: colors.border, borderRadius: borderRadius.lg }]}
+            style={[styles.soloBodySheetCard, { borderColor: CLEAN_BORDER, borderRadius: borderRadius.lg }]}
           >
             <View style={styles.soloSheetHandle} />
             <View style={styles.soloNutritionSheetHeader}>
               <View style={styles.soloNutritionSheetTitleWrap}>
-                <Text style={[{ color: '#E8F6FF' }, typography.titleLarge]}>Check-in corporal</Text>
-                <Text style={[{ color: 'rgba(226,242,255,0.82)', marginTop: spacing.xs }, typography.bodySmall]}>
+                <Text style={[{ color: CLEAN_TEXT }, typography.titleLarge]}>Check-in corporal</Text>
+                <Text style={[{ color: CLEAN_TEXT_MUTED, marginTop: spacing.xs }, typography.bodySmall]}>
                   Atualize peso, altura e selecione o objetivo principal para a IA ajustar seu plano.
                 </Text>
               </View>
               <TouchableOpacity
-                style={styles.soloNutritionSheetCloseTopButton}
+                style={[styles.soloNutritionSheetCloseTopButton, { borderColor: CLEAN_BORDER, backgroundColor: CLEAN_SURFACE_ALT }]}
                 onPress={() => {
                   setGoalPickerOpen(false);
                   setBodyCheckinOpen(false);
                 }}
               >
-                <Ionicons name="close" size={18} color="#D6E9F8" />
+                <Ionicons name="close" size={18} color={CLEAN_TEXT} />
               </TouchableOpacity>
             </View>
 
@@ -4649,9 +5682,9 @@ function SoloAlunoHomeScreen({ padding, refreshing, onRefresh, noPersonalFlow, t
                   styles.soloBodyInput,
                   styles.soloNutritionSheetField,
                   {
-                    borderColor: colors.border,
+                    borderColor: CLEAN_BORDER,
                     color: colors.primaryText,
-                    backgroundColor: 'rgba(6,15,28,0.72)',
+                    backgroundColor: CLEAN_SURFACE_ALT,
                     marginTop: 0,
                   },
                 ]}
@@ -4666,9 +5699,9 @@ function SoloAlunoHomeScreen({ padding, refreshing, onRefresh, noPersonalFlow, t
                   styles.soloBodyInput,
                   styles.soloNutritionSheetField,
                   {
-                    borderColor: colors.border,
+                    borderColor: CLEAN_BORDER,
                     color: colors.primaryText,
-                    backgroundColor: 'rgba(6,15,28,0.72)',
+                    backgroundColor: CLEAN_SURFACE_ALT,
                     marginTop: 0,
                   },
                 ]}
@@ -4680,25 +5713,26 @@ function SoloAlunoHomeScreen({ padding, refreshing, onRefresh, noPersonalFlow, t
                 style={[
                   styles.soloBodyGoalDropdownTrigger,
                   {
-                    borderColor: colors.border,
+                    borderColor: CLEAN_BORDER,
                     borderRadius: borderRadius.md,
+                    backgroundColor: CLEAN_SURFACE_ALT,
                   },
                 ]}
                 onPress={() => setGoalPickerOpen((prev) => !prev)}
               >
                 <View style={styles.soloBodyGoalDropdownValueWrap}>
-                  <Ionicons name="sparkles-outline" size={15} color="#7FD7FF" />
+                  <Ionicons name="sparkles-outline" size={15} color={DARK_MODE_ACCENT} />
                   <Text
                     style={[
                       styles.soloBodyGoalDropdownValue,
-                      { color: goalInput ? '#F3FAFF' : 'rgba(213,233,247,0.75)' },
+                      { color: goalInput ? DARK_MODE_ACCENT_TEXT : DARK_MODE_ACCENT_TEXT_SOFT },
                     ]}
                     numberOfLines={1}
                   >
                     {goalInput || 'Selecionar objetivo'}
                   </Text>
                 </View>
-                <Ionicons name={goalPickerOpen ? 'chevron-up' : 'chevron-down'} size={18} color="#B8E7FF" />
+                <Ionicons name={goalPickerOpen ? 'chevron-up' : 'chevron-down'} size={18} color={DARK_MODE_ACCENT_TEXT} />
               </TouchableOpacity>
 
               {goalPickerOpen ? (
@@ -4711,8 +5745,8 @@ function SoloAlunoHomeScreen({ padding, refreshing, onRefresh, noPersonalFlow, t
                         style={[
                           styles.soloBodyGoalOption,
                           {
-                            borderColor: selected ? 'rgba(123,219,255,0.9)' : 'rgba(176,220,246,0.25)',
-                            backgroundColor: selected ? 'rgba(28,111,159,0.45)' : 'rgba(6,15,28,0.62)',
+                            borderColor: selected ? DARK_MODE_ACCENT : CLEAN_BORDER,
+                            backgroundColor: selected ? CLEAN_SURFACE_SOFT : CLEAN_SURFACE_ALT,
                           },
                         ]}
                         onPress={() => {
@@ -4720,10 +5754,10 @@ function SoloAlunoHomeScreen({ padding, refreshing, onRefresh, noPersonalFlow, t
                           setGoalPickerOpen(false);
                         }}
                       >
-                        <Text style={[styles.soloBodyGoalOptionTitle, { color: selected ? '#E6F8FF' : '#D1EAFE' }]}>
+                        <Text style={[styles.soloBodyGoalOptionTitle, { color: CLEAN_TEXT }]}>
                           {option.label}
                         </Text>
-                        <Text style={[styles.soloBodyGoalOptionSummary, { color: selected ? '#CDEEFF' : 'rgba(209,234,254,0.78)' }]}>
+                        <Text style={[styles.soloBodyGoalOptionSummary, { color: CLEAN_TEXT_MUTED }]}>
                           {option.summary}
                         </Text>
                       </TouchableOpacity>
@@ -4735,16 +5769,25 @@ function SoloAlunoHomeScreen({ padding, refreshing, onRefresh, noPersonalFlow, t
 
             <View style={styles.soloBodySheetActions}>
               <TouchableOpacity
-                style={[styles.soloPremiumSaveButton, { flex: 1, backgroundColor: colors.primary, borderRadius: borderRadius.md }]}
+                style={[
+                  styles.soloPremiumSaveButton,
+                  {
+                    flex: 1,
+                    backgroundColor: CLEAN_SURFACE_ALT,
+                    borderRadius: borderRadius.md,
+                    borderWidth: 1,
+                    borderColor: CLEAN_BORDER,
+                  },
+                ]}
                 onPress={handleSaveBodyCheckin}
                 disabled={bodyCheckinLoading}
               >
                 {bodyCheckinLoading ? (
-                  <ActivityIndicator size="small" color={colors.info} />
+                  <ActivityIndicator size="small" color={CLEAN_TEXT} />
                 ) : (
                   <>
-                    <Ionicons name="save-outline" size={16} color={colors.info} />
-                    <Text style={[styles.soloPremiumSaveText, { color: colors.info }]}>Salvar check-in</Text>
+                    <Ionicons name="save-outline" size={16} color={CLEAN_TEXT} />
+                    <Text style={[styles.soloPremiumSaveText, { color: CLEAN_TEXT }]}>Salvar check-in</Text>
                   </>
                 )}
               </TouchableOpacity>
@@ -4789,9 +5832,9 @@ function SoloAlunoHomeScreen({ padding, refreshing, onRefresh, noPersonalFlow, t
             <View style={styles.soloSheetHandle} />
             <View style={styles.soloNutritionSheetHeader}>
               <View style={styles.soloNutritionSheetTitleWrap}>
-                <Text style={[{ color: '#FFF1EA' }, typography.titleLarge]}>Registrar refeicao</Text>
+                <Text style={[{ color: '#FFF1EA' }, typography.titleLarge]}>Registrar refeição</Text>
                 <Text style={[{ color: 'rgba(255,218,201,0.9)', marginTop: spacing.xs }, typography.bodySmall]}>
-                  Busque os produtos consumidos e finalize sua refeicao.
+                  Busque os produtos consumidos e finalize sua refeição.
                 </Text>
               </View>
               <TouchableOpacity
@@ -4846,7 +5889,7 @@ function SoloAlunoHomeScreen({ padding, refreshing, onRefresh, noPersonalFlow, t
               <View style={styles.soloNutritionSelectedCard}>
                 <View style={styles.soloNutritionSelectedHeader}>
                   <Text style={[{ color: '#FFF1EA' }, typography.labelMedium]}>
-                    Sua refeicao ({selectedCatalogItems.length} itens)
+                    Sua refeição ({selectedCatalogItems.length} itens)
                   </Text>
                   <Text style={[{ color: '#FFC3A7' }, typography.labelSmall]}>
                     ~{selectedEstimatedKcal} kcal
@@ -4875,7 +5918,7 @@ function SoloAlunoHomeScreen({ padding, refreshing, onRefresh, noPersonalFlow, t
               <View style={styles.soloNutritionSelectedEmptyCard}>
                 <Ionicons name="information-circle-outline" size={14} color="#FFC8AF" />
                 <Text style={[styles.soloNutritionSelectedEmptyText, { color: 'rgba(255,217,200,0.88)' }]}>
-                  Toque nos produtos abaixo para montar a refeicao.
+                  Toque nos produtos abaixo para montar a refeição.
                 </Text>
               </View>
             )}
@@ -5011,17 +6054,17 @@ function SoloAlunoHomeScreen({ padding, refreshing, onRefresh, noPersonalFlow, t
                 />
               </View>
               <Text style={[{ color: colors.primaryText, flex: 1 }, typography.titleMedium]}>
-                Nova sugestao da IA
+                Nova sugestão da IA
               </Text>
             </View>
             <Text style={[{ color: colors.primaryText, marginTop: spacing.sm }, typography.bodyMedium]}>
-              {aiNoticeActive?.title || 'Atualizacao do seu plano'}
+              {aiNoticeActive?.title || 'Atualização do seu plano'}
             </Text>
             <Text style={[{ color: colors.secondaryText, marginTop: spacing.xs }, typography.bodySmall]}>
-              {aiNoticeActive?.summary || 'A IA atualizou seu proximo passo com base no seu progresso.'}
+              {aiNoticeActive?.summary || 'A IA atualizou seu próximo passo com base no seu progresso.'}
             </Text>
             <Text style={[{ color: colors.secondaryText, marginTop: spacing.sm }, typography.labelSmall]}>
-              Escolha em qual dia voce quer realizar essa sugestao:
+              Escolha em qual dia você quer realizar essa sugestão:
             </Text>
             <View style={[styles.soloAiNoticeDateRow, { marginTop: spacing.sm }]}>
               {calendarDays.map((day) => {
@@ -5033,16 +6076,16 @@ function SoloAlunoHomeScreen({ padding, refreshing, onRefresh, noPersonalFlow, t
                       styles.soloAiNoticeDateChip,
                       {
                         borderRadius: borderRadius.md,
-                        borderColor: selected ? 'rgba(143,230,255,0.8)' : 'rgba(196,220,239,0.26)',
-                        backgroundColor: selected ? 'rgba(124,218,255,0.22)' : 'rgba(7,16,27,0.42)',
+                        borderColor: selected ? DARK_MODE_ACCENT_BORDER : 'rgba(196,220,239,0.26)',
+                        backgroundColor: selected ? DARK_MODE_ACCENT_SURFACE_STRONG : 'rgba(7,16,27,0.42)',
                       },
                     ]}
                     onPress={() => setAiNoticeSelectedDateKey(day.key)}
                   >
-                    <Text style={[styles.soloAiNoticeDateLabel, { color: selected ? '#DFF5FF' : '#BBD3E8' }]}>
+                    <Text style={[styles.soloAiNoticeDateLabel, { color: selected ? DARK_MODE_ACCENT_TEXT : '#BBD3E8' }]}>
                       {day.label}
                     </Text>
-                    <Text style={[styles.soloAiNoticeDateNumber, { color: selected ? '#FFFFFF' : '#DCEFFF' }]}>
+                    <Text style={[styles.soloAiNoticeDateNumber, { color: selected ? '#FFFFFF' : DARK_MODE_ACCENT_TEXT }]}>
                       {day.day}
                     </Text>
                   </TouchableOpacity>
@@ -5051,7 +6094,7 @@ function SoloAlunoHomeScreen({ padding, refreshing, onRefresh, noPersonalFlow, t
             </View>
             {aiNoticeQueue.length > 1 ? (
               <Text style={[{ color: colors.secondaryText, marginTop: spacing.xs }, typography.labelSmall]}>
-                Voce tem mais {aiNoticeQueue.length - 1} sugestao(oes) pendente(s).
+                Você tem mais {aiNoticeQueue.length - 1} sugestão(ões) pendente(s).
               </Text>
             ) : null}
             <View style={[styles.soloSheetActions, { marginTop: spacing.lg }]}>
@@ -5061,7 +6104,7 @@ function SoloAlunoHomeScreen({ padding, refreshing, onRefresh, noPersonalFlow, t
               >
                 <Text style={[{ color: colors.info }, typography.labelMedium]}>
                   {aiNoticeActive?.type === 'avaliacao'
-                    ? 'Definir data e realizar avaliacao'
+                    ? 'Definir data e realizar avaliação'
                     : 'Agendar e abrir agenda'}
                 </Text>
               </TouchableOpacity>
@@ -5131,6 +6174,11 @@ const styles = StyleSheet.create({
   alunoFocusCopy: {
     flex: 1,
     paddingRight: 10,
+  },
+  alunoFocusTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: themeSpacing.sm,
   },
   alunoFocusIconWrap: {
     width: 46,
@@ -5551,10 +6599,28 @@ const styles = StyleSheet.create({
   treinoInfo: {
     flex: 1,
   },
+  treinoTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: themeSpacing.sm,
+  },
   treinoMeta: {
     flexDirection: 'row',
     alignItems: 'center',
+    flexWrap: 'wrap',
     marginTop: 4,
+  },
+  warningInlineBadge: {
+    minWidth: 22,
+    height: 22,
+    borderRadius: themeBorderRadius.full,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: themeSpacing.xs,
+  },
+  warningInlineBadgeText: {
+    fontSize: 13,
+    fontWeight: '800',
   },
   badge: {},
   treinoAction: {},
@@ -5643,10 +6709,212 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
   },
+  recentUserInfo: {
+    flex: 1,
+    paddingRight: 12,
+  },
+  recentUserRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
   recentUserMeta: {
     alignItems: 'flex-end',
   },
   sectionCard: {},
+  personalDashboardCard: {
+    borderWidth: 1,
+    padding: 18,
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.08,
+    shadowRadius: 14,
+    elevation: 3,
+  },
+  personalHeaderCard: {
+    borderWidth: 1,
+    padding: 18,
+    overflow: 'hidden',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.08,
+    shadowRadius: 14,
+    elevation: 3,
+  },
+  personalHeaderKicker: {
+    alignSelf: 'flex-start',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 999,
+    marginBottom: 10,
+  },
+  personalHeaderKickerText: {
+    fontSize: 11,
+    fontWeight: '700',
+  },
+  personalHeaderTitle: {
+    marginTop: 0,
+  },
+  personalHeaderMetrics: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginTop: 14,
+  },
+  personalHeaderMetric: {
+    minWidth: 76,
+    borderWidth: 1,
+    borderRadius: 12,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+  },
+  personalHeaderMetricValue: {
+    fontSize: 15,
+    fontWeight: '800',
+    lineHeight: 18,
+  },
+  personalHeaderMetricLabel: {
+    marginTop: 2,
+    fontSize: 11,
+    fontWeight: '600',
+    lineHeight: 14,
+  },
+  personalHeaderIconButton: {
+    borderWidth: 1,
+  },
+  personalInviteCard: {
+    overflow: 'hidden',
+  },
+  personalInviteHeader: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    marginBottom: 16,
+  },
+  personalInviteHeaderIcon: {
+    width: 44,
+    height: 44,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 12,
+  },
+  personalInviteHeaderText: {
+    flex: 1,
+    paddingRight: 10,
+  },
+  personalInviteShareButton: {
+    borderWidth: 1,
+  },
+  personalSummaryCard: {},
+  personalSummaryHeader: {
+    marginBottom: 0,
+  },
+  personalOpenPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 11,
+    paddingVertical: 7,
+    borderRadius: 999,
+  },
+  personalOpenPillText: {
+    fontWeight: '700',
+  },
+  personalSummaryStatsRow: {
+    gap: 8,
+  },
+  personalSummaryStatCard: {
+    borderWidth: 1,
+    borderRadius: 14,
+    paddingHorizontal: 8,
+    paddingVertical: 10,
+    minHeight: 92,
+    justifyContent: 'center',
+  },
+  personalSummaryStatValue: {
+    marginTop: 5,
+    fontSize: 24,
+    fontWeight: '800',
+    lineHeight: 28,
+  },
+  personalSummaryStatLabel: {
+    marginTop: 2,
+    fontSize: 11,
+    fontWeight: '600',
+    lineHeight: 14,
+    textAlign: 'center',
+  },
+  personalActionSquare: {
+    position: 'relative',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    minHeight: 118,
+    borderWidth: 1,
+    paddingHorizontal: 12,
+    paddingVertical: 12,
+    shadowOffset: { width: 0, height: 5 },
+    shadowOpacity: 0.06,
+    shadowRadius: 10,
+    elevation: 2,
+  },
+  personalActionIconWrap: {
+    width: 42,
+    height: 42,
+    borderRadius: 13,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  personalActionLabel: {
+    marginTop: 9,
+    textAlign: 'left',
+    fontWeight: '700',
+    lineHeight: 16,
+  },
+  personalActionChevron: {
+    alignSelf: 'flex-end',
+  },
+  personalEmptyState: {
+    borderWidth: 1,
+  },
+  personalStudentCard: {
+    borderWidth: 1,
+    padding: 14,
+    shadowOffset: { width: 0, height: 5 },
+    shadowOpacity: 0.06,
+    shadowRadius: 10,
+    elevation: 2,
+  },
+  personalStudentTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  personalStudentName: {
+    flex: 1,
+  },
+  personalStudentStatusChip: {
+    borderRadius: 999,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+  },
+  personalStudentStatusText: {
+    fontSize: 10,
+    fontWeight: '800',
+    lineHeight: 12,
+    textTransform: 'capitalize',
+  },
+  personalStudentMetaRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginTop: 7,
+  },
+  personalStudentMetaText: {
+    fontSize: 12,
+    fontWeight: '600',
+    lineHeight: 16,
+  },
   premiumCard: {
     overflow: 'hidden',
   },
@@ -5879,6 +7147,101 @@ const styles = StyleSheet.create({
   inlineButton: {
     paddingHorizontal: 16,
     paddingVertical: 8,
+  },
+  personalInviteDescription: {
+    lineHeight: 18,
+  },
+  personalInviteLinkBox: {
+    borderWidth: 1,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+  },
+  personalInviteButton: {
+    borderWidth: 1,
+    paddingVertical: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexDirection: 'row',
+    gap: 8,
+  },
+  personalInviteButtonText: {
+    fontWeight: '700',
+  },
+  personalInviteCodeCard: {
+    borderWidth: 1,
+    padding: 16,
+  },
+  personalInviteCodeTopRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 10,
+  },
+  personalInviteCodeLabel: {
+    fontSize: 12,
+    fontWeight: '700',
+    textTransform: 'uppercase',
+    letterSpacing: 0,
+  },
+  personalInviteStatusPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    borderRadius: 999,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+  },
+  personalInviteStatusText: {
+    fontSize: 10,
+    fontWeight: '800',
+    lineHeight: 12,
+  },
+  personalInviteCodeValue: {
+    fontSize: 38,
+    fontWeight: '800',
+    marginTop: 8,
+    lineHeight: 44,
+  },
+  personalInviteLinkRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 8,
+    borderWidth: 1,
+    paddingHorizontal: 10,
+    paddingVertical: 9,
+    marginTop: 12,
+  },
+  personalInviteLinkText: {
+    flex: 1,
+    fontSize: 12,
+    lineHeight: 17,
+  },
+  personalInviteActionRow: {
+    flexDirection: 'row',
+    gap: 10,
+    marginTop: 14,
+  },
+  personalInviteActionButton: {
+    flex: 1,
+    minHeight: 48,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexDirection: 'row',
+    gap: 8,
+    paddingHorizontal: 12,
+  },
+  personalInvitePrimaryButton: {
+    borderColor: 'transparent',
+  },
+  personalInviteSecondaryButton: {},
+  personalInviteActionText: {
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  personalInviteSecondaryText: {
+    fontSize: 14,
+    fontWeight: '600',
   },
   performanceRow: {
     flexDirection: 'row',
@@ -6178,22 +7541,33 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
   soloQuickHeader: {
-    marginBottom: 10,
+    marginBottom: 12,
   },
   soloQuickGrid: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
-    marginHorizontal: -6,
+    paddingRight: 12,
+    paddingBottom: 4,
   },
   soloQuickCard: {
-    width: '50%',
-    padding: 6,
+    width: 192,
+    marginRight: 12,
+    flexShrink: 0,
+    borderRadius: 14,
+    backgroundColor: CLEAN_SURFACE,
+    shadowColor: '#101820',
+    shadowOpacity: 0.06,
+    shadowOffset: { width: 0, height: 6 },
+    shadowRadius: 12,
+    elevation: 2,
+  },
+  soloQuickCardLast: {
+    marginRight: 0,
   },
   soloQuickCardInner: {
-    minHeight: 126,
+    minHeight: 122,
     justifyContent: 'space-between',
-    paddingHorizontal: 12,
-    paddingVertical: 11,
+    paddingHorizontal: 13,
+    paddingVertical: 12,
     borderWidth: 1,
     borderRadius: 14,
     overflow: 'hidden',
@@ -6229,8 +7603,14 @@ const styles = StyleSheet.create({
   },
   soloHeroCard: {
     overflow: 'hidden',
+    position: 'relative',
     borderWidth: 1,
     borderColor: 'rgba(193,234,255,0.22)',
+    shadowColor: '#101820',
+    shadowOpacity: 0.07,
+    shadowOffset: { width: 0, height: 8 },
+    shadowRadius: 18,
+    elevation: 2,
   },
   soloHeroGlowPrimary: {
     position: 'absolute',
@@ -6262,16 +7642,32 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     gap: 12,
   },
+  soloHeroHeaderActions: {
+    position: 'absolute',
+    top: 0,
+    right: 0,
+    alignItems: 'center',
+    gap: themeSpacing.sm,
+    zIndex: 1,
+  },
   soloHeroCopy: {
     flex: 1,
+    minWidth: 0,
+    paddingRight: 88,
+  },
+  soloHeroTitle: {
+    fontFamily: fontFamilies.outfit,
+    fontSize: 30,
+    fontWeight: '600',
+    lineHeight: 36,
   },
   soloHeroPlanPill: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
     borderWidth: 1,
-    borderColor: 'rgba(203,234,255,0.28)',
-    backgroundColor: 'rgba(10,33,54,0.55)',
+    borderColor: CLEAN_BORDER,
+    backgroundColor: CLEAN_SURFACE_ALT,
     borderRadius: 999,
     paddingHorizontal: 10,
     paddingVertical: 6,
@@ -6283,14 +7679,14 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   soloHeroPlanPillText: {
-    color: '#DAEEFF',
+    color: CLEAN_TEXT,
     fontWeight: '700',
   },
   soloHeroSubscriptionCard: {
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: 'rgba(203,234,255,0.24)',
-    backgroundColor: 'rgba(7,27,47,0.55)',
+    borderColor: CLEAN_BORDER,
+    backgroundColor: CLEAN_SURFACE,
     padding: 10,
   },
   soloHeroSubscriptionHeader: {
@@ -6300,15 +7696,18 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   soloHeroSubscriptionCta: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
     borderRadius: 999,
     borderWidth: 1,
-    borderColor: 'rgba(191,233,255,0.34)',
-    backgroundColor: 'rgba(10,35,58,0.72)',
+    borderColor: CLEAN_BORDER,
+    backgroundColor: CLEAN_SURFACE_ALT,
     paddingHorizontal: 10,
     paddingVertical: 6,
   },
   soloHeroSubscriptionCtaText: {
-    color: '#DFF4FF',
+    color: CLEAN_TEXT,
     fontWeight: '700',
   },
   soloHeroSubscriptionMetaRow: {
@@ -6319,26 +7718,26 @@ const styles = StyleSheet.create({
     flex: 1,
     borderRadius: 10,
     borderWidth: 1,
-    borderColor: 'rgba(192,230,255,0.2)',
-    backgroundColor: 'rgba(6,21,39,0.5)',
+    borderColor: CLEAN_BORDER,
+    backgroundColor: CLEAN_SURFACE_ALT,
     paddingHorizontal: 8,
     paddingVertical: 7,
   },
   soloHeroSubscriptionMetaLabel: {
-    color: 'rgba(200,232,255,0.74)',
+    color: CLEAN_TEXT_SOFT,
     fontSize: 10,
     fontWeight: '600',
     textTransform: 'uppercase',
     letterSpacing: 0.3,
   },
   soloHeroSubscriptionMetaValue: {
-    color: '#F4FAFF',
+    color: CLEAN_TEXT,
     fontSize: 12,
     fontWeight: '800',
     marginTop: 2,
   },
   soloHeroSubscriptionHint: {
-    color: 'rgba(219,239,255,0.88)',
+    color: CLEAN_TEXT_MUTED,
     fontSize: 12,
     lineHeight: 16,
   },
@@ -6347,8 +7746,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 6,
     borderWidth: 1,
-    borderColor: 'rgba(190,230,255,0.22)',
-    backgroundColor: 'rgba(6,22,39,0.45)',
+    borderColor: CLEAN_BORDER,
+    backgroundColor: CLEAN_SURFACE_ALT,
     borderRadius: 10,
     paddingHorizontal: 10,
     paddingVertical: 8,
@@ -6368,10 +7767,12 @@ const styles = StyleSheet.create({
   },
   soloMetricCard: {
     flex: 1,
+    minHeight: 82,
+    justifyContent: 'space-between',
     paddingHorizontal: 11,
     paddingVertical: 10,
     borderWidth: 1,
-    borderColor: 'rgba(213,236,255,0.24)',
+    borderColor: DARK_MODE_ACCENT_BORDER_SOFT,
   },
   soloMetricHeaderRow: {
     flexDirection: 'row',
@@ -6387,19 +7788,37 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(255,255,255,0.14)',
   },
   soloMetricTitle: {
-    color: 'rgba(228,243,255,0.88)',
+    color: DARK_MODE_ACCENT_TEXT_MUTED,
   },
   soloMetricValue: {
     color: '#FFFFFF',
   },
   soloCalendarPremiumCard: {
     borderWidth: 1,
-    borderColor: 'rgba(193,228,255,0.2)',
+    borderColor: DARK_MODE_ACCENT_BORDER_SOFT,
     overflow: 'hidden',
+    backgroundColor: CLEAN_SURFACE,
+    shadowColor: '#101820',
+    shadowOpacity: 0.06,
+    shadowOffset: { width: 0, height: 7 },
+    shadowRadius: 16,
+    elevation: 2,
+  },
+  soloPersonalTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  soloPersonalTitleIcon: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   soloCalendarSubtitle: {
     marginTop: 4,
-    color: 'rgba(208,231,247,0.78)',
+    color: DARK_MODE_ACCENT_TEXT_SOFT,
   },
   soloCalendarOpenButton: {
     flexDirection: 'row',
@@ -6408,11 +7827,11 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
     paddingVertical: 6,
     borderWidth: 1,
-    borderColor: 'rgba(174,228,255,0.36)',
+    borderColor: DARK_MODE_ACCENT_BORDER,
     backgroundColor: 'rgba(12,30,49,0.52)',
   },
   soloCalendarOpenButtonText: {
-    color: '#AEE4FF',
+    color: DARK_MODE_ACCENT_TEXT,
     fontWeight: '700',
   },
   soloCalendarMetaRow: {
@@ -6421,15 +7840,17 @@ const styles = StyleSheet.create({
   },
   soloCalendarMetaChip: {
     flex: 1,
+    minHeight: 68,
+    justifyContent: 'center',
     borderRadius: 10,
     borderWidth: 1,
-    borderColor: 'rgba(191,227,247,0.22)',
+    borderColor: DARK_MODE_ACCENT_BORDER_SOFT,
     backgroundColor: 'rgba(5,14,24,0.48)',
     paddingHorizontal: 10,
     paddingVertical: 8,
   },
   soloCalendarMetaLabel: {
-    color: 'rgba(208,231,247,0.76)',
+    color: DARK_MODE_ACCENT_TEXT_SOFT,
     fontSize: 11,
     fontWeight: '600',
   },
@@ -6438,6 +7859,17 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '800',
     marginTop: 3,
+  },
+  soloStatusValueRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginTop: 3,
+  },
+  soloStatusDot: {
+    width: 7,
+    height: 7,
+    borderRadius: 4,
   },
   soloCalendarRow: {
     flexDirection: 'row',
@@ -6514,7 +7946,7 @@ const styles = StyleSheet.create({
     minHeight: 48,
     flex: 1,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.12)',
+    borderColor: CLEAN_BORDER,
     paddingHorizontal: 14,
     paddingVertical: 10,
     flexDirection: 'row',
@@ -6535,12 +7967,12 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(255,201,175,0.34)',
   },
   soloDarkActionButton: {
-    backgroundColor: 'rgba(12,22,36,0.55)',
+    backgroundColor: CLEAN_SURFACE_ALT,
     borderWidth: 1,
-    borderColor: 'rgba(111,214,255,0.34)',
+    borderColor: CLEAN_BORDER,
   },
   soloLightActionButton: {
-    backgroundColor: '#8ED4FF',
+    backgroundColor: CLEAN_SURFACE_ALT,
   },
   soloMealsPreviewCard: {
     borderWidth: 1,
@@ -6608,7 +8040,7 @@ const styles = StyleSheet.create({
   soloProgressPremiumCard: {
     overflow: 'hidden',
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.08)',
+    borderColor: CLEAN_BORDER,
   },
   soloProgressPremiumHeader: {
     flexDirection: 'row',
@@ -6622,12 +8054,12 @@ const styles = StyleSheet.create({
     borderRadius: 999,
     paddingHorizontal: 10,
     paddingVertical: 6,
-    backgroundColor: 'rgba(111,214,255,0.14)',
+    backgroundColor: CLEAN_SURFACE_ALT,
     borderWidth: 1,
-    borderColor: 'rgba(111,214,255,0.44)',
+    borderColor: CLEAN_BORDER,
   },
   soloAiPulseText: {
-    color: '#B8E8FF',
+    color: CLEAN_TEXT,
     fontSize: 11,
     fontWeight: '700',
   },
@@ -6640,27 +8072,27 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     paddingVertical: 10,
     paddingHorizontal: 8,
-    backgroundColor: 'rgba(5,16,32,0.45)',
+    backgroundColor: CLEAN_SURFACE_ALT,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.08)',
+    borderColor: CLEAN_BORDER,
     alignItems: 'center',
   },
   soloProgressPremiumStatValue: {
-    color: '#F5FAFF',
+    color: CLEAN_TEXT,
     fontSize: 20,
     fontWeight: '800',
   },
   soloProgressPremiumStatLabel: {
     marginTop: 2,
-    color: 'rgba(226,240,255,0.8)',
+    color: CLEAN_TEXT_MUTED,
     fontSize: 11,
     fontWeight: '600',
   },
   soloAiStatusCard: {
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: 'rgba(111,214,255,0.26)',
-    backgroundColor: 'rgba(7,20,40,0.5)',
+    borderColor: CLEAN_BORDER,
+    backgroundColor: CLEAN_SURFACE_ALT,
     paddingHorizontal: 10,
     paddingVertical: 9,
   },
@@ -6677,7 +8109,7 @@ const styles = StyleSheet.create({
   soloPremiumBanner: {
     overflow: 'hidden',
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.08)',
+    borderColor: CLEAN_BORDER,
   },
   soloPlanBannerHeader: {
     flexDirection: 'row',
@@ -6693,16 +8125,16 @@ const styles = StyleSheet.create({
     paddingVertical: 5,
     borderRadius: 999,
     borderWidth: 1,
-    borderColor: 'rgba(253,230,138,0.45)',
-    backgroundColor: 'rgba(253,230,138,0.13)',
+    borderColor: CLEAN_BORDER,
+    backgroundColor: CLEAN_SURFACE_ALT,
   },
   soloPlanBadgeText: {
-    color: '#FFE8A8',
+    color: CLEAN_TEXT,
     fontSize: 11,
     fontWeight: '700',
   },
   soloPlanPrice: {
-    color: '#F8FBFF',
+    color: CLEAN_TEXT,
     fontWeight: '800',
   },
   soloPlanFeatureList: {
@@ -6715,7 +8147,7 @@ const styles = StyleSheet.create({
   },
   soloPlanFeatureText: {
     flex: 1,
-    color: 'rgba(236,245,255,0.9)',
+    color: CLEAN_TEXT_MUTED,
     fontSize: 12,
     lineHeight: 16,
   },
@@ -6727,10 +8159,12 @@ const styles = StyleSheet.create({
     gap: 8,
     paddingHorizontal: 14,
     paddingVertical: 10,
-    backgroundColor: '#8ED4FF',
+    backgroundColor: CLEAN_SURFACE_ALT,
+    borderWidth: 1,
+    borderColor: CLEAN_BORDER,
   },
   soloPlanCtaText: {
-    color: '#072037',
+    color: CLEAN_TEXT,
     fontWeight: '800',
   },
   soloCoachBanner: {
@@ -6811,13 +8245,13 @@ const styles = StyleSheet.create({
     gap: 5,
     borderRadius: 999,
     borderWidth: 1,
-    borderColor: 'rgba(143,211,255,0.4)',
+    borderColor: DARK_MODE_ACCENT_BORDER,
     backgroundColor: 'rgba(6,18,32,0.48)',
     paddingHorizontal: 10,
     paddingVertical: 6,
   },
   soloNutritionHeaderBadgeText: {
-    color: '#BFE8FF',
+    color: DARK_MODE_ACCENT_TEXT,
     fontSize: 11,
     fontWeight: '700',
   },
@@ -6937,11 +8371,11 @@ const styles = StyleSheet.create({
     paddingVertical: 5,
     borderRadius: 999,
     borderWidth: 1,
-    borderColor: 'rgba(159,215,255,0.35)',
-    backgroundColor: 'rgba(159,215,255,0.16)',
+    borderColor: DARK_MODE_ACCENT_BORDER_SOFT,
+    backgroundColor: DARK_MODE_ACCENT_SURFACE,
   },
   soloStepsStatusText: {
-    color: '#CFEAFF',
+    color: DARK_MODE_ACCENT_TEXT,
     fontSize: 11,
     fontWeight: '700',
   },
@@ -7104,7 +8538,7 @@ const styles = StyleSheet.create({
     paddingVertical: 7,
   },
   soloTodayFoodName: {
-    color: '#EAF6FF',
+    color: DARK_MODE_ACCENT_TEXT,
     fontSize: 12,
     fontWeight: '700',
   },
@@ -7154,8 +8588,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 1,
-    borderColor: 'rgba(174,226,255,0.35)',
-    backgroundColor: 'rgba(174,226,255,0.16)',
+    borderColor: DARK_MODE_ACCENT_BORDER,
+    backgroundColor: DARK_MODE_ACCENT_SURFACE,
   },
   soloBodyCheckinMetaRow: {
     flexDirection: 'row',
@@ -7172,12 +8606,12 @@ const styles = StyleSheet.create({
     minHeight: 56,
   },
   soloBodyCheckinMetaLabel: {
-    color: 'rgba(204,232,255,0.82)',
+    color: DARK_MODE_ACCENT_TEXT_SOFT,
     fontSize: 11,
     fontWeight: '600',
   },
   soloBodyCheckinMetaValue: {
-    color: '#ECF7FF',
+    color: DARK_MODE_ACCENT_TEXT,
     fontSize: 12,
     fontWeight: '700',
     marginTop: 4,
@@ -7189,7 +8623,7 @@ const styles = StyleSheet.create({
     gap: 8,
     paddingHorizontal: 13,
     paddingVertical: 10,
-    backgroundColor: '#8ED4FF',
+    backgroundColor: DARK_MODE_ACCENT,
   },
   soloBodyCheckinOpenButtonText: {
     color: '#06213B',
@@ -7476,13 +8910,13 @@ const styles = StyleSheet.create({
     gap: 5,
     borderRadius: 999,
     borderWidth: 1,
-    borderColor: 'rgba(146,212,255,0.34)',
-    backgroundColor: 'rgba(146,212,255,0.12)',
+    borderColor: DARK_MODE_ACCENT_BORDER_SOFT,
+    backgroundColor: DARK_MODE_ACCENT_SURFACE,
     paddingHorizontal: 9,
     paddingVertical: 4,
   },
   soloNutritionSheetBadgeText: {
-    color: '#BFE8FF',
+    color: DARK_MODE_ACCENT_TEXT,
     fontSize: 11,
     fontWeight: '700',
   },
@@ -7516,13 +8950,13 @@ const styles = StyleSheet.create({
     gap: 5,
     borderRadius: 999,
     borderWidth: 1,
-    borderColor: 'rgba(142,212,255,0.42)',
+    borderColor: DARK_MODE_ACCENT_BORDER,
     backgroundColor: 'rgba(10,26,44,0.82)',
     paddingHorizontal: 12,
     paddingVertical: 6,
   },
   soloNutritionAiButtonText: {
-    color: '#8ED4FF',
+    color: DARK_MODE_ACCENT_TEXT,
     fontSize: 11,
     fontWeight: '700',
   },
@@ -7896,5 +9330,3 @@ const styles = StyleSheet.create({
     fontWeight: '800',
   },
 });
-
-

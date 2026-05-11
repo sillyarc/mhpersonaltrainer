@@ -9,10 +9,10 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router, useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import { VideoView, useVideoPlayer } from 'expo-video';
 import { useTheme } from '../src/hooks/useTheme';
 import { Button } from '../src/components/common';
 import { ExerciseCard } from '../src/components/workout/ExerciseCard';
+import { ExerciseMedia } from '../src/components/workout/ExerciseMedia';
 import { WorkoutTimer } from '../src/components/workout/WorkoutTimer';
 import { spacing, borderRadius } from '../src/theme';
 import { WorkoutExercise, SetProgress, ExerciseProgress } from '../src/types/workout';
@@ -20,6 +20,10 @@ import { fetchAvailableExercises, fetchUserWorkoutById, updateUserWorkout } from
 import { useAuthStore } from '../src/store/authStore';
 import { submitWorkoutFeedback } from '../src/services/feedback';
 import * as Location from 'expo-location';
+import {
+  markWorkoutNotificationsAsSeen,
+  syncWorkoutNotificationStatus,
+} from '../src/services/notificationCenter';
 import {
   WorkoutPartyLocation,
   WorkoutPartyPresence,
@@ -102,6 +106,8 @@ export default function StartWorkoutScreen() {
   const [rating, setRating] = useState(0);
   const [feedbackText, setFeedbackText] = useState('');
   const [exerciseWeightOverrides, setExerciseWeightOverrides] = useState<Record<string, number>>({});
+  const [extraSeriesByExercise, setExtraSeriesByExercise] = useState<Record<string, number>>({});
+  const [previewExercise, setPreviewExercise] = useState<WorkoutExercise | null>(null);
   const [showWeightEditModal, setShowWeightEditModal] = useState(false);
   const [weightDraft, setWeightDraft] = useState('');
   const [currentLocation, setCurrentLocation] = useState<WorkoutPartyLocation | undefined>(undefined);
@@ -121,6 +127,8 @@ export default function StartWorkoutScreen() {
   const totalCargaKgRef = useRef(0);
   const completedSetCountRef = useRef(0);
   const currentLocationRef = useRef<WorkoutPartyLocation | undefined>(undefined);
+  const pendingFinishProgressRef = useRef<Map<string, ExerciseProgress> | null>(null);
+  const pendingFinishSecondsRef = useRef(0);
   const partyFloatingPosition = useRef(
     new Animated.ValueXY(getPartyFloatingDefault())
   ).current;
@@ -230,9 +238,13 @@ export default function StartWorkoutScreen() {
       const loadedWorkout = result.data;
       if (loadedWorkout) {
         const storedVideoUrls = loadedWorkout.videoUrls || [];
+        const storedExerciseConfigs = loadedWorkout.exerciseConfigs || [];
         let videoUrlByName = new Map<string, string>();
         const needsVideoFallback = (loadedWorkout.treino || []).some(
-          (treino, index) => !storedVideoUrls[index] && treino
+          (treino, index) =>
+            !storedExerciseConfigs[index]?.videoUrl &&
+            !storedVideoUrls[index] &&
+            treino
         );
         if (needsVideoFallback) {
           const exercisesResult = await fetchAvailableExercises();
@@ -246,18 +258,32 @@ export default function StartWorkoutScreen() {
             });
           }
         }
-        const exercises: WorkoutExercise[] = (loadedWorkout.treino || []).map((name, index) => ({
-          videoUrl:
-            storedVideoUrls[index] ||
-            videoUrlByName.get(normalizeName(name)) ||
-            undefined,
-          exerciseId: `${loadedWorkout.id}-${index}`,
-          nome: name,
-          series: coerceMetricValue(loadedWorkout.seriesRep?.[index], 3),
-          repeticoes: coerceMetricValue(loadedWorkout.repeticoes?.[index], 12),
-          carga: coerceMetricValue(loadedWorkout.carga?.[index], 0),
-          intervalo: coerceMetricValue(loadedWorkout.intervalo?.[index], 60),
-        }));
+        const exercises: WorkoutExercise[] = (loadedWorkout.treino || []).map((name, index) => {
+          const storedConfig = storedExerciseConfigs[index];
+          return {
+            videoUrl:
+              storedConfig?.videoUrl ||
+              storedVideoUrls[index] ||
+              videoUrlByName.get(normalizeName(name)) ||
+              undefined,
+            gifUrl: storedConfig?.gifUrl,
+            mediaType: storedConfig?.mediaType,
+            exerciseId: storedConfig?.exerciseId || `${loadedWorkout.id}-${index}`,
+            nome: storedConfig?.nome || name,
+            series: coerceMetricValue(storedConfig?.series ?? loadedWorkout.seriesRep?.[index], 3),
+            repeticoes: coerceMetricValue(
+              storedConfig?.repeticoes ?? loadedWorkout.repeticoes?.[index],
+              12
+            ),
+            carga: coerceMetricValue(storedConfig?.carga ?? loadedWorkout.carga?.[index], 0),
+            intervalo: coerceMetricValue(
+              storedConfig?.intervalo ?? loadedWorkout.intervalo?.[index],
+              60
+            ),
+            observacao: storedConfig?.observacao,
+            extraFields: storedConfig?.extraFields || [],
+          };
+        });
         const initialOverrides = exercises.reduce<Record<string, number>>((acc, exercise) => {
           acc[exercise.exerciseId] = normalizeWeight(toNumericMetric(exercise.carga, 0));
           return acc;
@@ -265,6 +291,9 @@ export default function StartWorkoutScreen() {
         persistedWorkoutLoadRef.current = initialOverrides;
         setExerciseWeightOverrides(initialOverrides);
         setWorkout({ id: loadedWorkout.id, name: loadedWorkout.nomeDoTreino, exercises });
+        if (role === 'aluno') {
+          void markWorkoutNotificationsAsSeen(targetUserId, loadedWorkout.id);
+        }
         const startTime = Date.now();
         workoutStartTimeRef.current = startTime;
         pausedAtRef.current = null;
@@ -330,6 +359,20 @@ export default function StartWorkoutScreen() {
     [exerciseWeightOverrides]
   );
 
+  const getExerciseMediaUri = (exercise?: WorkoutExercise | null) =>
+    exercise?.videoUrl || exercise?.gifUrl || '';
+
+  const isGifOnlyExerciseMedia = (exercise?: WorkoutExercise | null) =>
+    !exercise?.videoUrl && !!exercise?.gifUrl;
+
+  const formatPreviewMetricWithSuffix = (value: string | number | undefined, suffix: string) => {
+    const label = formatMetricText(value);
+    if (!label) return '-';
+    const normalizedLabel = label.toLowerCase().replace(/\s/g, '');
+    const normalizedSuffix = suffix.toLowerCase().replace(/\s/g, '');
+    return normalizedLabel.endsWith(normalizedSuffix) ? label : `${label}${suffix}`;
+  };
+
   const buildCargaPayloadFromOverrides = useCallback(
     (overrides: Record<string, number>) => {
       if (!workout) return [];
@@ -356,21 +399,62 @@ export default function StartWorkoutScreen() {
       if (!hasAnyChange) return;
 
       const payload = buildCargaPayloadFromOverrides(nextOverrides);
-      await updateUserWorkout(targetUserId, workout.id, { carga: payload });
+      const exerciseConfigs = workout.exercises.map((exercise) => ({
+        ...exercise,
+        carga: normalizeWeight(
+          nextOverrides[exercise.exerciseId] !== undefined
+            ? nextOverrides[exercise.exerciseId]
+            : toNumericMetric(exercise.carga, 0)
+        ),
+      }));
+      await updateUserWorkout(targetUserId, workout.id, {
+        carga: payload,
+        exerciseConfigs,
+      });
       persistedWorkoutLoadRef.current = { ...nextOverrides };
     },
     [buildCargaPayloadFromOverrides, targetUserId, workout]
+  );
+
+  const countCompletedExercises = useCallback(
+    (progressMap: Map<string, ExerciseProgress>) =>
+      Array.from(progressMap.values()).filter((item) => item.completed).length,
+    []
   );
 
   const currentExercise = workout?.exercises[currentExerciseIndex];
   const totalExercises = workout?.exercises.length || 0;
   const completedExercises = Array.from(exerciseProgress.values()).filter((p) => p.completed).length;
   const progress = totalExercises > 0 ? (completedExercises / totalExercises) * 100 : 0;
-  const currentSeriesCount = toNumericMetric(currentExercise?.series, 1);
+  const currentExtraSeriesCount = currentExercise
+    ? extraSeriesByExercise[currentExercise.exerciseId] || 0
+    : 0;
+  const prescribedSeriesCount = Math.max(
+    1,
+    Math.floor(toNumericMetric(currentExercise?.series, 1))
+  );
+  const currentSeriesCount = prescribedSeriesCount + currentExtraSeriesCount;
   const currentRepsLabel = formatMetricText(currentExercise?.repeticoes);
   const currentSeriesLabel = formatMetricText(currentExercise?.series);
+  const currentDisplayedSeriesLabel =
+    currentExtraSeriesCount > 0 ? String(currentSeriesCount) : currentSeriesLabel;
   const currentWeightKg = resolveExerciseWeight(currentExercise);
   const currentCargaLabel = currentExercise ? formatWeightKg(currentWeightKg) : '';
+  const currentExerciseMediaUri = getExerciseMediaUri(currentExercise);
+  const currentExerciseMediaIsGifOnly = isGifOnlyExerciseMedia(currentExercise);
+  const previewExerciseMediaUri = getExerciseMediaUri(previewExercise);
+  const previewExerciseMediaIsGifOnly = isGifOnlyExerciseMedia(previewExercise);
+  const previewExerciseIndex = previewExercise
+    ? workout?.exercises.findIndex((exercise) => exercise.exerciseId === previewExercise.exerciseId) ?? -1
+    : -1;
+  const previewSeriesLabel = formatMetricText(previewExercise?.series) || '-';
+  const previewRepsLabel = formatMetricText(previewExercise?.repeticoes) || '-';
+  const previewCargaLabel = formatPreviewMetricWithSuffix(previewExercise?.carga, 'kg');
+  const previewIntervalLabel = formatPreviewMetricWithSuffix(previewExercise?.intervalo, 's');
+  const previewObservation = previewExercise?.observacao?.trim() || '';
+  const previewExtraFields = (previewExercise?.extraFields || []).filter(
+    (field) => formatMetricText(field.value).trim().length > 0
+  );
   const currentIntervalLabel = formatMetricText(currentExercise?.intervalo);
   const currentIntervalSeconds = toNumericMetric(
     currentExercise?.intervalo,
@@ -379,6 +463,36 @@ export default function StartWorkoutScreen() {
   const completedSetCount = Array.from(exerciseProgress.values()).reduce(
     (total, progressItem) => total + progressItem.sets.length,
     0
+  );
+  const buildSessionSnapshot = useCallback(
+    (progressMap: Map<string, ExerciseProgress>) => {
+      const skippedExerciseIds = Array.from(progressMap.values())
+        .filter((item) => item.skipped)
+        .map((item) => item.exerciseId);
+      const completedExercisesCount = countCompletedExercises(progressMap);
+      const skippedExercisesCount = skippedExerciseIds.length;
+      const allExercisesCompleted =
+        totalExercises > 0 && completedExercisesCount === totalExercises && skippedExercisesCount === 0;
+      const allExercisesSkipped = totalExercises > 0 && skippedExercisesCount === totalExercises;
+
+      const sessionStatus = allExercisesCompleted
+        ? 'completed'
+        : allExercisesSkipped
+        ? 'not_completed'
+        : skippedExercisesCount > 0
+        ? 'partial'
+        : completedExercisesCount > 0
+        ? 'completed'
+        : 'not_completed';
+
+      return {
+        completedExercisesCount,
+        skippedExerciseIds,
+        skippedExercisesCount,
+        sessionStatus,
+      } as const;
+    },
+    [countCompletedExercises, totalExercises]
   );
   const totalCargaKg = Array.from(exerciseProgress.values()).reduce((total, progressItem) => {
     const setCarga = progressItem.sets.reduce(
@@ -390,14 +504,19 @@ export default function StartWorkoutScreen() {
   const partyScore = computeWorkoutPartyScore(elapsedSeconds, totalCargaKg, completedSetCount);
   const currentExerciseDetails = (() => {
     const parts: string[] = [];
-    if (currentSeriesLabel && currentRepsLabel) {
-      parts.push(`${currentSeriesLabel} series x ${currentRepsLabel} reps`);
-    } else if (currentSeriesLabel) {
-      parts.push(currentSeriesLabel);
+    if (currentDisplayedSeriesLabel && currentRepsLabel) {
+      parts.push(`${currentDisplayedSeriesLabel} series x ${currentRepsLabel} reps`);
+    } else if (currentDisplayedSeriesLabel) {
+      parts.push(currentDisplayedSeriesLabel);
     } else if (currentRepsLabel) {
       parts.push(currentRepsLabel);
     }
     if (currentCargaLabel) parts.push(currentCargaLabel);
+    (currentExercise?.extraFields || []).forEach((field) => {
+      const valueLabel = formatMetricText(field.value);
+      if (!valueLabel) return;
+      parts.push(field.unit ? `${field.label} ${valueLabel}${field.unit}` : `${field.label} ${valueLabel}`);
+    });
     return parts.join(' - ');
   })();
 
@@ -576,9 +695,16 @@ export default function StartWorkoutScreen() {
     }, PARTY_SYNC_INTERVAL_MS);
 
     return () => {
-      clearPartyPresence();
     };
   }, [clearPartyPresence, role, syncPartyPresenceNow, user?.uid, workout]);
+
+  const handleAddExtraSeries = useCallback(() => {
+    if (!currentExercise) return;
+    setExtraSeriesByExercise((prev) => ({
+      ...prev,
+      [currentExercise.exerciseId]: (prev[currentExercise.exerciseId] || 0) + 1,
+    }));
+  }, [currentExercise]);
 
   const handleCompleteSet = useCallback(() => {
     if (!currentExercise) return;
@@ -586,7 +712,7 @@ export default function StartWorkoutScreen() {
     const exerciseId = currentExercise.exerciseId;
     const repsValue = toNumericMetric(currentExercise.repeticoes, 0);
     const weightValue = resolveExerciseWeight(currentExercise);
-    const totalSets = toNumericMetric(currentExercise.series, 1);
+    const totalSets = currentSeriesCount;
     const intervalLabel = formatMetricText(currentExercise.intervalo);
     const restSeconds = toNumericMetric(
       currentExercise.intervalo,
@@ -607,23 +733,21 @@ export default function StartWorkoutScreen() {
 
     const updatedSets = [...currentProgress.sets, newSet];
     const isExerciseComplete = updatedSets.length >= totalSets;
-
-    setExerciseProgress((prev) => {
-      const updated = new Map(prev);
-      updated.set(exerciseId, {
-        ...currentProgress,
-        sets: updatedSets,
-        completed: isExerciseComplete,
-      });
-      return updated;
+    const updatedProgressMap = new Map(exerciseProgress);
+    updatedProgressMap.set(exerciseId, {
+      ...currentProgress,
+      sets: updatedSets,
+      completed: isExerciseComplete,
+      skipped: false,
     });
+    setExerciseProgress(updatedProgressMap);
     void syncPartyPresenceNow();
 
     if (isExerciseComplete) {
       if (currentExerciseIndex < totalExercises - 1) {
         setShowRestTimer(true);
       } else {
-        handleFinishWorkout();
+        handleFinishWorkout(updatedProgressMap);
       }
     } else {
       setCurrentSetIndex((prev) => prev + 1);
@@ -635,6 +759,7 @@ export default function StartWorkoutScreen() {
     currentExercise,
     currentExerciseIndex,
     currentSetIndex,
+    currentSeriesCount,
     exerciseProgress,
     resolveExerciseWeight,
     syncPartyPresenceNow,
@@ -652,11 +777,27 @@ export default function StartWorkoutScreen() {
   };
 
   const handleSkipExercise = () => {
+    if (!currentExercise) return;
+    const exerciseId = currentExercise.exerciseId;
+    const currentProgress = exerciseProgress.get(exerciseId) || {
+      exerciseId,
+      sets: [],
+      completed: false,
+    };
+    const updatedProgressMap = new Map(exerciseProgress);
+    updatedProgressMap.set(exerciseId, {
+      ...currentProgress,
+      completed: false,
+      skipped: true,
+    });
+    setExerciseProgress(updatedProgressMap);
+    void syncPartyPresenceNow();
+
     if (currentExerciseIndex < totalExercises - 1) {
       setCurrentExerciseIndex((prev) => prev + 1);
       setCurrentSetIndex(0);
     } else {
-      handleFinishWorkout();
+      handleFinishWorkout(updatedProgressMap);
     }
   };
 
@@ -679,33 +820,108 @@ export default function StartWorkoutScreen() {
     void syncPartyPresenceNow();
   };
 
-  const markWorkoutCompleted = useCallback(async () => {
-    if (!workout || !targetUserId) return;
-    await updateUserWorkout(targetUserId, workout.id, {
-      lastCompletedAt: new Date(),
-    });
-  }, [targetUserId, workout]);
+  const buildWorkoutFinishMessage = useCallback(
+    (
+      snapshot: ReturnType<typeof buildSessionSnapshot>,
+      workoutSeconds: number
+    ) => {
+      if (snapshot.sessionStatus === 'completed') {
+        return {
+          title: 'Treino concluido',
+          description: `Parabéns! Você completou ${snapshot.completedExercisesCount} de ${totalExercises} exercícios em ${formatDuration(workoutSeconds)}.`,
+        };
+      }
 
-  const handleFinishWorkout = () => {
-    calculateElapsedSeconds();
-    const shouldCollectFeedback = role === 'aluno' && hasValidPersonalCode(user?.codigoPersonal);
+      if (snapshot.sessionStatus === 'partial') {
+        return {
+          title: 'Treino parcialmente concluido',
+          description: `Você completou ${snapshot.completedExercisesCount} exercícios e pulou ${snapshot.skippedExercisesCount} em ${formatDuration(workoutSeconds)}.`,
+        };
+      }
+
+      return {
+        title: 'Treino incompleto',
+        description:
+          totalExercises > 0
+            ? `Todos os ${totalExercises} exercicios foram pulados. O treino ficou marcado como incompleto.`
+            : 'O treino foi marcado como incompleto.',
+      };
+    },
+    [totalExercises]
+  );
+
+  const persistWorkoutSession = useCallback(
+    async (progressMap: Map<string, ExerciseProgress>) => {
+      const snapshot = buildSessionSnapshot(progressMap);
+      if (!workout || !targetUserId || role !== 'aluno') {
+        return snapshot;
+      }
+
+      const sessionAt = new Date();
+      await updateUserWorkout(targetUserId, workout.id, {
+        lastSessionAt: sessionAt,
+        lastSessionStatus: snapshot.sessionStatus,
+        lastSessionRemainingExercises: snapshot.skippedExercisesCount,
+        lastSessionSkippedExercisesCount: snapshot.skippedExercisesCount,
+        lastSessionSkippedExerciseIds: snapshot.skippedExerciseIds,
+        ...(snapshot.sessionStatus === 'completed' ? { lastCompletedAt: sessionAt } : {}),
+        carga: buildCargaPayloadFromOverrides(exerciseWeightOverrides),
+        exerciseConfigs: workout.exercises.map((exercise) => ({
+          ...exercise,
+          carga: resolveExerciseWeight(exercise),
+        })),
+      });
+      await syncWorkoutNotificationStatus({
+        userId: targetUserId,
+        workoutId: workout.id,
+        sessionStatus: snapshot.sessionStatus,
+      });
+
+      return snapshot;
+    },
+    [
+      buildCargaPayloadFromOverrides,
+      buildSessionSnapshot,
+      exerciseWeightOverrides,
+      resolveExerciseWeight,
+      role,
+      targetUserId,
+      workout,
+    ]
+  );
+
+  const finalizeWorkout = useCallback(
+    async (progressMap: Map<string, ExerciseProgress>, workoutSeconds: number) => {
+      const snapshot = await persistWorkoutSession(progressMap);
+      clearPartyPresence();
+      pendingFinishProgressRef.current = null;
+      pendingFinishSecondsRef.current = 0;
+      const message = buildWorkoutFinishMessage(snapshot, workoutSeconds);
+      showAlert(message.title, message.description, [
+        {
+          text: snapshot.sessionStatus === 'completed' ? 'Ver resumo' : 'Fechar',
+          onPress: () => router.back(),
+        },
+      ]);
+    },
+    [buildWorkoutFinishMessage, clearPartyPresence, persistWorkoutSession]
+  );
+
+  const handleFinishWorkout = (progressMap = exerciseProgress) => {
+    const workoutSeconds = calculateElapsedSeconds();
+    const snapshot = buildSessionSnapshot(progressMap);
+    pendingFinishProgressRef.current = progressMap;
+    pendingFinishSecondsRef.current = workoutSeconds;
+
+    const shouldCollectFeedback =
+      role === 'aluno' &&
+      hasValidPersonalCode(user?.codigoPersonal) &&
+      snapshot.sessionStatus !== 'not_completed';
     if (shouldCollectFeedback) {
       setShowFeedbackModal(true);
       return;
     }
-    markWorkoutCompleted().finally(() => {
-      clearPartyPresence();
-      showAlert(
-        'Finalizar treino',
-        `ParabÃ©ns! VoÃ§Ãª completou ${completedExercises} de ${totalExercises} exercÃ­cios em ${formatDuration(elapsedSeconds)}.`,
-        [
-          {
-            text: 'Ver resumo',
-            onPress: () => router.back(),
-          },
-        ]
-      );
-    });
+    void finalizeWorkout(progressMap, workoutSeconds);
   };
 
   const handleSubmitFeedback = async () => {
@@ -714,7 +930,8 @@ export default function StartWorkoutScreen() {
       showAlert('Feedback', 'Selecione uma nota para concluir.');
       return;
     }
-    const workoutSeconds = calculateElapsedSeconds();
+    const progressMap = pendingFinishProgressRef.current || exerciseProgress;
+    const workoutSeconds = pendingFinishSecondsRef.current || calculateElapsedSeconds();
     const result = await submitWorkoutFeedback({
       userId: user.uid,
       codigoDoPersonal: Number(user.codigoPersonal || 0),
@@ -728,20 +945,16 @@ export default function StartWorkoutScreen() {
       showAlert('Erro', result.error);
       return;
     }
-    await markWorkoutCompleted();
-    clearPartyPresence();
     setShowFeedbackModal(false);
-    showAlert(
-      'Treino concluÃ­do',
-      `ParabÃ©ns! VoÃ§Ãª completou ${completedExercises} de ${totalExercises} exercÃ­cios em ${formatDuration(elapsedSeconds)}.`,
-      [{ text: 'Fechar', onPress: () => router.back() }]
-    );
+    await finalizeWorkout(progressMap, workoutSeconds);
+    pendingFinishProgressRef.current = null;
+    pendingFinishSecondsRef.current = 0;
   };
 
   const handleCancelWorkout = () => {
     showAlert(
       'Cancelar treino',
-      'Tem certeza que deseja cancelar o treino? Seu progresso serÃ¡ perdido.',
+      'Tem certeza que deseja cancelar o treino? Seu progresso será perdido.',
       [
         { text: 'Continuar', style: 'cancel' },
         {
@@ -836,7 +1049,7 @@ export default function StartWorkoutScreen() {
             <View>
               <Text style={[styles.partyAnchorTitle, { color: colors.primaryText }]}>Disputa ao vivo</Text>
               <Text style={[styles.partyAnchorSubtitle, { color: colors.secondaryText }]}>
-                Ranking perto de voce
+                Ranking perto de você
               </Text>
             </View>
             <TouchableOpacity onPress={() => setShowPartyRankingModal(false)} style={styles.headerButton}>
@@ -886,10 +1099,10 @@ export default function StartWorkoutScreen() {
                   </View>
                   <View style={styles.partyPlayerInfo}>
                     <Text style={[styles.partyPlayerName, { color: colors.primaryText }]}>
-                      {item.userName} {isMe ? '(voce)' : ''}
+                      {item.userName} {isMe ? '(você)' : ''}
                     </Text>
                     <Text style={[styles.partyPlayerMeta, { color: colors.secondaryText }]}>
-                      {formatDuration(item.elapsedSeconds)} Â· {formatWeightKg(item.totalCargaKg)} Â· {item.completedSets} series
+                      {formatDuration(item.elapsedSeconds)} · {formatWeightKg(item.totalCargaKg)} · {item.completedSets} séries
                     </Text>
                   </View>
                   <View>
@@ -902,9 +1115,18 @@ export default function StartWorkoutScreen() {
         </View>
       ) : null}
 
-      {currentExercise?.videoUrl ? (
-        <View style={[styles.videoCard, { backgroundColor: colors.card }]}>
-          <ExerciseVideo uri={currentExercise.videoUrl} />
+      {currentExerciseMediaUri ? (
+        <View style={styles.videoCard}>
+          {currentExerciseMediaIsGifOnly ? (
+            <Image source={{ uri: currentExerciseMediaUri }} style={styles.videoImage} resizeMode="contain" />
+          ) : (
+            <ExerciseMedia
+              uri={currentExerciseMediaUri}
+              height={220}
+              borderRadius={borderRadius.xl}
+              contentFit="contain"
+            />
+          )}
         </View>
       ) : null}
 
@@ -992,7 +1214,23 @@ export default function StartWorkoutScreen() {
             </View>
 
             <View style={styles.setsContainer}>
-              <Text style={[styles.setsTitle, { color: colors.secondaryText }]}>SÃ©ries</Text>
+              <View style={styles.setsHeader}>
+                <View>
+                  <Text style={[styles.setsTitle, { color: colors.secondaryText }]}>Séries</Text>
+                  {currentExtraSeriesCount > 0 ? (
+                    <Text style={[styles.extraSeriesText, { color: colors.primary }]}>
+                      +{currentExtraSeriesCount} extra{currentExtraSeriesCount > 1 ? 's' : ''} - {currentSeriesCount} totais
+                    </Text>
+                  ) : null}
+                </View>
+                <TouchableOpacity
+                  style={[styles.addSeriesButton, { borderColor: colors.border, backgroundColor: colors.surface }]}
+                  onPress={handleAddExtraSeries}
+                >
+                  <Ionicons name="add" size={16} color={colors.primary} />
+                  <Text style={[styles.addSeriesText, { color: colors.primary }]}>Série</Text>
+                </TouchableOpacity>
+              </View>
               <View style={styles.setsGrid}>
                 {Array.from({ length: currentSeriesCount }).map((_, index) => {
                   const progressItem = exerciseProgress.get(currentExercise.exerciseId);
@@ -1029,7 +1267,7 @@ export default function StartWorkoutScreen() {
 
             <View style={styles.actionButtons}>
               <Button
-                title="Completar sÃ©rie"
+                title="Completar série"
                 onPress={handleCompleteSet}
                 fullWidth
                 size="large"
@@ -1047,7 +1285,7 @@ export default function StartWorkoutScreen() {
                 onPress={handleSkipExercise}
               >
                 <Text style={[styles.skipButtonText, { color: colors.secondaryText }]}>
-                  Pular exercÃ­cio
+                  Pular exercício
                 </Text>
               </TouchableOpacity>
             </View>
@@ -1056,17 +1294,22 @@ export default function StartWorkoutScreen() {
 
         <View style={styles.upcomingSection}>
           <Text style={[styles.upcomingTitle, { color: colors.primaryText }]}>
-            PrÃ³ximos exercÃ­cios
+            Todos os exercicios
           </Text>
-          {workout.exercises.slice(currentExerciseIndex + 1).map((exercise, index) => {
-            const actualIndex = currentExerciseIndex + 1 + index;
+          {workout.exercises.map((exercise, index) => {
             const progressItem = exerciseProgress.get(exercise.exerciseId);
+            const mediaUri = getExerciseMediaUri(exercise);
+            const openPreview = () => setPreviewExercise(exercise);
             return (
               <ExerciseCard
                 key={exercise.exerciseId}
                 exercise={exercise}
-                index={actualIndex}
+                index={index}
                 isCompleted={progressItem?.completed}
+                isSkipped={progressItem?.skipped}
+                isActive={index === currentExerciseIndex}
+                onPress={openPreview}
+                onVideoPress={mediaUri ? openPreview : undefined}
               />
             );
           })}
@@ -1074,12 +1317,133 @@ export default function StartWorkoutScreen() {
             <View style={[styles.lastExercise, { backgroundColor: colors.surface }]}>
               <Ionicons name="flag" size={32} color={colors.success} />
               <Text style={[styles.lastExerciseText, { color: colors.secondaryText }]}>
-                Este ? o Ãšltimo exercÃ­cio!
+                Este e o ultimo exercicio!
               </Text>
             </View>
           )}
         </View>
       </ScrollView>
+
+      <Modal
+        visible={!!previewExercise}
+        animationType="fade"
+        transparent
+        onRequestClose={() => setPreviewExercise(null)}
+      >
+        <View style={styles.previewOverlay}>
+          <View style={[styles.previewCard, { backgroundColor: colors.secondaryBackground }]}>
+            <View style={styles.previewHeader}>
+              <View style={styles.previewTitleWrap}>
+                <Text style={[styles.previewKicker, { color: colors.primary }]}>
+                  {previewExerciseIndex >= 0 ? `Exercicio ${previewExerciseIndex + 1} de ${totalExercises}` : 'Exercicio'}
+                </Text>
+                <Text style={[styles.previewTitle, { color: colors.primaryText }]} numberOfLines={2}>
+                  {previewExercise?.nome}
+                </Text>
+              </View>
+              <TouchableOpacity
+                style={[styles.previewCloseButton, { backgroundColor: colors.surface }]}
+                onPress={() => setPreviewExercise(null)}
+              >
+                <Ionicons name="close" size={20} color={colors.primaryText} />
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView
+              style={styles.previewBody}
+              contentContainerStyle={styles.previewBodyContent}
+              showsVerticalScrollIndicator={false}
+            >
+              {previewExerciseMediaUri ? (
+                previewExerciseMediaIsGifOnly ? (
+                  <View style={[styles.previewMediaSurface, { backgroundColor: colors.primaryBackground }]}>
+                    <Image
+                      source={{ uri: previewExerciseMediaUri }}
+                      style={styles.previewImage}
+                      resizeMode="contain"
+                    />
+                  </View>
+                ) : (
+                  <ExerciseMedia
+                    uri={previewExerciseMediaUri}
+                    height={300}
+                    borderRadius={borderRadius.lg}
+                    contentFit="contain"
+                  />
+                )
+              ) : (
+                <View style={[styles.previewEmptyMedia, { backgroundColor: colors.surface }]}>
+                  <Ionicons name="reader-outline" size={28} color={colors.primary} />
+                  <Text style={[styles.previewEmptyMediaText, { color: colors.secondaryText }]}>
+                    Sem video cadastrado
+                  </Text>
+                </View>
+              )}
+
+              <View style={styles.previewMetricsGrid}>
+                <View style={[styles.previewMetricItem, { backgroundColor: colors.surface }]}>
+                  <Ionicons name="repeat-outline" size={18} color={colors.primary} />
+                  <Text style={[styles.previewMetricLabel, { color: colors.secondaryText }]}>Series</Text>
+                  <Text style={[styles.previewMetricValue, { color: colors.primaryText }]}>{previewSeriesLabel}</Text>
+                </View>
+                <View style={[styles.previewMetricItem, { backgroundColor: colors.surface }]}>
+                  <Ionicons name="fitness-outline" size={18} color={colors.primary} />
+                  <Text style={[styles.previewMetricLabel, { color: colors.secondaryText }]}>Reps</Text>
+                  <Text style={[styles.previewMetricValue, { color: colors.primaryText }]}>{previewRepsLabel}</Text>
+                </View>
+                <View style={[styles.previewMetricItem, { backgroundColor: colors.surface }]}>
+                  <Ionicons name="barbell-outline" size={18} color={colors.primary} />
+                  <Text style={[styles.previewMetricLabel, { color: colors.secondaryText }]}>Carga</Text>
+                  <Text style={[styles.previewMetricValue, { color: colors.primaryText }]}>{previewCargaLabel}</Text>
+                </View>
+                <View style={[styles.previewMetricItem, { backgroundColor: colors.surface }]}>
+                  <Ionicons name="time-outline" size={18} color={colors.primary} />
+                  <Text style={[styles.previewMetricLabel, { color: colors.secondaryText }]}>Intervalo</Text>
+                  <Text style={[styles.previewMetricValue, { color: colors.primaryText }]}>{previewIntervalLabel}</Text>
+                </View>
+              </View>
+
+              {previewExtraFields.length > 0 && (
+                <View style={styles.previewExtraFields}>
+                  {previewExtraFields.map((field) => {
+                    const valueLabel = formatMetricText(field.value);
+                    const fieldValue = field.unit ? `${valueLabel}${field.unit}` : valueLabel;
+                    return (
+                      <View
+                        key={`${previewExercise?.exerciseId}-${field.key}`}
+                        style={[styles.previewExtraFieldChip, { backgroundColor: colors.surface }]}
+                      >
+                        <Text style={[styles.previewExtraFieldLabel, { color: colors.secondaryText }]}>
+                          {field.label}
+                        </Text>
+                        <Text style={[styles.previewExtraFieldValue, { color: colors.primaryText }]}>
+                          {fieldValue}
+                        </Text>
+                      </View>
+                    );
+                  })}
+                </View>
+              )}
+
+              {previewObservation ? (
+                <View style={[styles.previewNote, { backgroundColor: colors.surface }]}>
+                  <Text style={[styles.previewNoteLabel, { color: colors.secondaryText }]}>Observacao</Text>
+                  <Text style={[styles.previewNoteText, { color: colors.primaryText }]}>
+                    {previewObservation}
+                  </Text>
+                </View>
+              ) : null}
+            </ScrollView>
+
+            <TouchableOpacity
+              style={[styles.previewDoneButton, { borderColor: colors.border }]}
+              onPress={() => setPreviewExercise(null)}
+            >
+              <Text style={[styles.previewDoneText, { color: colors.secondaryText }]}>Fechar</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
 
       <Modal visible={showFeedbackModal} animationType="fade" transparent>
         <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
@@ -1092,7 +1456,7 @@ export default function StartWorkoutScreen() {
                 Como foi o treino?
               </Text>
               <Text style={[styles.feedbackSubtitle, { color: colors.secondaryText }]}>
-                Sua avaliaÃ§Ã£o ajuda seu personal.
+                Sua avaliação ajuda seu personal.
               </Text>
               <View style={styles.starsRow}>
                 {Array.from({ length: 5 }).map((_, index) => (
@@ -1117,11 +1481,11 @@ export default function StartWorkoutScreen() {
                 <TouchableOpacity
                   style={[styles.feedbackButton, { borderColor: colors.border }]}
                   onPress={() => {
-                    markWorkoutCompleted().finally(() => {
-                      clearPartyPresence();
-                      setShowFeedbackModal(false);
-                      router.back();
-                    });
+                    const progressMap = pendingFinishProgressRef.current || exerciseProgress;
+                    const workoutSeconds =
+                      pendingFinishSecondsRef.current || calculateElapsedSeconds();
+                    setShowFeedbackModal(false);
+                    void finalizeWorkout(progressMap, workoutSeconds);
                   }}
                 >
                   <Text style={[styles.feedbackButtonText, { color: colors.secondaryText }]}>
@@ -1152,7 +1516,7 @@ export default function StartWorkoutScreen() {
           <View style={styles.restModalContent}>
             <Text style={[styles.restTitle, { color: colors.primaryText }]}>Tempo de descanso</Text>
             <Text style={[styles.restSubtitle, { color: colors.secondaryText }]}>
-              Prepare-se para a prÃ³xima sÃ©rie
+              Prepare-se para a próxima série
             </Text>
 
             <View style={styles.timerContainer}>
@@ -1316,19 +1680,145 @@ const styles = StyleSheet.create({
     paddingBottom: spacing['2xl'],
   },
   videoCard: {
-    borderRadius: borderRadius.xl,
-    overflow: 'hidden',
     marginBottom: spacing.lg,
   },
-  videoSurface: {
+  videoImage: {
     width: '100%',
     height: 220,
+    borderRadius: borderRadius.xl,
     backgroundColor: '#000',
   },
-  video: {
+  previewOverlay: {
+    flex: 1,
+    justifyContent: 'center',
+    padding: spacing.lg,
+    backgroundColor: 'rgba(0, 0, 0, 0.58)',
+  },
+  previewCard: {
+    borderRadius: borderRadius.xl,
+    padding: spacing.md,
+    gap: spacing.md,
+    maxHeight: '88%',
+  },
+  previewHeader: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    gap: spacing.md,
+  },
+  previewTitleWrap: {
+    flex: 1,
+  },
+  previewKicker: {
+    fontSize: 12,
+    fontWeight: '700',
+    marginBottom: 2,
+  },
+  previewTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    lineHeight: 24,
+  },
+  previewCloseButton: {
+    width: 40,
+    height: 40,
+    borderRadius: borderRadius.full,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  previewMediaSurface: {
+    height: 300,
+    width: '100%',
+    borderRadius: borderRadius.lg,
+    overflow: 'hidden',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  previewImage: {
     width: '100%',
     height: '100%',
-    backgroundColor: '#000',
+  },
+  previewBody: {
+    maxHeight: 520,
+  },
+  previewBodyContent: {
+    gap: spacing.md,
+    paddingBottom: spacing.xs,
+  },
+  previewEmptyMedia: {
+    minHeight: 110,
+    borderRadius: borderRadius.lg,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing.xs,
+  },
+  previewEmptyMediaText: {
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  previewMetricsGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing.sm,
+  },
+  previewMetricItem: {
+    flexGrow: 1,
+    flexBasis: '46%',
+    minHeight: 82,
+    borderRadius: borderRadius.lg,
+    padding: spacing.md,
+    justifyContent: 'space-between',
+  },
+  previewMetricLabel: {
+    fontSize: 12,
+    marginTop: spacing.xs,
+  },
+  previewMetricValue: {
+    fontSize: 16,
+    fontWeight: '800',
+  },
+  previewExtraFields: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing.sm,
+  },
+  previewExtraFieldChip: {
+    borderRadius: borderRadius.lg,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    minWidth: '46%',
+    flexGrow: 1,
+  },
+  previewExtraFieldLabel: {
+    fontSize: 11,
+    marginBottom: 2,
+  },
+  previewExtraFieldValue: {
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  previewNote: {
+    borderRadius: borderRadius.lg,
+    padding: spacing.md,
+  },
+  previewNoteLabel: {
+    fontSize: 12,
+    marginBottom: spacing.xs,
+    fontWeight: '600',
+  },
+  previewNoteText: {
+    fontSize: 14,
+    lineHeight: 20,
+  },
+  previewDoneButton: {
+    borderWidth: 1,
+    borderRadius: borderRadius.lg,
+    alignItems: 'center',
+    paddingVertical: spacing.md,
+  },
+  previewDoneText: {
+    fontSize: 14,
+    fontWeight: '600',
   },
   loadingContainer: {
     flex: 1,
@@ -1440,9 +1930,33 @@ const styles = StyleSheet.create({
   setsContainer: {
     marginBottom: spacing.lg,
   },
+  setsHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: spacing.sm,
+    marginBottom: spacing.sm,
+  },
   setsTitle: {
     fontSize: 12,
-    marginBottom: spacing.sm,
+    fontWeight: '600',
+  },
+  extraSeriesText: {
+    fontSize: 11,
+    marginTop: 2,
+  },
+  addSeriesButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderRadius: borderRadius.full,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.xs,
+    gap: spacing.xs,
+  },
+  addSeriesText: {
+    fontSize: 12,
+    fontWeight: '700',
   },
   setsGrid: {
     flexDirection: 'row',
@@ -1684,17 +2198,3 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
 });
-
-function ExerciseVideo({ uri }: { uri: string }) {
-  const player = useVideoPlayer({ uri, useCaching: true }, (player) => {
-    player.loop = true;
-    player.muted = true;
-    player.play();
-  });
-
-  return (
-    <View style={styles.videoSurface}>
-      <VideoView style={styles.video} player={player} contentFit="contain" />
-    </View>
-  );
-}

@@ -35,6 +35,8 @@ export interface User {
   subscribeId?: string;
   stripeAtivo?: boolean;
   stripeAccountId?: string;
+  stripePriceId?: string;
+  stripeSubscriptionStatus?: string;
   bio?: string;
   cref?: string;
   instagram?: string;

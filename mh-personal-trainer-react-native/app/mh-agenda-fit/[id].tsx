@@ -20,7 +20,11 @@ import { firestoreService, PersonalProfile } from '../../src/services/firestoreS
 import { Button } from '../../src/components/common';
 import { createAppointment, getAvailableSlots } from '../../src/services/scheduling';
 import { createPaymentForUser, fetchPaymentsForUser, updatePaymentForUser } from '../../src/services/financeiro';
-import { createStripeCheckoutSession, fetchStripeConnectStatus, formatCurrency } from '../../src/services/payments';
+import {
+  createStripeCheckoutSession,
+  fetchStripeConnectStatus,
+  formatCurrency,
+} from '../../src/services/payments';
 import { spacing, borderRadius } from '../../src/theme';
 import { TimeSlot } from '../../src/types/scheduling';
 import { PaymentRecord } from '../../src/types/finance';
@@ -78,8 +82,91 @@ const toSlotDate = (baseDate: Date, slot: TimeSlot) => {
   return value;
 };
 
+const normalizeText = (value?: string | null) =>
+  String(value || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .trim()
+    .toLowerCase();
+
+const getRouteParam = (value?: string | string[]) =>
+  Array.isArray(value) ? String(value[0] || '') : String(value || '');
+
+const toDateParam = (value: Date) =>
+  [
+    value.getFullYear(),
+    String(value.getMonth() + 1).padStart(2, '0'),
+    String(value.getDate()).padStart(2, '0'),
+  ].join('-');
+
+const parseDateParam = (value?: string | null) => {
+  const raw = String(value || '').trim();
+  if (!raw) return null;
+  const parsed = new Date(`${raw}T00:00:00`);
+  if (Number.isNaN(parsed.getTime())) return null;
+  return startOfDay(parsed);
+};
+
+const buildBookingKey = (
+  personalId?: string,
+  date?: Date,
+  slotStart?: string,
+  serviceName?: string
+) => {
+  if (!personalId || !date || !slotStart || !serviceName) return '';
+  return `agf:${personalId}:${toDateParam(date)}:${slotStart}:${serviceName}`;
+};
+
+const buildMhAgendaFitPaymentDescription = (serviceName: string, bookingKey: string) =>
+  `MH Agenda Fit - ${serviceName} (${bookingKey})`;
+
+const buildMhAgendaFitReturnPath = (
+  personalId: string,
+  date: Date,
+  slotStart: string,
+  serviceName: string,
+  paymentId?: string
+) => {
+  const searchParams = new URLSearchParams({
+    date: toDateParam(date),
+    slot: slotStart,
+    service: serviceName,
+  });
+  if (paymentId) {
+    searchParams.set('paymentId', paymentId);
+  }
+  return `/mh-agenda-fit/${personalId}?${searchParams.toString()}`;
+};
+
+const isSameBookingPayment = (payment: PaymentRecord, bookingKey: string) =>
+  Boolean(bookingKey) && String(payment.descricao || '').includes(`(${bookingKey})`);
+
+const getPaymentCreatedAt = (payment: PaymentRecord) => {
+  const firstDate = payment.datas?.[0];
+  if (firstDate instanceof Date && !Number.isNaN(firstDate.getTime())) {
+    return firstDate.getTime();
+  }
+  return 0;
+};
+
+const selectLatestPaymentForBooking = (payments: PaymentRecord[], bookingKey: string) =>
+  payments
+    .filter((payment) => isSameBookingPayment(payment, bookingKey))
+    .sort((left, right) => getPaymentCreatedAt(right) - getPaymentCreatedAt(left))[0] || null;
+
 export default function MHAgendaFitDetailsScreen() {
-  const { id } = useLocalSearchParams<{ id: string }>();
+  const params = useLocalSearchParams<{
+    id?: string | string[];
+    date?: string | string[];
+    slot?: string | string[];
+    service?: string | string[];
+    paymentId?: string | string[];
+  }>();
+  const id = getRouteParam(params.id);
+  const routeDateParam = getRouteParam(params.date);
+  const routeSlotParam = getRouteParam(params.slot);
+  const routeServiceParam = getRouteParam(params.service);
+  const routePaymentId = getRouteParam(params.paymentId);
   const { colors } = useTheme();
   const { user } = useAuthStore();
   const [personal, setPersonal] = useState<PersonalProfile | null>(null);
@@ -178,19 +265,43 @@ export default function MHAgendaFitDetailsScreen() {
   const personalNet = Math.max(servicePrice - platformFee, 0);
 
   const bookingKey = useMemo(() => {
-    if (!personal?.uid || !selectedService?.servicos || !selectedSlot?.inicio) return '';
-    const dateKey = [
-      selectedDate.getFullYear(),
-      String(selectedDate.getMonth() + 1).padStart(2, '0'),
-      String(selectedDate.getDate()).padStart(2, '0'),
-    ].join('-');
-    return `agf:${personal.uid}:${dateKey}:${selectedSlot.inicio}:${selectedService.servicos}`;
+    return buildBookingKey(personal?.uid, selectedDate, selectedSlot?.inicio, selectedService?.servicos);
   }, [personal?.uid, selectedDate, selectedService?.servicos, selectedSlot?.inicio]);
 
   useEffect(() => {
     setPendingPaymentId(null);
     setPendingCheckoutUrl('');
   }, [bookingKey]);
+
+  useEffect(() => {
+    if (!routePaymentId) return;
+    setPendingPaymentId(routePaymentId);
+  }, [routePaymentId]);
+
+  useEffect(() => {
+    const parsedDate = parseDateParam(routeDateParam);
+    if (!parsedDate) return;
+    if (!isSameDay(parsedDate, selectedDate)) {
+      setSelectedDate(parsedDate);
+    }
+    if (
+      parsedDate.getFullYear() !== currentMonth.getFullYear() ||
+      parsedDate.getMonth() !== currentMonth.getMonth()
+    ) {
+      setCurrentMonth(new Date(parsedDate.getFullYear(), parsedDate.getMonth(), 1));
+    }
+  }, [currentMonth, routeDateParam, selectedDate]);
+
+  useEffect(() => {
+    if (!routeServiceParam || services.length === 0) return;
+    const normalizedRouteService = normalizeText(routeServiceParam);
+    const matchedIndex = services.findIndex(
+      (service) => normalizeText(service.servicos) === normalizedRouteService
+    );
+    if (matchedIndex >= 0 && matchedIndex !== selectedServiceIndex) {
+      setSelectedServiceIndex(matchedIndex);
+    }
+  }, [routeServiceParam, selectedServiceIndex, services]);
 
   const slotItems = useMemo(() => {
     const now = new Date();
@@ -207,6 +318,48 @@ export default function MHAgendaFitDetailsScreen() {
       };
     });
   }, [slots, selectedDate]);
+
+  useEffect(() => {
+    if (!routeSlotParam || slotItems.length === 0) return;
+    const matchedSlot = slotItems.find((slot) => slot.inicio === routeSlotParam);
+    if (matchedSlot && matchedSlot.inicio !== selectedSlot?.inicio) {
+      setSelectedSlot(matchedSlot);
+    }
+  }, [routeSlotParam, selectedSlot?.inicio, slotItems]);
+
+  useEffect(() => {
+    let active = true;
+
+    const restorePendingPayment = async () => {
+      if (!user?.uid) return;
+      if (!routePaymentId && !bookingKey) return;
+
+      const paymentResult = await fetchPaymentsForUser(user.uid);
+      if (!active || !paymentResult.data) return;
+
+      const paymentById = routePaymentId
+        ? paymentResult.data.find((item) => item.id === routePaymentId) || null
+        : null;
+      const paymentByBooking = bookingKey
+        ? selectLatestPaymentForBooking(paymentResult.data, bookingKey)
+        : null;
+      const matchedPayment =
+        paymentById && (!bookingKey || isSameBookingPayment(paymentById, bookingKey))
+          ? paymentById
+          : paymentByBooking;
+
+      if (!matchedPayment) return;
+
+      setPendingPaymentId(matchedPayment.id);
+      setPendingCheckoutUrl(String(matchedPayment.checkoutUrl || ''));
+    };
+
+    void restorePendingPayment();
+
+    return () => {
+      active = false;
+    };
+  }, [bookingKey, routePaymentId, user?.uid]);
 
   const availableSlotCount = slotItems.filter((slot) => slot.disponivel).length;
   const summaryDate = selectedDate.toLocaleDateString('pt-BR', {
@@ -230,7 +383,7 @@ export default function MHAgendaFitDetailsScreen() {
     );
     if (!stillAvailable) {
       setSelectedSlot(null);
-      showAlert('Horario indisponivel', 'Esse horario acabou de ser ocupado. Escolha outro.');
+      showAlert('Horário indisponível', 'Esse horário acabou de ser ocupado. Escolha outro.');
       return false;
     }
     return true;
@@ -240,21 +393,21 @@ export default function MHAgendaFitDetailsScreen() {
     try {
       await Linking.openURL(url);
     } catch {
-      showAlert('Erro', 'Nao foi possivel abrir o pagamento agora.');
+      showAlert('Erro', 'Não foi possível abrir o pagamento agora.');
     }
   };
 
   const handlePayAndUnlock = async () => {
     if (!user?.uid || !personal || !selectedSlot || !selectedService) {
-      showAlert('Atencao', 'Selecione servico, data e horario.');
+      showAlert('Atenção', 'Selecione serviço, data e horário.');
       return;
     }
     if (servicePrice <= 0) {
-      showAlert('Valor invalido', 'Este servico nao possui valor para pagamento.');
+      showAlert('Valor inválido', 'Este serviço não possui valor para pagamento.');
       return;
     }
     if (!personal.stripeAccountId || !personal.stripeAtivo) {
-      showAlert('Indisponivel', 'Este personal nao esta recebendo pagamentos no momento.');
+      showAlert('Indisponível', 'Este personal não está recebendo pagamentos no momento.');
       return;
     }
 
@@ -263,7 +416,89 @@ export default function MHAgendaFitDetailsScreen() {
 
     setProcessingPayment(true);
     try {
-      const paymentDescription = `MH Agenda Fit - ${selectedService.servicos} (${bookingKey})`;
+      const amountInCents = Math.round(servicePrice * 100);
+      const feeInCents = Math.round(amountInCents * PLATFORM_FEE_RATE);
+      const returnPathForPayment = (paymentId: string) =>
+        buildMhAgendaFitReturnPath(
+          personal.uid,
+          selectedDate,
+          selectedSlot.inicio,
+          selectedService.servicos,
+          paymentId
+        );
+      const attachCheckoutToPayment = async (
+        paymentId: string,
+        existingCheckoutUrl?: string
+      ) => {
+        let checkoutUrl = existingCheckoutUrl;
+
+        if (!checkoutUrl) {
+          const checkoutResult = await createStripeCheckoutSession({
+            amount: amountInCents,
+            currency: 'brl',
+            studentId: user.uid,
+            personalId: personal.uid,
+            paymentId,
+            destinationAccountId: personal.stripeAccountId,
+            applicationFeeAmount: feeInCents,
+            description: `Agendamento ${selectedService.servicos}`,
+            returnPath: returnPathForPayment(paymentId),
+          });
+
+          if (checkoutResult.error) {
+            showAlert('Stripe', checkoutResult.error);
+            return false;
+          }
+          if (!checkoutResult.data?.checkoutUrl) {
+            showAlert('Stripe', 'O backend nao retornou a URL do checkout.');
+            return false;
+          }
+
+          checkoutUrl = checkoutResult.data.checkoutUrl;
+          await updatePaymentForUser(user.uid, paymentId, {
+            checkoutUrl,
+            stripeSessionId: checkoutResult.data.sessionId,
+            stripePaymentIntentId: checkoutResult.data.paymentIntentId,
+            stripeStatus: checkoutResult.data.status,
+          });
+        }
+
+        setPendingPaymentId(paymentId);
+        setPendingCheckoutUrl(checkoutUrl);
+        await openPaymentLink(checkoutUrl);
+        return true;
+      };
+
+      const paymentResult = await fetchPaymentsForUser(user.uid);
+      const existingPayment = paymentResult.data
+        ? selectLatestPaymentForBooking(paymentResult.data, bookingKey)
+        : null;
+
+      if (existingPayment) {
+        setPendingPaymentId(existingPayment.id);
+        setPendingCheckoutUrl(String(existingPayment.checkoutUrl || ''));
+
+        if (isPaymentPaid(existingPayment)) {
+          showAlert(
+            'Pagamento encontrado',
+            'Já existe um pagamento aprovado para este agendamento. Valide para confirmar o horário.'
+          );
+          return;
+        }
+
+        if (existingPayment.checkoutUrl) {
+          await attachCheckoutToPayment(existingPayment.id, existingPayment.checkoutUrl);
+          return;
+        }
+
+        await attachCheckoutToPayment(existingPayment.id);
+        return;
+      }
+
+      const paymentDescription = buildMhAgendaFitPaymentDescription(
+        selectedService.servicos,
+        bookingKey
+      );
       const paymentCreate = await createPaymentForUser(user.uid, {
         valorDaCombranca: servicePrice,
         todoDiaDoMes: selectedDate.getDate(),
@@ -281,39 +516,11 @@ export default function MHAgendaFitDetailsScreen() {
       });
 
       if (paymentCreate.error || !paymentCreate.data?.id) {
-        showAlert('Erro', paymentCreate.error || 'Nao foi possivel gerar a cobranca.');
+        showAlert('Erro', paymentCreate.error || 'Não foi possível gerar a cobrança.');
         return;
       }
 
-      const amountInCents = Math.round(servicePrice * 100);
-      const feeInCents = Math.round(amountInCents * PLATFORM_FEE_RATE);
-
-      const checkout = await createStripeCheckoutSession({
-        amount: amountInCents,
-        currency: 'brl',
-        studentId: user.uid,
-        personalId: personal.uid,
-        paymentId: paymentCreate.data.id,
-        destinationAccountId: personal.stripeAccountId,
-        applicationFeeAmount: feeInCents,
-        description: `Agendamento ${selectedService.servicos}`,
-      });
-
-      if (checkout.error || !checkout.data?.checkoutUrl) {
-        showAlert('Erro no pagamento', checkout.error || 'Nao foi possivel abrir o checkout.');
-        return;
-      }
-
-      await updatePaymentForUser(user.uid, paymentCreate.data.id, {
-        checkoutUrl: checkout.data.checkoutUrl,
-        stripeSessionId: checkout.data.sessionId,
-        stripePaymentIntentId: checkout.data.paymentIntentId,
-        stripeStatus: checkout.data.status,
-      });
-
-      setPendingPaymentId(paymentCreate.data.id);
-      setPendingCheckoutUrl(checkout.data.checkoutUrl);
-      await openPaymentLink(checkout.data.checkoutUrl);
+      await attachCheckoutToPayment(paymentCreate.data.id);
     } finally {
       setProcessingPayment(false);
     }
@@ -321,11 +528,11 @@ export default function MHAgendaFitDetailsScreen() {
 
   const handleValidateAndConfirm = async () => {
     if (!user?.uid || !personal || !selectedSlot || !selectedService) {
-      showAlert('Atencao', 'Selecione servico, data e horario.');
+      showAlert('Atenção', 'Selecione serviço, data e horário.');
       return;
     }
     if (!pendingPaymentId) {
-      showAlert('Pagamento necessario', 'Finalize o pagamento antes de confirmar o agendamento.');
+      showAlert('Pagamento necessário', 'Finalize o pagamento antes de confirmar o agendamento.');
       return;
     }
 
@@ -333,7 +540,7 @@ export default function MHAgendaFitDetailsScreen() {
     try {
       const paymentResult = await fetchPaymentsForUser(user.uid);
       if (paymentResult.error || !paymentResult.data) {
-        showAlert('Erro', paymentResult.error || 'Nao foi possivel validar o pagamento.');
+        showAlert('Erro', paymentResult.error || 'Não foi possível validar o pagamento.');
         return;
       }
 
@@ -394,13 +601,14 @@ export default function MHAgendaFitDetailsScreen() {
   }
 
   const actionInProgress = processingPayment || validatingPayment || confirmingAppointment;
-  const canContinueToPayment =
+  const canStartPayment =
     Boolean(selectedService) &&
     Boolean(selectedSlot) &&
     servicePrice > 0 &&
     Boolean(personal.stripeAtivo) &&
     Boolean(personal.stripeAccountId);
   const hasPendingPayment = Boolean(pendingPaymentId);
+  const canValidatePendingPayment = Boolean(selectedService) && Boolean(selectedSlot) && hasPendingPayment;
 
   return (
     <LinearGradient
@@ -689,7 +897,7 @@ export default function MHAgendaFitDetailsScreen() {
               <Text style={[styles.paymentStatusText, { color: hasPendingPayment ? colors.warning : colors.textSecondary }]}>
                 {hasPendingPayment
                   ? 'Pagamento iniciado: valide para confirmar o horario.'
-                  : 'Pagamento necessario para liberar confirmacao do agendamento.'}
+                  : 'Pagamento necessário para liberar confirmacao do agendamento.'}
               </Text>
             </View>
 
@@ -732,7 +940,11 @@ export default function MHAgendaFitDetailsScreen() {
               fullWidth
               size="large"
               loading={actionInProgress}
-              disabled={!canContinueToPayment || actionInProgress}
+              disabled={
+                hasPendingPayment
+                  ? !canValidatePendingPayment || actionInProgress
+                  : !canStartPayment || actionInProgress
+              }
               style={styles.primaryAction}
             />
 

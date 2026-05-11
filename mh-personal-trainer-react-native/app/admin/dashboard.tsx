@@ -1,16 +1,46 @@
 import React from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity } from 'react-native';
+import { showAlert } from '@utils/alert';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import { useTheme } from '../../src/hooks/useTheme';
 import { useAdminDashboardData } from '../../src/hooks/useAdminDashboardData';
+import type { AdminUserSummary } from '../../src/services/firestoreService';
 import { Card, Loading, Button } from '../../src/components/common';
 import { spacing, borderRadius } from '../../src/theme';
 
 export default function AdminDashboardScreen() {
   const { colors } = useTheme();
   const { overview, loading, error, refresh } = useAdminDashboardData(true);
+
+  const handleRecentUserPress = (user: AdminUserSummary) => {
+    if (user.role === 'aluno') {
+      router.push(`/admin/student/${user.id}` as any);
+      return;
+    }
+
+    if (user.role === 'personal') {
+      const codigoPersonal = String(user.codigoPersonal || '').trim();
+      router.push(
+        codigoPersonal
+          ? ({
+              pathname: '/personal/profile',
+              params: { code: codigoPersonal },
+            } as any)
+          : ({
+              pathname: '/personal/profile',
+              params: { uid: user.id },
+            } as any)
+      );
+      return;
+    }
+
+    showAlert(
+      'Perfil indisponivel',
+      'Ainda nao existe uma tela de visualizacao para perfis admin.'
+    );
+  };
 
   if (loading) {
     return (
@@ -84,7 +114,11 @@ export default function AdminDashboardScreen() {
         <Text style={[styles.sectionTitle, { color: colors.text }]}>Usuarios recentes</Text>
         {overview?.recentUsers?.length ? (
           overview.recentUsers.map((user) => (
-            <Card key={user.id} style={styles.recentCard}>
+            <Card
+              key={user.id}
+              style={styles.recentCard}
+              onPress={() => handleRecentUserPress(user)}
+            >
               <View style={styles.recentRow}>
                 <View style={styles.recentInfo}>
                   <Text style={[styles.recentName, { color: colors.text }]}>
@@ -94,10 +128,13 @@ export default function AdminDashboardScreen() {
                     {user.email}
                   </Text>
                 </View>
-                <View style={[styles.roleBadge, { backgroundColor: colors.surface }]}>
-                  <Text style={[styles.roleText, { color: colors.textSecondary }]}>
-                    {user.role}
-                  </Text>
+                <View style={styles.recentMeta}>
+                  <View style={[styles.roleBadge, { backgroundColor: colors.surface }]}>
+                    <Text style={[styles.roleText, { color: colors.textSecondary }]}>
+                      {user.role}
+                    </Text>
+                  </View>
+                  <Ionicons name="chevron-forward" size={18} color={colors.textSecondary} />
                 </View>
               </View>
             </Card>
@@ -176,6 +213,7 @@ const styles = StyleSheet.create({
   },
   recentInfo: {
     flex: 1,
+    paddingRight: spacing.sm,
   },
   recentName: {
     fontSize: 15,
@@ -189,6 +227,11 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.sm,
     paddingVertical: spacing.xs,
     borderRadius: borderRadius.full,
+  },
+  recentMeta: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
   },
   roleText: {
     fontSize: 12,

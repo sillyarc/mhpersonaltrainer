@@ -1,90 +1,104 @@
-import React, { useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Platform, Linking } from 'react-native';
 import { showAlert } from '@utils/alert';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { useStripe } from '@stripe/stripe-react-native';
-import Constants from 'expo-constants';
 import { useTheme } from '../../src/hooks/useTheme';
 import { useAuthStore } from '../../src/store/authStore';
 import {
   createSubscription,
-  createSetupIntent,
-  extractSubscriptionDetails,
   formatCurrency,
+  getSubscriptionStatus,
+  subscriptionPlans,
 } from '../../src/services/payments';
+import {
+  isTerminalSubscriptionStatus,
+  resolveSubscribedPlan,
+} from '../../src/utils/subscriptionPlanUtils';
+import { getCleanPalette } from '../../src/theme/cleanPalette';
 
-const stripePaymentLinks = {
-  mensal: process.env.EXPO_PUBLIC_STRIPE_PAYMENT_LINK_MENSAL || '',
-  bimestral: process.env.EXPO_PUBLIC_STRIPE_PAYMENT_LINK_BIMESTRAL || '',
-  semestral: process.env.EXPO_PUBLIC_STRIPE_PAYMENT_LINK_SEMESTRAL || '',
-  anual: process.env.EXPO_PUBLIC_STRIPE_PAYMENT_LINK_ANUAL || '',
+const intervalLabels: Record<string, string> = {
+  mensal: 'por mes',
+  bimestral: 'a cada 2 meses',
+  semestral: 'a cada 6 meses',
+  anual: 'por ano',
 };
 
-const localPlans = [
-  {
-    id: 'mensal',
-    name: 'Mensal',
-    price: 30,
-    intervalLabel: 'por mes',
-    description: 'Pagamento recorrente mensal',
-    priceId: 'price_1RjKmIP3w93hGHYvwnQ25m13',
-    paymentLink: stripePaymentLinks.mensal,
-    features: ['Acesso completo ao app', 'Historico de treinos', 'Suporte por email', 'Chat com IA'],
-    highlight: true,
-  },
-  {
-    id: 'bimestral',
-    name: 'Bimestral',
-    price: 54,
-    intervalLabel: 'a cada 2 meses',
-    description: 'Pagamento a cada 2 meses',
-    priceId: 'price_1RQ5T8P3w93hGHYvCfnTTdnp',
-    paymentLink: stripePaymentLinks.bimestral,
-    features: ['Acesso completo ao app', 'Historico de treinos', 'Suporte por email', 'Chat com IA'],
-  },
-  {
-    id: 'semestral',
-    name: 'Semestral',
-    price: 150,
-    intervalLabel: 'a cada 6 meses',
-    description: 'Pagamento a cada 6 meses',
-    priceId: 'price_1RQ5T8P3w93hGHYve8VegKff',
-    paymentLink: stripePaymentLinks.semestral,
-    features: ['Acesso completo ao app', 'Historico de treinos', 'Suporte por email', 'Chat com IA'],
-  },
-  {
-    id: 'anual',
-    name: 'Anual',
-    price: 300,
-    intervalLabel: 'por ano',
-    description: 'Pagamento anual',
-    priceId: 'price_1RQ5T8P3w93hGHYvld6PCdaY',
-    paymentLink: stripePaymentLinks.anual,
-    features: ['Acesso completo ao app', 'Historico de treinos', 'Suporte por email', 'Chat com IA'],
-  },
-];
+const descriptions: Record<string, string> = {
+  mensal: 'Pagamento recorrente mensal',
+  bimestral: 'Pagamento a cada 2 meses',
+  semestral: 'Pagamento a cada 6 meses',
+  anual: 'Pagamento anual',
+};
+
+const localPlans = subscriptionPlans.map((plan) => ({
+  ...plan,
+  intervalLabel: intervalLabels[plan.id] || plan.interval,
+  description: descriptions[plan.id] || `Pagamento recorrente ${plan.name.toLowerCase()}`,
+}));
 
 export default function PlanoAssinaturaScreen() {
-  const { colors, spacing, borderRadius, typography } = useTheme();
+  const { colors, spacing, borderRadius, typography, isDark } = useTheme();
   const { user } = useAuthStore();
   const { initPaymentSheet, presentPaymentSheet } = useStripe();
+  const pageGradient = getCleanPalette(isDark).surfaceGradient;
+  const userRecord = (user || {}) as Record<string, any>;
   const [loadingPlan, setLoadingPlan] = useState<string | null>(null);
+  const [subscriptionStatus, setSubscriptionStatus] = useState<any | null>(null);
   const apiBaseUrl = process.env.EXPO_PUBLIC_API_URL || '';
-  const stripeKey = process.env.EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY || '';
   const stripeFunctionsUrl = process.env.EXPO_PUBLIC_STRIPE_FUNCTIONS_URL || '';
-  const stripeReturnUrl =
-    process.env.EXPO_PUBLIC_STRIPE_RETURN_URL || 'mhpersonaltrainer://stripe-redirect';
-  const isExpoGo =
-    Constants.appOwnership === 'expo' ||
-    (Constants as { executionEnvironment?: string }).executionEnvironment === 'storeClient';
   const hasStripeEndpoint = !!stripeFunctionsUrl || !!apiBaseUrl;
+  const subscriptionStatusValue =
+    subscriptionStatus?.status || subscriptionStatus?.subscriptionStatus || userRecord.stripeSubscriptionStatus || '';
+  const currentPlan = resolveSubscribedPlan(localPlans, [
+    subscriptionStatus?.priceId,
+    subscriptionStatus?.stripePriceId,
+    subscriptionStatus?.price?.id,
+    subscriptionStatus?.planId,
+    subscriptionStatus?.plan?.id,
+    subscriptionStatus?.planName,
+    subscriptionStatus?.plan?.nickname,
+    subscriptionStatus?.plan,
+    subscriptionStatus?.price?.nickname,
+    userRecord.stripePriceId,
+    user?.tipoDeAssinatura,
+  ]);
+  const hasSubscriptionEvidence = Boolean(
+    subscriptionStatus?.subscriptionId ||
+      subscriptionStatusValue ||
+      user?.subscribeId ||
+      user?.assinatura ||
+      userRecord.stripePriceId
+  );
 
-  const openPaymentLink = async (url?: string) => {
+  const loadSubscriptionStatus = useCallback(async () => {
+    if (!user?.uid) {
+      setSubscriptionStatus(null);
+      return;
+    }
+
+    try {
+      const result = await getSubscriptionStatus(user.uid);
+      if (result.data && result.data.status !== 'not_found') {
+        setSubscriptionStatus(result.data);
+      } else {
+        setSubscriptionStatus(null);
+      }
+    } catch {
+      setSubscriptionStatus(null);
+    }
+  }, [user?.uid]);
+
+  useEffect(() => {
+    void loadSubscriptionStatus();
+  }, [loadSubscriptionStatus]);
+
+  const openExternalUrl = async (url?: string, includeEmail: boolean = false) => {
     if (!url) return false;
     const separator = url.includes('?') ? '&' : '?';
-    const prefilledEmail = user?.email
+    const prefilledEmail = includeEmail && user?.email
       ? `${separator}prefilled_email=${encodeURIComponent(user.email)}`
       : '';
     const finalUrl = prefilledEmail ? `${url}${prefilledEmail}` : url;
@@ -92,115 +106,96 @@ export default function PlanoAssinaturaScreen() {
     return true;
   };
 
+  const shouldPreventCheckoutForPlan = (plan: (typeof localPlans)[number]) => {
+    if (!currentPlan || currentPlan.id !== plan.id) return false;
+    if (!hasSubscriptionEvidence) return false;
+    if (!subscriptionStatusValue) return true;
+    return !isTerminalSubscriptionStatus(subscriptionStatusValue);
+  };
+
+  const showAlreadySubscribedAlert = (plan: (typeof localPlans)[number]) => {
+    showAlert(
+      'Plano ja assinado',
+      `Voce ja possui o plano ${plan.name}. Nao e preciso abrir outro checkout para ele agora.`
+    );
+  };
+
   const handleSelectPlan = async (plan: (typeof localPlans)[number]) => {
     if (!user?.uid || !user.email || !user.displayName) {
-      showAlert('Atencao', 'Complete seu perfil antes de assinar.');
+      showAlert('Atenção', 'Complete seu perfil antes de assinar.');
+      return;
+    }
+    if (shouldPreventCheckoutForPlan(plan)) {
+      showAlreadySubscribedAlert(plan);
+      return;
+    }
+    if (!plan.priceId) {
+      showAlert('Plano indisponível', 'O `priceId` deste plano ainda não foi configurado.');
       return;
     }
     if (Platform.OS === 'web') {
-      if (await openPaymentLink(plan.paymentLink)) {
+      if (await openExternalUrl(plan.paymentLink, true)) {
         return;
       }
-      showAlert('Stripe', 'Pagamento via Stripe não est? disponível no web. Use o app mobile.');
+      showAlert('Stripe', 'Pagamento via Stripe nao esta disponivel no web. Use o app mobile.');
       return;
     }
-    if (isExpoGo) {
+    if (!hasStripeEndpoint) {
       showAlert(
-        'Cartao indisponivel no Expo Go',
-        'Para cadastrar cartao e iniciar o teste de 7 dias, use um Development Build (expo run:ios/android + expo start --dev-client).'
+        'Stripe nao configurado',
+        'Defina EXPO_PUBLIC_STRIPE_FUNCTIONS_URL (ou EXPO_PUBLIC_API_URL com /api/payments) no arquivo .env para ativar as assinaturas.'
       );
       return;
     }
-    if (!hasStripeEndpoint || !stripeKey) {
-      showAlert(
-        'Stripe não configurado',
-        'Defina EXPO_PUBLIC_STRIPE_FUNCTIONS_URL (ou EXPO_PUBLIC_API_URL com /api/payments) e EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY no arquivo .env para ativar as assinaturas.'
-      );
-      return;
-    }
+
     setLoadingPlan(plan.id);
     try {
-      const result = await createSubscription(user.uid, user.email, user.displayName, plan.priceId);
+      const result = await createSubscription(
+        user.uid,
+        user.email,
+        user.displayName,
+        plan.priceId,
+        plan.id
+      );
+
       if (result.error) {
         throw new Error(result.error);
       }
-      const subscriptionData = result.data;
-      const details = extractSubscriptionDetails(subscriptionData);
-      const backendMessage =
-        subscriptionData?.message || subscriptionData?.details || subscriptionData?.error;
-      const status = details.status || subscriptionData?.status;
-      const isTrial = status === 'trialing' || /gratis|grátis|trial/i.test(String(backendMessage ?? ''));
-      if (!details.clientSecret) {
-        if (isTrial) {
-          const setupIntentResult = await createSetupIntent(
-            user.email,
-            user.displayName,
-            details.customerId
-          );
-          if (setupIntentResult.error || !setupIntentResult.data?.setupIntentClientSecret) {
-            throw new Error(
-              `Teste de 7 dias ativado, mas nao foi possivel abrir o cadastro do cartao: ${
-                setupIntentResult.error || 'SetupIntent ausente'
-              }.`
-            );
-          }
-
-          const setupParams: any = {
-            setupIntentClientSecret: setupIntentResult.data.setupIntentClientSecret,
-            merchantDisplayName: 'MH Personal Trainer',
-            returnURL: stripeReturnUrl,
-            googlePay: { merchantCountryCode: 'BR', testEnv: true },
-            applePay: { merchantCountryCode: 'BR' },
-          };
-          if (setupIntentResult.data.customerId && setupIntentResult.data.ephemeralKey) {
-            setupParams.customerId = setupIntentResult.data.customerId;
-            setupParams.customerEphemeralKeySecret = setupIntentResult.data.ephemeralKey;
-          }
-
-          const initSetup = await initPaymentSheet(setupParams);
-          if (initSetup.error) {
-            throw new Error(initSetup.error.message);
-          }
-          const presentSetup = await presentPaymentSheet();
-          if (presentSetup.error) {
-            throw new Error(
-              `Teste de 7 dias ativado, mas o cartao nao foi salvo: ${presentSetup.error.message}`
-            );
-          }
-
-          showAlert('Sucesso', 'Cartao salvo com sucesso.');
-          return;
-        }
-        throw new Error(
-          backendMessage ? `Erro no backend: ${backendMessage}` : 'Resposta do Stripe incompleta. Tente novamente.'
-        );
+      if (!result.data?.clientSecret) {
+        throw new Error('O backend nao retornou o segredo de pagamento da assinatura.');
       }
 
-      const paymentSheetParams: any = {
-        paymentIntentClientSecret: details.clientSecret,
+      const initResult = await initPaymentSheet({
         merchantDisplayName: 'MH Personal Trainer',
-        allowsDelayedPaymentMethods: true,
-        returnURL: stripeReturnUrl,
-        googlePay: { merchantCountryCode: 'BR', testEnv: true },
-        applePay: { merchantCountryCode: 'BR' },
-      };
-      if (details.customerId && details.ephemeralKey) {
-        paymentSheetParams.customerId = details.customerId;
-        paymentSheetParams.customerEphemeralKeySecret = details.ephemeralKey;
-      }
-
-      const initResult = await initPaymentSheet(paymentSheetParams);
+        paymentIntentClientSecret: result.data.clientSecret,
+        customerId: result.data.customerId,
+        customerEphemeralKeySecret: result.data.ephemeralKey,
+        returnURL: 'mhpersonaltrainer://stripe-redirect',
+        defaultBillingDetails: {
+          email: user.email,
+          name: user.displayName,
+        },
+      });
       if (initResult.error) {
         throw new Error(initResult.error.message);
       }
-      const presentResult = await presentPaymentSheet();
-      if (presentResult.error) {
-        throw new Error(presentResult.error.message);
+
+      const paymentResult = await presentPaymentSheet();
+      if (paymentResult.error) {
+        if (paymentResult.error.code === 'Canceled') {
+          showAlert('Pagamento cancelado', 'Voce fechou a tela de pagamento antes de concluir.');
+          return;
+        }
+        throw new Error(paymentResult.error.message);
       }
 
-      showAlert('Sucesso', 'Assinatura confirmada com sucesso.');
+      await loadSubscriptionStatus();
+      showAlert(
+        'Pagamento confirmado',
+        'Sua assinatura foi processada. Se o status ainda nao mudar, atualize a tela em alguns segundos.'
+      );
     } catch (error: any) {
-      showAlert('Erro', error.message || 'Nao foi possivel criar a assinatura.');
+      showAlert('Erro', error.message || 'Não foi possível criar a assinatura.');
     } finally {
       setLoadingPlan(null);
     }
@@ -208,7 +203,7 @@ export default function PlanoAssinaturaScreen() {
 
   return (
     <LinearGradient
-      colors={[colors.primaryBackground, colors.alternate]}
+      colors={pageGradient}
       start={{ x: 0.9, y: 0 }}
       end={{ x: 0.1, y: 1 }}
       style={styles.container}
@@ -222,7 +217,7 @@ export default function PlanoAssinaturaScreen() {
             Escolha o plano ideal para destravar recursos premium.
           </Text>
           <Text style={[{ color: colors.primary }, typography.labelSmall]}>
-            Teste gratis de 7 dias com cartao cadastrado.
+            Pagamento seguro processado pelo Stripe.
           </Text>
 
           <View style={[styles.planGrid, { marginTop: spacing.lg }]}>
@@ -285,7 +280,11 @@ export default function PlanoAssinaturaScreen() {
                       typography.titleSmall,
                     ]}
                   >
-                    {loadingPlan === plan.id ? 'Processando...' : 'Assinar plano'}
+                    {loadingPlan === plan.id
+                      ? 'Processando...'
+                      : shouldPreventCheckoutForPlan(plan)
+                        ? 'Plano atual'
+                        : 'Assinar plano'}
                   </Text>
                 </View>
               </TouchableOpacity>

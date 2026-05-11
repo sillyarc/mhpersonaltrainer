@@ -1,13 +1,12 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Platform, Linking } from 'react-native';
+import { AppState, View, Text, StyleSheet, ScrollView, TouchableOpacity, Platform, Linking } from 'react-native';
 import { showAlert } from '@utils/alert';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import { useTranslation } from 'react-i18next';
 import { useStripe } from '@stripe/stripe-react-native';
-import Constants from 'expo-constants';
+import { useTranslation } from 'react-i18next';
 import { Button, Card, Loading } from '../../src/components/common';
 import { useAuth } from '../../src/hooks/useAuth';
 import { useTheme } from '../../src/hooks/useTheme';
@@ -16,13 +15,17 @@ import {
   formatCurrency,
   createSubscription,
   cancelSubscription,
-  createSetupIntent,
-  extractSubscriptionDetails,
   getSubscriptionStatus,
 } from '../../src/services/payments';
+import {
+  isTerminalSubscriptionStatus,
+  resolveReadablePlanLabel,
+  resolveSubscribedPlan,
+} from '../../src/utils/subscriptionPlanUtils';
 import { AiAccessStatusCard } from '../../src/components/ai/AiAccessStatusCard';
 import { useAiAccessStatus } from '../../src/hooks/useAiAccessStatus';
 import { spacing, borderRadius } from '../../src/theme';
+import { getCleanPalette } from '../../src/theme/cleanPalette';
 
 const ACTIVE_SUBSCRIPTION_STATUSES = new Set(['active', 'trialing', 'past_due']);
 
@@ -54,7 +57,7 @@ const formatStatusLabel = (value?: string) => {
     trialing: 'Em teste',
     past_due: 'Pagamento pendente',
     canceled: 'Cancelada',
-    unpaid: 'Nao paga',
+    unpaid: 'Não paga',
     incomplete: 'Incompleta',
     incomplete_expired: 'Incompleta expirada',
   };
@@ -63,22 +66,26 @@ const formatStatusLabel = (value?: string) => {
 
 export default function SubscriptionScreen() {
   const { t } = useTranslation();
-  const { colors } = useTheme();
-  const { user, role } = useAuth();
-  const aiAccess = useAiAccessStatus();
+  const { colors, isDark } = useTheme();
+  const { user, role, refreshUser } = useAuth();
   const { initPaymentSheet, presentPaymentSheet } = useStripe();
+  const aiAccess = useAiAccessStatus();
+  const cleanPalette = getCleanPalette(isDark);
+  const {
+    surface: CLEAN_SURFACE,
+    surfaceAlt: CLEAN_SURFACE_ALT,
+    surfaceSoft: CLEAN_SURFACE_SOFT,
+    border: CLEAN_BORDER,
+    text: CLEAN_TEXT,
+    textMuted: CLEAN_TEXT_MUTED,
+    surfaceGradient: CLEAN_SURFACE_GRADIENT,
+  } = cleanPalette;
   const [loading, setLoading] = useState(false);
   const [selectedPlan, setSelectedPlan] = useState<string | null>(null);
   const [subscriptionStatus, setSubscriptionStatus] = useState<any | null>(null);
   const [subscriptionLoading, setSubscriptionLoading] = useState(false);
   const apiBaseUrl = process.env.EXPO_PUBLIC_API_URL || '';
-  const stripeKey = process.env.EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY || '';
   const stripeFunctionsUrl = process.env.EXPO_PUBLIC_STRIPE_FUNCTIONS_URL || '';
-  const stripeReturnUrl =
-    process.env.EXPO_PUBLIC_STRIPE_RETURN_URL || 'mhpersonaltrainer://stripe-redirect';
-  const isExpoGo =
-    Constants.appOwnership === 'expo' ||
-    (Constants as { executionEnvironment?: string }).executionEnvironment === 'storeClient';
   const hasStripeEndpoint = !!stripeFunctionsUrl || !!apiBaseUrl;
   const isPersonal = role === 'personal' || role === 'professor';
   const defaultPlan = subscriptionPlans[0];
@@ -86,7 +93,7 @@ export default function SubscriptionScreen() {
     id: 'aluno-mensal',
     name: 'Assistente Premium',
     price: 24.99,
-    interval: '/mes',
+    interval: '/mês',
     priceId:
       process.env.EXPO_PUBLIC_STRIPE_PRICE_ID_ALUNO_MENSAL ||
       defaultPlan?.priceId ||
@@ -98,7 +105,7 @@ export default function SubscriptionScreen() {
     highlight: true,
     features: [
       'Assistente IA premium sem personal',
-      'Treinos, ajustes e duvidas com IA',
+      'Treinos, ajustes e dúvidas com IA',
       'Acesso completo aos recursos de IA do app',
       'Cancelamento quando quiser',
     ],
@@ -113,13 +120,34 @@ export default function SubscriptionScreen() {
     String(subscriptionStatusValue || '').toLowerCase()
   );
   const isSubscribed = Boolean(user?.assinatura || hasSubscriptionData || isStripeActive);
-  const currentPlanLabel =
-    subscriptionStatus?.planName ||
-    subscriptionStatus?.plan?.nickname ||
-    subscriptionStatus?.plan ||
-    subscriptionStatus?.price?.nickname ||
-    user?.tipoDeAssinatura ||
-    'Premium';
+  const currentPlan = resolveSubscribedPlan(availablePlans, [
+    subscriptionStatus?.priceId,
+    subscriptionStatus?.stripePriceId,
+    subscriptionStatus?.price?.id,
+    subscriptionStatus?.planId,
+    subscriptionStatus?.plan?.id,
+    subscriptionStatus?.planName,
+    subscriptionStatus?.plan?.nickname,
+    subscriptionStatus?.plan,
+    subscriptionStatus?.price?.nickname,
+    user?.stripePriceId,
+    user?.tipoDeAssinatura,
+  ]);
+  const currentPlanLabel = resolveReadablePlanLabel(
+    availablePlans,
+    [
+      subscriptionStatus?.planName,
+      subscriptionStatus?.plan?.nickname,
+      subscriptionStatus?.plan,
+      subscriptionStatus?.price?.nickname,
+      subscriptionStatus?.priceId,
+      subscriptionStatus?.stripePriceId,
+      subscriptionStatus?.price?.id,
+      user?.stripePriceId,
+      user?.tipoDeAssinatura,
+    ],
+    'Premium'
+  );
   const currentRenewDate =
     subscriptionStatus?.currentPeriodEnd ||
     subscriptionStatus?.current_period_end ||
@@ -131,6 +159,16 @@ export default function SubscriptionScreen() {
   const currentCurrency =
     subscriptionStatus?.currency || subscriptionStatus?.planCurrency || 'BRL';
   const resolvedSubscriptionId = user?.subscribeId || subscriptionStatus?.subscriptionId;
+  const hasSubscriptionEvidence = Boolean(
+    resolvedSubscriptionId ||
+      hasSubscriptionData ||
+      subscriptionStatusValue ||
+      isSubscribed ||
+      user?.stripePriceId
+  );
+  const activeBadgePalette = isDark
+    ? { bg: 'rgba(31,122,99,0.18)', border: '#1F5F4A', text: '#7DD3AE' }
+    : { bg: '#E8F7EE', border: '#CFE9D9', text: '#1F7A63' };
 
   const loadSubscriptionStatus = useCallback(async () => {
     if (!user?.uid) {
@@ -154,10 +192,20 @@ export default function SubscriptionScreen() {
     loadSubscriptionStatus();
   }, [loadSubscriptionStatus]);
 
-  const openPaymentLink = async (url?: string) => {
+  useEffect(() => {
+    const subscription = AppState.addEventListener('change', (nextState) => {
+      if (nextState === 'active') {
+        void loadSubscriptionStatus();
+      }
+    });
+
+    return () => subscription.remove();
+  }, [loadSubscriptionStatus]);
+
+  const openExternalUrl = async (url?: string, includeEmail: boolean = false) => {
     if (!url) return false;
     const separator = url.includes('?') ? '&' : '?';
-    const prefilledEmail = user?.email
+    const prefilledEmail = includeEmail && user?.email
       ? `${separator}prefilled_email=${encodeURIComponent(user.email)}`
       : '';
     const finalUrl = prefilledEmail ? `${url}${prefilledEmail}` : url;
@@ -165,26 +213,63 @@ export default function SubscriptionScreen() {
     return true;
   };
 
+  const resolveCheckoutEmail = () => String(user?.email || '').trim();
+  const resolveCheckoutName = () => {
+    const fallbackName = resolveCheckoutEmail().split('@')[0] || '';
+    return String(user?.displayName || fallbackName).trim();
+  };
+  const resolvePlanPriceId = (plan: (typeof availablePlans)[number]) =>
+    String(plan.priceId || (plan.id === 'aluno-mensal' ? defaultPlan?.priceId || '' : '')).trim();
+
+  const shouldPreventCheckoutForPlan = (plan: (typeof availablePlans)[number]) => {
+    if (!currentPlan || currentPlan.id !== plan.id) return false;
+    if (!hasSubscriptionEvidence) return false;
+    const normalizedStatus = subscriptionStatusValue || user?.stripeSubscriptionStatus;
+    if (!normalizedStatus) return true;
+    return !isTerminalSubscriptionStatus(normalizedStatus);
+  };
+
+  const showAlreadySubscribedAlert = (plan: (typeof availablePlans)[number]) => {
+    const normalizedStatus = String(
+      subscriptionStatusValue || user?.stripeSubscriptionStatus || ''
+    ).toLowerCase();
+    const statusLabel = formatStatusLabel(normalizedStatus || 'active');
+    const description =
+      normalizedStatus === 'incomplete'
+        ? `Você já iniciou o plano ${plan.name}. Atualize a assinatura antes de tentar pagar novamente.`
+        : `Você já possui o plano ${plan.name}${statusLabel !== '-' ? ` (${statusLabel})` : ''}.`;
+
+    showAlert('Plano já assinado', `${description} Não é preciso abrir outro checkout agora.`);
+  };
+
   const handleSelectPlan = async (plan: (typeof subscriptionPlans)[number]) => {
     if (!user) return;
+    const checkoutEmail = resolveCheckoutEmail();
+    const checkoutName = resolveCheckoutName();
+    const resolvedPriceId = resolvePlanPriceId(plan);
+    if (!user.uid || !checkoutEmail || !checkoutName) {
+      showAlert('Atenção', 'Complete seu perfil com email e nome antes de assinar.');
+      return;
+    }
+    if (shouldPreventCheckoutForPlan(plan)) {
+      showAlreadySubscribedAlert(plan);
+      return;
+    }
+    if (!resolvedPriceId && !plan.id) {
+      showAlert('Plano indisponível', 'O `priceId` deste plano ainda não foi configurado.');
+      return;
+    }
     if (Platform.OS === 'web') {
-      if (await openPaymentLink(plan.paymentLink)) {
+      if (await openExternalUrl(plan.paymentLink, true)) {
         return;
       }
-      showAlert('Stripe', 'Pagamento via Stripe não está disponível no web. Use o app mobile.');
+      showAlert('Stripe', 'O pagamento via Stripe não está disponível na web. Use o app mobile.');
       return;
     }
-    if (isExpoGo) {
-      showAlert(
-        'Cartao indisponivel no Expo Go',
-        'Para cadastrar cartao e iniciar o teste de 7 dias, use um Development Build (expo run:ios/android + expo start --dev-client).'
-      );
-      return;
-    }
-    if (!hasStripeEndpoint || !stripeKey) {
+    if (!hasStripeEndpoint) {
       showAlert(
         'Stripe não configurado',
-        'Defina EXPO_PUBLIC_STRIPE_FUNCTIONS_URL (ou EXPO_PUBLIC_API_URL com /api/payments) e EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY no arquivo .env para ativar as assinaturas.'
+        'Defina EXPO_PUBLIC_STRIPE_FUNCTIONS_URL (ou EXPO_PUBLIC_API_URL com /api/payments) no arquivo .env para ativar as assinaturas.'
       );
       return;
     }
@@ -195,92 +280,49 @@ export default function SubscriptionScreen() {
     try {
       const result = await createSubscription(
         user.uid,
-        user.email,
-        user.displayName,
-        plan.priceId
+        checkoutEmail,
+        checkoutName,
+        resolvedPriceId,
+        plan.id
       );
 
       if (result.error) {
         throw new Error(result.error);
       }
-
-      const subscriptionData = result.data as any;
-      const details = extractSubscriptionDetails(subscriptionData);
-      const backendMessage =
-        subscriptionData?.message || subscriptionData?.details || subscriptionData?.error;
-      const status = details.status || subscriptionData?.status;
-      const isTrial = status === 'trialing' || /gratis|grátis|trial/i.test(String(backendMessage ?? ''));
-      if (!details.clientSecret) {
-        if (isTrial) {
-          const setupIntentResult = await createSetupIntent(
-            user.email,
-            user.displayName,
-            details.customerId
-          );
-          if (setupIntentResult.error || !setupIntentResult.data?.setupIntentClientSecret) {
-            throw new Error(
-              `Teste de 7 dias ativado, mas nao foi possivel abrir o cadastro do cartao: ${
-                setupIntentResult.error || 'SetupIntent ausente'
-              }.`
-            );
-          }
-
-          const setupParams: any = {
-            setupIntentClientSecret: setupIntentResult.data.setupIntentClientSecret,
-            merchantDisplayName: 'MH Personal Trainer',
-            returnURL: stripeReturnUrl,
-            googlePay: { merchantCountryCode: 'BR', testEnv: true },
-            applePay: { merchantCountryCode: 'BR' },
-          };
-          if (setupIntentResult.data.customerId && setupIntentResult.data.ephemeralKey) {
-            setupParams.customerId = setupIntentResult.data.customerId;
-            setupParams.customerEphemeralKeySecret = setupIntentResult.data.ephemeralKey;
-          }
-
-          const initSetup = await initPaymentSheet(setupParams);
-          if (initSetup.error) {
-            throw new Error(initSetup.error.message);
-          }
-          const presentSetup = await presentPaymentSheet();
-          if (presentSetup.error) {
-            throw new Error(
-              `Teste de 7 dias ativado, mas o cartao nao foi salvo: ${presentSetup.error.message}`
-            );
-          }
-
-          showAlert('Sucesso', 'Cartão salvo com sucesso.');
-          router.back();
-          return;
-        }
-        throw new Error(
-          backendMessage ? `Erro no backend: ${backendMessage}` : 'Resposta do Stripe incompleta. Tente novamente.'
-        );
+      if (!result.data?.clientSecret) {
+        throw new Error('O backend não retornou o segredo de pagamento da assinatura.');
       }
 
-      const paymentSheetParams: any = {
-        paymentIntentClientSecret: details.clientSecret,
+      const initResult = await initPaymentSheet({
         merchantDisplayName: 'MH Personal Trainer',
-        allowsDelayedPaymentMethods: true,
-        returnURL: stripeReturnUrl,
-        googlePay: { merchantCountryCode: 'BR', testEnv: true },
-        applePay: { merchantCountryCode: 'BR' },
-      };
-      if (details.customerId && details.ephemeralKey) {
-        paymentSheetParams.customerId = details.customerId;
-        paymentSheetParams.customerEphemeralKeySecret = details.ephemeralKey;
-      }
-
-      const initResult = await initPaymentSheet(paymentSheetParams);
+        paymentIntentClientSecret: result.data.clientSecret,
+        customerId: result.data.customerId,
+        customerEphemeralKeySecret: result.data.ephemeralKey,
+        returnURL: 'mhpersonaltrainer://stripe-redirect',
+        defaultBillingDetails: {
+          email: checkoutEmail,
+          name: checkoutName,
+        },
+      });
       if (initResult.error) {
         throw new Error(initResult.error.message);
       }
-      const presentResult = await presentPaymentSheet();
-      if (presentResult.error) {
-        throw new Error(presentResult.error.message);
+
+      const paymentResult = await presentPaymentSheet();
+      if (paymentResult.error) {
+        if (paymentResult.error.code === 'Canceled') {
+          showAlert('Pagamento cancelado', 'Você fechou a tela de pagamento antes de concluir.');
+          return;
+        }
+        throw new Error(paymentResult.error.message);
       }
 
-      showAlert('Sucesso', 'Assinatura confirmada com sucesso!');
-      router.back();
+      await loadSubscriptionStatus();
+      await refreshUser?.();
+      showAlert(
+        'Pagamento confirmado',
+        'Sua assinatura foi processada. Se o status ainda não mudar, atualize a tela em alguns segundos.'
+      );
     } catch (error: any) {
       showAlert('Erro', error.message || 'Erro ao processar assinatura');
     } finally {
@@ -331,86 +373,95 @@ export default function SubscriptionScreen() {
 
       <ScrollView contentContainerStyle={styles.content}>
         <LinearGradient
-          colors={['#0b1c3b', '#1c5aa6', '#5bb7ff']}
+          colors={CLEAN_SURFACE_GRADIENT}
           start={{ x: 0, y: 0 }}
           end={{ x: 1, y: 1 }}
-          style={styles.heroCard}
+          style={[styles.heroCard, { borderWidth: 1, borderColor: CLEAN_BORDER }]}
         >
-          <View style={styles.heroGlow} />
+          <View style={[styles.heroGlow, { backgroundColor: isDark ? `${colors.primary}10` : CLEAN_SURFACE_SOFT }]} />
           <View style={styles.heroContent}>
-            <View style={styles.heroBadge}>
-              <Ionicons name="sparkles" size={14} color="#fff" />
-              <Text style={styles.heroBadgeText}>Premium</Text>
+            <View style={[styles.heroBadge, { backgroundColor: CLEAN_SURFACE_ALT, borderWidth: 1, borderColor: CLEAN_BORDER }]}>
+              <Ionicons name="sparkles" size={14} color={colors.primary} />
+              <Text style={[styles.heroBadgeText, { color: CLEAN_TEXT }]}>Premium</Text>
             </View>
 
-            <Text style={styles.heroTitle}>
+            <Text style={[styles.heroTitle, { color: CLEAN_TEXT }]}>
               {isPersonal
                 ? 'Transforme seus resultados com o Premium'
                 : 'Tenha o poder do assistente sem precisar de personal'}
             </Text>
-            <Text style={styles.heroSubtitle}>
+            <Text style={[styles.heroSubtitle, { color: CLEAN_TEXT_MUTED }]}>
               {isPersonal
                 ? 'Desbloqueie mais alunos, automações e avaliações completas em um único lugar.'
                 : 'Assinatura focada no aluno para usar o assistente completo e montar sua rotina com autonomia.'}
             </Text>
 
             {isPersonal && (
-              <Text style={styles.heroTrialText}>7 dias gratis com cartao cadastrado.</Text>
+              <Text style={[styles.heroTrialText, { color: CLEAN_TEXT }]}>7 dias grátis com cartão cadastrado.</Text>
             )}
-            <Text style={styles.heroFreePlanText}>
-              Plano gratuito: {freeCreditsPerDay} creditos de IA por dia.
+            <Text style={[styles.heroFreePlanText, { color: CLEAN_TEXT_MUTED }]}>
+              Plano gratuito: {freeCreditsPerDay} créditos de IA por dia.
             </Text>
-            <Text style={styles.heroPremiumInfoText}>
+            <Text style={[styles.heroPremiumInfoText, { color: CLEAN_TEXT_MUTED }]}>
               {isPersonal
-                ? 'No gratuito, o chat IA consome 1 credito por solicitacao. Insights IA e avaliacao postural por IA sao exclusivos do Premium.'
-                : 'No Premium, por R$ 24,99/mes, voce libera o assistente completo mesmo sem personal e usa IA sem limite diario.'}
+                ? 'No gratuito, o chat IA consome 1 crédito por solicitação. Insights IA e avaliação postural por IA são exclusivos do Premium.'
+                : 'No Premium, por R$ 24,99/mês, você libera o assistente completo mesmo sem personal e usa IA sem limite diário.'}
             </Text>
 
             <View style={styles.heroMetaRow}>
               <View style={styles.heroPriceBlock}>
-                <Text style={styles.heroPrice}>
+                <Text style={[styles.heroPrice, { color: CLEAN_TEXT }]}>
                   {highlightPlan ? formatCurrency(highlightPlan.price) : '--'}
                 </Text>
-                <Text style={styles.heroInterval}>
+                <Text style={[styles.heroInterval, { color: CLEAN_TEXT_MUTED }]}>
                   {highlightPlan?.interval || ''}
                 </Text>
               </View>
               {isSubscribed && (
-                <View style={styles.heroActiveBadge}>
-                  <Ionicons name="checkmark-circle" size={16} color="#0b1c3b" />
-                  <Text style={styles.heroActiveText}>Ativo</Text>
+                <View
+                  style={[
+                    styles.heroActiveBadge,
+                    {
+                      backgroundColor: activeBadgePalette.bg,
+                      borderWidth: 1,
+                      borderColor: activeBadgePalette.border,
+                    },
+                  ]}
+                >
+                  <Ionicons name="checkmark-circle" size={16} color={activeBadgePalette.text} />
+                  <Text style={[styles.heroActiveText, { color: activeBadgePalette.text }]}>Ativo</Text>
                 </View>
               )}
             </View>
 
             <View style={styles.heroFeatures}>
               {(isPersonal
-                ? ['Chat IA ilimitado', 'Insights IA premium', 'Avaliacao postural IA']
-                : ['Assistente completo sem personal', 'Plano do aluno: R$ 24,99/mes', '8 creditos gratis por dia no plano free']
+                ? ['Chat com IA ilimitado', 'Insights com IA premium', 'Avaliação postural com IA']
+                : ['Assistente completo sem personal', 'Plano do aluno: R$ 24,99/mês', '8 créditos grátis por dia no plano free']
               ).map((feature) => (
-                <View key={feature} style={styles.heroFeatureItem}>
-                  <Ionicons name="checkmark" size={14} color="#fff" />
-                  <Text style={styles.heroFeatureText}>{feature}</Text>
+                <View key={feature} style={[styles.heroFeatureItem, { backgroundColor: CLEAN_SURFACE_ALT, borderWidth: 1, borderColor: CLEAN_BORDER }]}>
+                  <Ionicons name="checkmark" size={14} color={colors.primary} />
+                  <Text style={[styles.heroFeatureText, { color: CLEAN_TEXT_MUTED }]}>{feature}</Text>
                 </View>
               ))}
             </View>
 
             {!isSubscribed && highlightPlan && (
               <TouchableOpacity
-                style={styles.heroButton}
+                style={[styles.heroButton, { backgroundColor: CLEAN_SURFACE_ALT, borderWidth: 1, borderColor: CLEAN_BORDER }]}
                 onPress={() => handleSelectPlan(highlightPlan)}
                 disabled={loading}
               >
-                <Text style={styles.heroButtonText}>
+                <Text style={[styles.heroButtonText, { color: CLEAN_TEXT }]}>
                   {isPersonal ? 'Assinar Premium' : 'Assinar por R$ 24,99'}
                 </Text>
-                <Ionicons name="arrow-forward" size={18} color="#0b1c3b" />
+                <Ionicons name="arrow-forward" size={18} color={CLEAN_TEXT} />
               </TouchableOpacity>
             )}
           </View>
         </LinearGradient>
 
-        <View style={[styles.trustRow, { backgroundColor: colors.card }]}>
+        <View style={[styles.trustRow, { backgroundColor: CLEAN_SURFACE, borderWidth: 1, borderColor: CLEAN_BORDER }]}>
           {(isPersonal
             ? [
                 { icon: 'shield-checkmark', label: 'Pagamento seguro' },
@@ -449,7 +500,7 @@ export default function SubscriptionScreen() {
               Status: {formatStatusLabel(subscriptionStatusValue || (isSubscribed ? 'active' : 'inactive'))}
             </Text>
             <Text style={[styles.currentPlanMeta, { color: colors.textSecondary }]}>
-              Renovacao: {formatDateLabel(currentRenewDate)}
+              Renovação: {formatDateLabel(currentRenewDate)}
             </Text>
             <Text style={[styles.currentPlanMeta, { color: colors.textSecondary }]}>
               Valor: {formatAmountLabel(currentAmount, currentCurrency)}
@@ -477,18 +528,23 @@ export default function SubscriptionScreen() {
               ? 'Mudar de Plano'
               : 'Seu plano atual'
             : isPersonal
-              ? 'Escolha seu Plano'
+              ? 'Escolha seu plano'
               : 'Plano do aluno'}
         </Text>
 
         {availablePlans.map((plan) => (
           <TouchableOpacity
             key={plan.id}
+            activeOpacity={0.92}
             style={[
               styles.planCard,
               { 
                 backgroundColor: colors.card,
-                borderColor: selectedPlan === plan.id ? colors.primary : colors.border,
+                borderColor: shouldPreventCheckoutForPlan(plan)
+                  ? colors.success
+                  : selectedPlan === plan.id
+                    ? colors.primary
+                    : colors.border,
               },
               plan.highlight && styles.planCardHighlight,
               selectedPlan === plan.id && {
@@ -504,7 +560,7 @@ export default function SubscriptionScreen() {
           >
             {plan.highlight && (
               <View style={[styles.popularBadge, { backgroundColor: colors.primary }]}>
-                <Text style={styles.popularBadgeText}>Mais Popular</Text>
+                <Text style={styles.popularBadgeText}>Mais popular</Text>
               </View>
             )}
 
@@ -537,7 +593,9 @@ export default function SubscriptionScreen() {
             ) : (
               <Button
                 title={
-                  isSubscribed
+                  shouldPreventCheckoutForPlan(plan)
+                    ? 'Plano atual'
+                    : isSubscribed
                     ? isPersonal
                       ? 'Mudar para este plano'
                       : 'Reativar plano'
@@ -588,7 +646,6 @@ const styles = StyleSheet.create({
     borderRadius: 110,
     top: -80,
     right: -80,
-    backgroundColor: 'rgba(255,255,255,0.18)',
   },
   heroContent: {
     gap: spacing.md,
@@ -598,39 +655,32 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.xs,
-    backgroundColor: 'rgba(255,255,255,0.2)',
     paddingHorizontal: spacing.md,
     paddingVertical: 4,
     borderRadius: borderRadius.full,
   },
   heroBadgeText: {
-    color: '#fff',
     fontSize: 12,
     fontWeight: '600',
   },
   heroTitle: {
-    color: '#fff',
     fontSize: 22,
     fontWeight: '700',
     lineHeight: 28,
   },
   heroSubtitle: {
-    color: 'rgba(255,255,255,0.85)',
     fontSize: 14,
     lineHeight: 20,
   },
   heroTrialText: {
-    color: '#fff',
     fontSize: 12,
     fontWeight: '600',
   },
   heroFreePlanText: {
-    color: 'rgba(255,255,255,0.9)',
     fontSize: 12,
     fontWeight: '600',
   },
   heroPremiumInfoText: {
-    color: 'rgba(255,255,255,0.8)',
     fontSize: 12,
     lineHeight: 18,
   },
@@ -650,20 +700,17 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
   heroInterval: {
-    color: 'rgba(255,255,255,0.8)',
     fontSize: 13,
   },
   heroActiveBadge: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.xs,
-    backgroundColor: 'rgba(255,255,255,0.85)',
     paddingHorizontal: spacing.sm,
     paddingVertical: 4,
     borderRadius: borderRadius.full,
   },
   heroActiveText: {
-    color: '#0b1c3b',
     fontSize: 12,
     fontWeight: '600',
   },
@@ -676,13 +723,11 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.xs,
-    backgroundColor: 'rgba(255,255,255,0.15)',
     paddingHorizontal: spacing.sm,
     paddingVertical: 4,
     borderRadius: borderRadius.full,
   },
   heroFeatureText: {
-    color: '#fff',
     fontSize: 12,
     fontWeight: '500',
   },
@@ -691,12 +736,10 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     gap: spacing.sm,
-    backgroundColor: '#fff',
     paddingVertical: spacing.sm,
     borderRadius: borderRadius.full,
   },
   heroButtonText: {
-    color: '#0b1c3b',
     fontSize: 14,
     fontWeight: '600',
   },
@@ -757,8 +800,7 @@ const styles = StyleSheet.create({
     marginBottom: spacing.md,
   },
   planCardHighlight: {
-    borderColor: '#1c5aa6',
-    shadowColor: '#1c5aa6',
+    shadowColor: '#CBD5E1',
     shadowOpacity: 0.12,
     shadowRadius: 10,
     shadowOffset: { width: 0, height: 4 },

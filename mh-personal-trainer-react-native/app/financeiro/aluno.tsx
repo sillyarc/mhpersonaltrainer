@@ -19,7 +19,11 @@ import { useResponsive } from '../../src/hooks/useResponsive';
 import { useAuthStore } from '../../src/store/authStore';
 import { fetchPaymentsForUser, updatePaymentForUser } from '../../src/services/financeiro';
 import { firestoreService } from '../../src/services/firestoreService';
-import { createStripeCheckoutSession, fetchStripeConnectStatus, formatCurrency } from '../../src/services/payments';
+import {
+  createStripeCheckoutSession,
+  fetchStripeConnectStatus,
+  formatCurrency,
+} from '../../src/services/payments';
 import { PaymentRecord } from '../../src/types/finance';
 
 type ResolvedPersonalRoute = {
@@ -102,6 +106,13 @@ const formatStripeStatus = (value?: string) => {
   };
   return map[status] || status;
 };
+
+const CLEAN_SURFACE = '#FFFFFF';
+const CLEAN_SURFACE_ALT = '#F8FAFC';
+const CLEAN_BORDER = '#E0E3E7';
+const CLEAN_TEXT = '#14181B';
+const CLEAN_TEXT_MUTED = '#57636C';
+const STRIPE_FEE_RATE = 0.1;
 
 export default function FinanceiroAlunoScreen() {
   const { colors, spacing, borderRadius, typography } = useTheme();
@@ -336,7 +347,7 @@ export default function FinanceiroAlunoScreen() {
 
       const amountValue = Number(payment.valorDaCombranca || 0);
       if (!Number.isFinite(amountValue) || amountValue <= 0) {
-        showAlert('Pagamento', 'Valor da cobranca invalido para gerar checkout.');
+        showAlert('Pagamento', 'Valor da cobrança inválido para gerar checkout.');
         return;
       }
 
@@ -360,12 +371,13 @@ export default function FinanceiroAlunoScreen() {
         if (!personalRoute) {
           showAlert(
             'Pagamento',
-            'Nao foi possivel identificar a conta Stripe do personal. Abra o MH Agenda Fit ou peca ao personal para reenviar a cobranca.'
+            'Não foi possível identificar a conta Stripe do personal. Abra o MH Agenda Fit ou peça ao personal para reenviar a cobrança.'
           );
           return;
         }
 
         const amountInCents = Math.round(amountValue * 100);
+        const feeInCents = Math.round(amountInCents * STRIPE_FEE_RATE);
         const checkoutResult = await createStripeCheckoutSession({
           amount: amountInCents,
           currency: 'brl',
@@ -373,24 +385,31 @@ export default function FinanceiroAlunoScreen() {
           personalId: personalRoute.personalId,
           paymentId: payment.id,
           destinationAccountId: personalRoute.destinationAccountId,
+          applicationFeeAmount: feeInCents,
           description: sanitizePaymentTitle(payment.descricao),
+          returnPath: '/financeiro/aluno',
         });
 
-        if (checkoutResult.error || !checkoutResult.data?.checkoutUrl) {
-          showAlert('Stripe', checkoutResult.error || 'Nao foi possivel gerar o checkout Stripe.');
+        if (checkoutResult.error) {
+          showAlert('Stripe', checkoutResult.error);
+          return;
+        }
+        if (!checkoutResult.data?.checkoutUrl) {
+          showAlert('Stripe', 'O backend nao retornou a URL do checkout.');
           return;
         }
 
+        const checkoutData = checkoutResult.data;
         await updatePaymentForUser(user.uid, payment.id, {
-          checkoutUrl: checkoutResult.data.checkoutUrl,
-          stripeSessionId: checkoutResult.data.sessionId,
-          stripePaymentIntentId: checkoutResult.data.paymentIntentId,
-          stripeStatus: checkoutResult.data.status || 'pending',
           personalId: personalRoute.personalId,
           destinationAccountId: personalRoute.destinationAccountId,
           personalDisplayName: personalRoute.personalDisplayName,
           studentId: user.uid,
           origem: payment.origem || 'financeiro-aluno',
+          checkoutUrl: checkoutData.checkoutUrl,
+          stripeSessionId: checkoutData.sessionId,
+          stripePaymentIntentId: checkoutData.paymentIntentId,
+          stripeStatus: checkoutData.status,
         });
 
         setPayments((prev) =>
@@ -398,22 +417,22 @@ export default function FinanceiroAlunoScreen() {
             item.id === payment.id
               ? {
                   ...item,
-                  checkoutUrl: checkoutResult.data?.checkoutUrl,
-                  stripeSessionId: checkoutResult.data?.sessionId,
-                  stripePaymentIntentId: checkoutResult.data?.paymentIntentId,
-                  stripeStatus: checkoutResult.data?.status || 'pending',
                   personalId: personalRoute.personalId,
                   destinationAccountId: personalRoute.destinationAccountId,
                   personalDisplayName: personalRoute.personalDisplayName,
                   studentId: user.uid,
+                  checkoutUrl: checkoutData.checkoutUrl,
+                  stripeSessionId: checkoutData.sessionId,
+                  stripePaymentIntentId: checkoutData.paymentIntentId,
+                  stripeStatus: checkoutData.status,
                 }
               : item
           )
         );
 
-        const opened = await handleOpenPayment(checkoutResult.data.checkoutUrl);
+        const opened = await handleOpenPayment(checkoutData.checkoutUrl);
         if (!opened) {
-          showAlert('Pagamento', 'Checkout gerado, mas nao foi possivel abrir automaticamente.');
+          showAlert('Pagamento', 'Não foi possível abrir o checkout Stripe agora.');
         }
       } catch (error: any) {
         showAlert('Stripe', error?.message || 'Falha ao gerar checkout Stripe.');
@@ -426,7 +445,7 @@ export default function FinanceiroAlunoScreen() {
 
   return (
     <LinearGradient
-      colors={['#0A1019', '#111E2F', '#192B43']}
+      colors={[CLEAN_SURFACE, CLEAN_SURFACE, CLEAN_SURFACE]}
       start={{ x: 0, y: 0 }}
       end={{ x: 1, y: 1 }}
       style={styles.container}
@@ -443,8 +462,8 @@ export default function FinanceiroAlunoScreen() {
           <View style={{ paddingHorizontal: padding }}>
             <View style={[styles.headerRow, { marginTop: spacing.sm }]}>
               <View>
-                <Text style={[{ color: '#F6FBFF' }, typography.headlineLarge]}>Financeiro</Text>
-                <Text style={[{ color: 'rgba(224,236,247,0.84)', marginTop: spacing.xs }, typography.bodySmall]}>
+                <Text style={[{ color: colors.text }, typography.headlineLarge]}>Financeiro</Text>
+                <Text style={[{ color: colors.textSecondary, marginTop: spacing.xs }, typography.bodySmall]}>
                   Cobrancas, vencimentos e pagamento Stripe em um unico painel.
                 </Text>
               </View>
@@ -452,15 +471,15 @@ export default function FinanceiroAlunoScreen() {
                 style={[styles.headerAction, { borderRadius: borderRadius.full }]}
                 onPress={() => router.push('/financeiro/plans')}
               >
-                <Ionicons name="diamond-outline" size={18} color="#9FD7FF" />
+                <Ionicons name="diamond-outline" size={18} color={colors.primary} />
               </TouchableOpacity>
             </View>
 
             <LinearGradient
-              colors={['#0B1A2C', '#123051', '#1B476F']}
+              colors={[CLEAN_SURFACE, CLEAN_SURFACE, CLEAN_SURFACE]}
               start={{ x: 0, y: 0 }}
               end={{ x: 1, y: 1 }}
-              style={[styles.heroCard, { borderRadius: borderRadius.lg, marginTop: spacing.md }]}
+              style={[styles.heroCard, { borderRadius: borderRadius.lg, marginTop: spacing.md, borderColor: CLEAN_BORDER }]}
             >
               <View style={styles.heroGlow} />
               <View style={styles.heroStatsRow}>
@@ -486,10 +505,10 @@ export default function FinanceiroAlunoScreen() {
             </LinearGradient>
 
             <View style={[styles.methodsWrap, { marginTop: spacing.md }]}>
-              <Text style={[{ color: '#F0F7FD' }, typography.titleSmall]}>Metodos de pagamento</Text>
+              <Text style={[{ color: colors.text }, typography.titleSmall]}>Metodos de pagamento</Text>
               <View style={[styles.methodRow, { marginTop: spacing.sm }]}>
                 <View style={[styles.methodCard, { borderRadius: borderRadius.md }]}>
-                  <Ionicons name="card-outline" size={18} color="#99D8FF" />
+                  <Ionicons name="card-outline" size={18} color={colors.primary} />
                   <View style={styles.methodCopy}>
                     <Text style={[styles.methodTitle, typography.labelMedium]}>Stripe Checkout</Text>
                     <Text style={[styles.methodSubtitle, typography.bodySmall]}>
@@ -514,15 +533,15 @@ export default function FinanceiroAlunoScreen() {
             {loading ? (
               <View style={[styles.loadingCard, { borderRadius: borderRadius.lg }]}>
                 <ActivityIndicator size="small" color={colors.primary} />
-                <Text style={[{ color: '#C7DBEB', marginTop: spacing.sm }, typography.bodySmall]}>
-                  Carregando cobrancas...
+                <Text style={[{ color: colors.textSecondary, marginTop: spacing.sm }, typography.bodySmall]}>
+                  Carregando cobranças...
                 </Text>
               </View>
             ) : orderedPayments.length === 0 ? (
               <View style={[styles.loadingCard, { borderRadius: borderRadius.lg }]}>
-                <Ionicons name="wallet-outline" size={48} color="rgba(199,219,235,0.6)" />
-                <Text style={[{ color: '#C7DBEB', marginTop: spacing.sm }, typography.bodyMedium]}>
-                  Nenhuma cobranca encontrada.
+                <Ionicons name="wallet-outline" size={48} color={colors.textMuted} />
+                <Text style={[{ color: colors.textSecondary, marginTop: spacing.sm }, typography.bodyMedium]}>
+                  Nenhuma cobrança encontrada.
                 </Text>
               </View>
             ) : (
@@ -537,7 +556,7 @@ export default function FinanceiroAlunoScreen() {
                 return (
                   <LinearGradient
                     key={item.id}
-                    colors={paid ? ['#0E2C22', '#123729', '#164734'] : ['#1A1110', '#271816', '#38211E']}
+                    colors={[CLEAN_SURFACE, CLEAN_SURFACE, CLEAN_SURFACE]}
                     start={{ x: 0, y: 0 }}
                     end={{ x: 1, y: 1 }}
                     style={[styles.paymentCard, { borderRadius: borderRadius.lg, marginBottom: spacing.sm }]}
@@ -582,22 +601,22 @@ export default function FinanceiroAlunoScreen() {
                             styles.stripeButton,
                             {
                               borderRadius: borderRadius.full,
-                              borderColor: canDirectPay || canTryGenerate ? '#8FD3FF' : 'rgba(196,210,223,0.22)',
+                              borderColor: canDirectPay || canTryGenerate ? colors.primary : CLEAN_BORDER,
                               backgroundColor:
-                                canDirectPay || canTryGenerate ? 'rgba(53,132,187,0.14)' : 'rgba(10,17,28,0.24)',
+                                canDirectPay || canTryGenerate ? `${colors.primary}12` : CLEAN_SURFACE_ALT,
                             },
                           ]}
                           onPress={() => void handlePayWithStripe(item)}
                           disabled={isProcessing || (!canDirectPay && !canTryGenerate)}
                         >
                           {isProcessing ? (
-                            <ActivityIndicator size="small" color="#9FD7FF" />
+                            <ActivityIndicator size="small" color={colors.primary} />
                           ) : (
                             <>
                               <Ionicons
                                 name="card-outline"
                                 size={16}
-                                color={canDirectPay || canTryGenerate ? '#9FD7FF' : 'rgba(185,204,221,0.55)'}
+                                color={canDirectPay || canTryGenerate ? colors.primary : colors.textMuted}
                               />
                               <Text
                                 style={[
@@ -605,7 +624,7 @@ export default function FinanceiroAlunoScreen() {
                                   typography.labelMedium,
                                   {
                                     color:
-                                      canDirectPay || canTryGenerate ? '#DFF2FF' : 'rgba(185,204,221,0.55)',
+                                      canDirectPay || canTryGenerate ? colors.primary : colors.textMuted,
                                   },
                                 ]}
                               >
@@ -620,7 +639,7 @@ export default function FinanceiroAlunoScreen() {
                             style={[styles.secondaryAction, { borderRadius: borderRadius.full }]}
                             onPress={() => router.push('/mh-agenda-fit' as any)}
                           >
-                            <Ionicons name="calendar-outline" size={14} color="#FFD8C7" />
+                            <Ionicons name="calendar-outline" size={14} color={colors.text} />
                             <Text style={[styles.secondaryActionText, typography.labelSmall]}>
                               Abrir MH Agenda Fit
                             </Text>
@@ -661,13 +680,13 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 1,
-    borderColor: 'rgba(159,215,255,0.32)',
-    backgroundColor: 'rgba(21,53,80,0.5)',
+    borderColor: '#E0E3E7',
+    backgroundColor: '#F8FAFC',
   },
   heroCard: {
     padding: 14,
     borderWidth: 1,
-    borderColor: 'rgba(186,223,247,0.2)',
+    borderColor: '#E0E3E7',
     overflow: 'hidden',
   },
   heroGlow: {
@@ -677,7 +696,7 @@ const styles = StyleSheet.create({
     width: 160,
     height: 160,
     borderRadius: 80,
-    backgroundColor: 'rgba(117,196,255,0.14)',
+    backgroundColor: '#EEF3F8',
   },
   heroStatsRow: {
     flexDirection: 'row',
@@ -686,23 +705,23 @@ const styles = StyleSheet.create({
   heroMetricCard: {
     flex: 1,
     borderWidth: 1,
-    borderColor: 'rgba(186,223,247,0.22)',
-    backgroundColor: 'rgba(6,14,24,0.48)',
+    borderColor: '#E0E3E7',
+    backgroundColor: '#F8FAFC',
     paddingVertical: 10,
     paddingHorizontal: 10,
   },
   heroMetricLabel: {
-    color: 'rgba(208,231,247,0.82)',
+    color: '#57636C',
   },
   heroMetricValue: {
     marginTop: 4,
-    color: '#FFFFFF',
+    color: '#14181B',
     fontWeight: '800',
   },
   methodsWrap: {
     borderWidth: 1,
-    borderColor: 'rgba(186,223,247,0.16)',
-    backgroundColor: 'rgba(6,14,24,0.4)',
+    borderColor: '#E0E3E7',
+    backgroundColor: '#FFFFFF',
     padding: 12,
     borderRadius: 16,
   },
@@ -713,8 +732,8 @@ const styles = StyleSheet.create({
   methodCard: {
     flex: 1,
     borderWidth: 1,
-    borderColor: 'rgba(186,223,247,0.22)',
-    backgroundColor: 'rgba(7,16,28,0.55)',
+    borderColor: '#E0E3E7',
+    backgroundColor: '#F8FAFC',
     paddingHorizontal: 10,
     paddingVertical: 10,
     flexDirection: 'row',
@@ -725,16 +744,16 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   methodTitle: {
-    color: '#EAF6FF',
+    color: '#14181B',
   },
   methodSubtitle: {
     marginTop: 2,
-    color: 'rgba(201,224,242,0.76)',
+    color: '#57636C',
   },
   loadingCard: {
     borderWidth: 1,
-    borderColor: 'rgba(186,223,247,0.18)',
-    backgroundColor: 'rgba(7,16,28,0.56)',
+    borderColor: '#E0E3E7',
+    backgroundColor: '#FFFFFF',
     minHeight: 150,
     alignItems: 'center',
     justifyContent: 'center',
@@ -742,7 +761,7 @@ const styles = StyleSheet.create({
   },
   paymentCard: {
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.12)',
+    borderColor: '#E0E3E7',
     padding: 14,
   },
   paymentTopRow: {
@@ -759,11 +778,11 @@ const styles = StyleSheet.create({
     paddingRight: 6,
   },
   paymentTitle: {
-    color: '#F6FBFF',
+    color: '#14181B',
     flex: 1,
   },
   paymentAmount: {
-    color: '#B9E5FF',
+    color: '#14181B',
     fontWeight: '800',
   },
   paymentMetaRow: {
@@ -774,25 +793,25 @@ const styles = StyleSheet.create({
     gap: 10,
   },
   paymentMetaText: {
-    color: 'rgba(221,234,247,0.82)',
+    color: '#57636C',
   },
   statusPill: {
     borderWidth: 1,
     borderRadius: 999,
     paddingHorizontal: 10,
     paddingVertical: 4,
-    backgroundColor: 'rgba(7,16,28,0.28)',
+    backgroundColor: '#F8FAFC',
   },
   statusPillText: {
     fontWeight: '700',
   },
   paymentStripeText: {
     marginTop: 6,
-    color: 'rgba(199,216,232,0.78)',
+    color: '#57636C',
   },
   paymentPersonalText: {
     marginTop: 6,
-    color: '#BDE4FF',
+    color: '#57636C',
   },
   paymentActionColumn: {
     gap: 8,
@@ -812,8 +831,8 @@ const styles = StyleSheet.create({
   secondaryAction: {
     alignSelf: 'flex-start',
     borderWidth: 1,
-    borderColor: 'rgba(255,198,173,0.32)',
-    backgroundColor: 'rgba(76,33,28,0.5)',
+    borderColor: '#E0E3E7',
+    backgroundColor: '#F8FAFC',
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
@@ -821,7 +840,7 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
   },
   secondaryActionText: {
-    color: '#FFD8C7',
+    color: '#14181B',
     fontWeight: '700',
   },
 });

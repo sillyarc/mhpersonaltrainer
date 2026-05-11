@@ -7,6 +7,7 @@ import {
   TextInput,
   FlatList,
 } from 'react-native';
+import { showAlert } from '@utils/alert';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
@@ -17,12 +18,14 @@ import { useTheme } from '../../src/hooks/useTheme';
 import { spacing, borderRadius } from '../../src/theme';
 
 type RoleFilter = 'all' | 'admin' | 'personal' | 'aluno';
+type AdminUserRole = Exclude<RoleFilter, 'all'>;
 
 interface AdminUserItem {
   id: string;
   name: string;
   email: string;
-  role: RoleFilter;
+  role: AdminUserRole;
+  codigoPersonal?: number | string;
   assinatura?: boolean;
   acessoSuspenso?: boolean;
   createdAt?: Date;
@@ -50,7 +53,7 @@ export default function AdminUsersScreen() {
       const snapshot = await getDocs(usersQuery);
       const loaded = snapshot.docs.map((doc) => {
         const data = doc.data();
-        const role: RoleFilter = data.admin
+        const role: AdminUserRole = data.admin
           ? 'admin'
           : data.professorAccount
           ? 'personal'
@@ -60,6 +63,7 @@ export default function AdminUsersScreen() {
           name: data.display_name || 'Usuario',
           email: data.email || '',
           role,
+          codigoPersonal: data.codigoPersonal,
           assinatura: data.assinatura,
           acessoSuspenso: data.acessoSuspenso,
           createdAt: data.created_time?.toDate(),
@@ -85,8 +89,36 @@ export default function AdminUsersScreen() {
     });
   }, [users, roleFilter, queryText]);
 
+  const handleViewProfile = (item: AdminUserItem) => {
+    if (item.role === 'aluno') {
+      router.push(`/admin/student/${item.id}` as any);
+      return;
+    }
+
+    if (item.role === 'personal') {
+      const codigoPersonal = String(item.codigoPersonal || '').trim();
+      router.push(
+        codigoPersonal
+          ? ({
+              pathname: '/personal/profile',
+              params: { code: codigoPersonal },
+            } as any)
+          : ({
+              pathname: '/personal/profile',
+              params: { uid: item.id },
+            } as any)
+      );
+      return;
+    }
+
+    showAlert(
+      'Perfil indisponivel',
+      'Ainda nao existe uma tela de visualizacao para perfis admin.'
+    );
+  };
+
   const renderUser = ({ item }: { item: AdminUserItem }) => (
-    <Card style={styles.userCard}>
+    <Card style={styles.userCard} onPress={() => handleViewProfile(item)}>
       <View style={styles.userRow}>
         <View style={styles.userInfo}>
           <Text style={[styles.userName, { color: colors.text }]}>{item.name}</Text>
@@ -102,6 +134,10 @@ export default function AdminUsersScreen() {
             </View>
           )}
         </View>
+      </View>
+      <View style={styles.profileActionRow}>
+        <Ionicons name="open-outline" size={14} color={colors.primary} />
+        <Text style={[styles.profileActionText, { color: colors.primary }]}>Ver perfil</Text>
       </View>
     </Card>
   );
@@ -260,6 +296,17 @@ const styles = StyleSheet.create({
   badges: {
     flexDirection: 'row',
     gap: spacing.xs,
+  },
+  profileActionRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'flex-end',
+    gap: spacing.xs,
+    marginTop: spacing.md,
+  },
+  profileActionText: {
+    fontSize: 12,
+    fontWeight: '600',
   },
   badge: {
     paddingHorizontal: spacing.sm,
