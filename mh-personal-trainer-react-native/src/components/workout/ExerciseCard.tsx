@@ -25,6 +25,7 @@ interface ExerciseCardProps {
   showActions?: boolean;
   isCompleted?: boolean;
   isActive?: boolean;
+  hideAdditionalInfo?: boolean;
 }
 
 export function ExerciseCard({
@@ -40,6 +41,7 @@ export function ExerciseCard({
   showActions = false,
   isCompleted = false,
   isActive = false,
+  hideAdditionalInfo = false,
 }: ExerciseCardProps) {
   const { colors } = useTheme();
   const seriesLabel = formatMetricText(exercise.series);
@@ -120,7 +122,7 @@ export function ExerciseCard({
                 {repsLabel}
               </Text>
             </View>
-            {cargaLabel && (
+            {!hideAdditionalInfo && cargaLabel && (
               <View style={styles.detailItem}>
                 <Ionicons name="barbell-outline" size={14} color={colors.textMuted} />
                 <Text style={[styles.detailText, { color: colors.textMuted }]}>
@@ -128,7 +130,7 @@ export function ExerciseCard({
                 </Text>
               </View>
             )}
-            {intervaloLabel && (
+            {!hideAdditionalInfo && intervaloLabel && (
               <View style={styles.detailItem}>
                 <Ionicons name="time-outline" size={14} color={colors.textMuted} />
                 <Text style={[styles.detailText, { color: colors.textMuted }]}>
@@ -137,7 +139,7 @@ export function ExerciseCard({
               </View>
             )}
           </View>
-          {exercise.observacao && (
+          {!hideAdditionalInfo && exercise.observacao && (
             <Text
               style={[styles.observation, { color: colors.textSecondary }]}
               numberOfLines={1}
@@ -177,7 +179,7 @@ export function ExerciseCard({
         )}
       </View>
 
-      {exercise.videoUrl && (
+      {!hideAdditionalInfo && exercise.videoUrl && (
         <View style={[styles.videoIndicator, { backgroundColor: colors.primary + '15' }]}>
           <Ionicons name="play-circle-outline" size={14} color={colors.primary} />
           <Text style={[styles.videoText, { color: colors.primary }]}>Vídeo</Text>

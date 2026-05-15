@@ -1504,6 +1504,7 @@ export default function CreateWorkoutScreen() {
                         onDragHandlePressIn={isPersonal ? drag : undefined}
                         delayLongPress={150}
                         isActive={isActive}
+                        hideAdditionalInfo={isPersonal}
                       />
                     );
                   }}
